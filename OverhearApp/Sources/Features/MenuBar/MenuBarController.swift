@@ -159,9 +159,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         
         if let nextEvent = nextEvent {
             let timeStr = getTimeUntilString(nextEvent.startDate)
-            button.title = "\(nextEvent.title) \(timeStr)"
+            button.title = "  \(nextEvent.title) \(timeStr)"  // Add space before title
             // Match Meeter style: thin/light weight, system font
             button.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+            button.imagePosition = .imageLeft
         } else {
             button.title = ""
             button.imagePosition = .imageOnly

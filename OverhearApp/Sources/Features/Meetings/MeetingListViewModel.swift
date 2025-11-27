@@ -72,10 +72,16 @@ final class MeetingListViewModel: ObservableObject {
             return nil
         }
         let path = url.path
-        if path.hasPrefix("/j/") || path.hasPrefix("/meeting/") {
-            let components = path.split(separator: "/")
-            if components.count >= 3, let meetingID = components.last {
-                return URL(string: "zoommtg://zoom.us/join?confno=\(meetingID)")
+        
+        // Extract meeting ID from various Zoom URL formats
+        // /j/123456789 or /meeting/123456789 or /webinar/123456789
+        let components = path.split(separator: "/").filter { !$0.isEmpty }
+        if components.count >= 2 {
+            if let meetingID = components.last?.split(separator: "?").first {
+                // Try zoommtg:// protocol first
+                if let zoommtgURL = URL(string: "zoommtg://zoom.us/join?confno=\(meetingID)") {
+                    return zoommtgURL
+                }
             }
         }
         return nil

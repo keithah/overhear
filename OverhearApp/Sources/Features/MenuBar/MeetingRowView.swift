@@ -21,59 +21,62 @@ struct MeetingRowView: View {
     }
 
     var body: some View {
-        Button(action: { 
-            onJoin(meeting) 
-        }) {
-            HStack(alignment: .center, spacing: 8) {
-                // Holiday emoji or icon
-                if meeting.holidayInfo.isHoliday {
-                    Text(meeting.holidayEmoji)
-                        .font(.system(size: 16))
-                } else {
-                    Image(systemName: meeting.iconInfo.iconName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(meeting.iconInfo.color))
-                        .frame(width: 14)
-                }
+        HStack(alignment: .center, spacing: 8) {
+            // Holiday emoji or icon
+            if meeting.holidayInfo.isHoliday {
+                Text(meeting.holidayEmoji)
+                    .font(.system(size: 16))
+            } else {
+                let iconColor = Color(red: meeting.iconInfo.color.redComponent,
+                                     green: meeting.iconInfo.color.greenComponent,
+                                     blue: meeting.iconInfo.color.blueComponent)
+                Image(systemName: meeting.iconInfo.iconName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(iconColor)
+                    .frame(width: 14)
+            }
+            
+            // Title and time
+            VStack(alignment: .leading, spacing: 2) {
+                Text(meeting.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
                 
-                // Title and time
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(meeting.title)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                    
-                    if !meeting.isAllDay {
-                        Text(timeRangeText(for: meeting))
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                Spacer()
-                
-                // Join indicator if has URL
-                if meeting.url != nil {
-                    Image(systemName: "link.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(meeting.iconInfo.color))
+                if !meeting.isAllDay {
+                    Text(timeRangeText(for: meeting))
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
                 }
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 10)
-            .contentShape(Rectangle())
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isHovered && !(isPastEvent || isPastDate) ? 
-                          Color.blue.opacity(0.3) :
-                          (colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04)))
-            )
-            .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)  // Fade if event ended OR date is in past
-            .onHover { hovering in
-                isHovered = hovering
+            
+            Spacer()
+            
+            // Join indicator if has URL
+            if meeting.url != nil {
+                Image(systemName: "link.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(meeting.iconInfo.color))
             }
         }
-        .buttonStyle(.plain)
-        .disabled(isPastEvent || isPastDate)  // Disable join for past events or events from past dates
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .contentShape(Rectangle())
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isHovered && !(isPastEvent || isPastDate) ? 
+                      Color.blue.opacity(0.3) :
+                      (colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04)))
+        )
+        .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !(isPastEvent || isPastDate) {
+                onJoin(meeting)
+            }
+        }
     }
 
     private func timeRangeText(for meeting: Meeting) -> String {
