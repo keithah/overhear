@@ -8,6 +8,7 @@ struct MenuBarContentView: View {
     
      @State private var lastScrollTime: Date = Date()
      @State private var canScrollToPast: Bool = true
+     @State private var lastScrollOffset: CGFloat = 0
 
       var body: some View {
          VStack(spacing: 0) {
@@ -105,8 +106,8 @@ struct MenuBarContentView: View {
           let past = mapped.filter { $0.date < today }  // Past in chronological order (oldest first)
           let todayAndFuture = mapped.filter { $0.date >= today }
           
-          // Return: past first (scroll up into past), then today and future
-          // Scroll up = older past, scroll down = future
+          // Return: past first (at top), then today and future
+          // This way Wednesday is at top, Thursday below it, then Friday, Sunday, etc.
           return past + todayAndFuture
      }
     

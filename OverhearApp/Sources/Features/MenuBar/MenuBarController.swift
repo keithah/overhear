@@ -60,14 +60,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         // Store status item (must be retained)
         statusItem = item
         
-        // Update menubar when meetings data is available
-        Task { @MainActor in
-            // Wait for initial data load
-            while viewModel.upcomingSections.isEmpty && viewModel.pastSections.isEmpty {
-                try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
-            }
-            self.updateStatusItemIcon()
-        }
+         // Update menubar when meetings data is available
+         Task { @MainActor in
+             // Wait for initial data load with timeout
+             var attempts = 0
+             while viewModel.upcomingSections.isEmpty && viewModel.pastSections.isEmpty && attempts < 50 {
+                 try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
+                 attempts += 1
+             }
+             self.updateStatusItemIcon()
+         }
         
         scheduleNextIconUpdate()
         

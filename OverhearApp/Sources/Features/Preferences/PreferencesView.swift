@@ -43,7 +43,8 @@ struct PreferencesView: View {
              
               Divider()
               
-              Stepper("Days ahead: \(preferences.daysAhead)", value: $preferences.daysAhead, in: 1...14)
+              Stepper("Days ahead: \(preferences.daysAhead)", value: $preferences.daysAhead, in: 1...30)
+              Stepper("Days back: \(preferences.daysBack)", value: $preferences.daysBack, in: 1...30)
          }
      }
 

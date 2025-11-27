@@ -6,51 +6,47 @@ final class CalendarService: ObservableObject {
       @Published private(set) var authorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
 
       private let eventStore = EKEventStore()
-      private var hasRequestedPermission = false
       private static let defaults = UserDefaults.standard
-      private static let hasRequestedKey = "CalendarPermissionRequested"
+      private static let permissionAskedKey = "CalendarPermissionAsked"
+      private var permissionAsked = false
 
       func requestAccessIfNeeded() async -> Bool {
           let status = EKEventStore.authorizationStatus(for: .event)
           authorizationStatus = status
           
-          // Check if we've already requested before
-          let hasRequested = Self.defaults.bool(forKey: Self.hasRequestedKey)
-          
-          // If already have permission, always return true immediately
+          // If already have permission, return true
           if status == .authorized || status == .fullAccess {
-              Self.defaults.set(true, forKey: Self.hasRequestedKey)
               return true
           }
           
-          // If we've already requested permission, never ask again
-          if hasRequested {
-              return status == .authorized || status == .fullAccess
+          // If denied or limited, return false
+          if status == .denied || status == .restricted {
+              return false
           }
           
-          // Only request if status is notDetermined
-          if status == .notDetermined {
-              let granted = await withCheckedContinuation { continuation in
-                  if #available(macOS 14.0, *) {
-                      eventStore.requestFullAccessToEvents { granted, _ in
-                          continuation.resume(returning: granted)
-                      }
-                  } else {
-                      eventStore.requestAccess(to: .event) { granted, _ in
-                          continuation.resume(returning: granted)
-                      }
+          // If we already asked before (and didn't get permission), don't ask again
+          let hasAskedBefore = Self.defaults.bool(forKey: Self.permissionAskedKey)
+          if hasAskedBefore {
+              return false
+          }
+          
+          // Try to request permission (status is .notDetermined)
+          let granted = await withCheckedContinuation { continuation in
+              if #available(macOS 14.0, *) {
+                  eventStore.requestFullAccessToEvents { granted, error in
+                      continuation.resume(returning: granted)
+                  }
+              } else {
+                  eventStore.requestAccess(to: .event) { granted, error in
+                      continuation.resume(returning: granted)
                   }
               }
-              
-              // Mark that we've requested, so we never ask again
-              Self.defaults.set(true, forKey: Self.hasRequestedKey)
-              authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-              return granted
           }
           
-          // Denied, limited, or unknown - mark as requested so we don't ask again
-          Self.defaults.set(true, forKey: Self.hasRequestedKey)
-          return false
+          // Always mark that we asked, so we never ask again
+          Self.defaults.set(true, forKey: Self.permissionAskedKey)
+          authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+          return granted
       }
 
     func availableCalendars() -> [EKCalendar] {

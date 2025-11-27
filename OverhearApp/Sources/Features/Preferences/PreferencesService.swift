@@ -85,8 +85,8 @@ final class PreferencesService: ObservableObject {
         self.use24HourClock = defaults.object(forKey: PreferenceKey.use24HourClock.rawValue) as? Bool ?? false
         self.showEventsWithoutLinks = defaults.object(forKey: PreferenceKey.showEventsWithoutLinks.rawValue) as? Bool ?? true
         self.showMaybeEvents = defaults.object(forKey: PreferenceKey.showMaybeEvents.rawValue) as? Bool ?? true
-         self.daysAhead = defaults.object(forKey: PreferenceKey.daysAhead.rawValue) as? Int ?? 2
-         self.daysBack = defaults.object(forKey: PreferenceKey.daysBack.rawValue) as? Int ?? 90
+         self.daysAhead = defaults.object(forKey: PreferenceKey.daysAhead.rawValue) as? Int ?? 15
+         self.daysBack = defaults.object(forKey: PreferenceKey.daysBack.rawValue) as? Int ?? 14
         self.countdownEnabled = defaults.object(forKey: PreferenceKey.countdownEnabled.rawValue) as? Bool ?? true
         self.notificationMinutesBefore = defaults.object(forKey: PreferenceKey.notificationMinutesBefore.rawValue) as? Int ?? 5
         self.selectedCalendarIDs = PreferencesService.loadCalendarIDs(defaults: defaults)
