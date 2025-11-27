@@ -46,7 +46,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
 
         button.title = ""
-        button.imagePosition = .imageOnly
         button.target = self
         button.action = #selector(togglePopoverAction)
         
@@ -59,8 +58,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         
         // Store status item (must be retained)
         statusItem = item
-        updateStatusItemIcon()
+        DispatchQueue.main.async {
+            self.updateStatusItemIcon()
+        }
         scheduleNextIconUpdate()
+        
+        // Update every minute to refresh time display
+        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.updateStatusItemIcon()
+            }
+        }
     }
     
     @objc
@@ -119,7 +127,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         preferencesWindowController.show()
     }
 
-    private func updateStatusItemIcon() {
+    @MainActor private func updateStatusItemIcon() {
         guard let button = statusItem?.button else {
             return
         }
@@ -127,12 +135,58 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let icon = makeMenuBarIcon()
         icon.isTemplate = false
         button.image = icon
-        button.imagePosition = .imageOnly
+        button.imagePosition = .imageLeft
+        
+        // Get next non-all-day event
+        let allMeetings = (viewModel.pastSections + viewModel.upcomingSections)
+            .flatMap { $0.meetings }
+        
+        let now = Date()
+        let nextEvent = allMeetings
+            .filter { !$0.isAllDay && $0.startDate > now }  // Exclude all-day events
+            .min { $0.startDate < $1.startDate }
+        
+        if let nextEvent = nextEvent {
+            let timeStr = getTimeUntilString(nextEvent.startDate)
+            button.title = "\(nextEvent.title) \(timeStr)"
+            button.font = NSFont.systemFont(ofSize: 11)
+        } else {
+            button.title = ""
+            button.imagePosition = .imageOnly
+        }
+    }
+    
+    private func getTimeUntilString(_ date: Date) -> String {
+        let now = Date()
+        let components = Calendar.current.dateComponents([.day, .hour, .minute], from: now, to: date)
+        
+        if let day = components.day, day > 0 {
+            if day == 1 {
+                return "tomorrow"
+            } else {
+                return "in \(day)d"
+            }
+        }
+        
+        if let hour = components.hour, hour > 0 {
+            if let minute = components.minute {
+                return "in \(hour)h \(minute)m"
+            }
+            return "in \(hour)h"
+        }
+        
+        if let minute = components.minute, minute > 0 {
+            return "in \(minute)m"
+        }
+        
+        return "starting"
     }
 
     @objc
     private func iconUpdateTimerFired() {
-        updateStatusItemIcon()
+        DispatchQueue.main.async {
+            self.updateStatusItemIcon()
+        }
         scheduleNextIconUpdate()
     }
 

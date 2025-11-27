@@ -26,37 +26,56 @@ enum GenericMeetingType {
 
 final class HolidayDetector {
     static func detectHoliday(title: String, calendarName: String?, date: Date) -> HolidayInfo {
-        let combinedText = (title + " " + (calendarName ?? "")).lowercased()
         let calendar = Calendar.current
-        let monthDay = calendar.component(.month, from: date) * 100 + calendar.component(.day, from: date)
+        let month = calendar.component(.month, from: date)
+        let day = calendar.component(.day, from: date)
+        let monthDay = month * 100 + day
         
-        // Check title and calendar keywords
+        // Check specific dates for fixed holidays (most reliable)
+        switch monthDay {
+        case 101:   // January 1 - New Year's Day
+            return HolidayInfo(emoji: "⭐", isHoliday: true)
+        case 214:   // February 14 - Valentine's Day
+            return HolidayInfo(emoji: "❤️", isHoliday: true)
+        case 317:   // March 17 - St. Patrick's Day (if needed)
+            return HolidayInfo(emoji: "🍀", isHoliday: true)
+        case 704:   // July 4 - Independence Day
+            return HolidayInfo(emoji: "🇺🇸", isHoliday: true)
+        case 1031:  // October 31 - Halloween
+            return HolidayInfo(emoji: "🎃", isHoliday: true)
+        case 1101:  // November 1 - Day of the Dead
+            return HolidayInfo(emoji: "💀", isHoliday: true)
+        case 1225:  // December 25 - Christmas
+            return HolidayInfo(emoji: "🎄", isHoliday: true)
+        case 1231:  // December 31 - New Year's Eve
+            return HolidayInfo(emoji: "⭐", isHoliday: true)
+        default:
+            break
+        }
+        
+        // Check for Thanksgiving (4th Thursday of November)
+        if month == 11 {
+            let weekday = calendar.component(.weekday, from: date)  // 1=Sunday, 5=Thursday
+            let weekOfMonth = (day - 1) / 7 + 1
+            if weekday == 5 && weekOfMonth == 4 {  // Thursday of 4th week
+                return HolidayInfo(emoji: "🦃", isHoliday: true)
+            }
+        }
+        
+        // Check for Easter (varies by year - check title as fallback)
+        if let titleLower = title.lowercased() as String?, titleLower.contains("easter") {
+            return HolidayInfo(emoji: "🥚", isHoliday: true)
+        }
+        
+        // Fall back to text matching for flexible holidays and user-defined
+        let combinedText = (title + " " + (calendarName ?? "")).lowercased()
+        
         if combinedText.contains("thanksgiving") {
             return HolidayInfo(emoji: "🦃", isHoliday: true)
         }
         
         if combinedText.contains("christmas") || combinedText.contains("xmas") || combinedText.contains("noel") {
             return HolidayInfo(emoji: "🎄", isHoliday: true)
-        }
-        
-        if combinedText.contains("new year") || combinedText.contains("nye") || combinedText.contains("new year's eve") {
-            return HolidayInfo(emoji: "⭐", isHoliday: true)
-        }
-        
-        if combinedText.contains("halloween") || combinedText.contains("hallows") {
-            return HolidayInfo(emoji: "🎃", isHoliday: true)
-        }
-        
-        if combinedText.contains("easter") {
-            return HolidayInfo(emoji: "🥚", isHoliday: true)
-        }
-        
-        if combinedText.contains("valentine") {
-            return HolidayInfo(emoji: "❤️", isHoliday: true)
-        }
-        
-        if combinedText.contains("independence day") || combinedText.contains("4th of july") {
-            return HolidayInfo(emoji: "🇺🇸", isHoliday: true)
         }
         
         if combinedText.contains("black friday") {
@@ -67,29 +86,6 @@ final class HolidayDetector {
             return HolidayInfo(emoji: "💻", isHoliday: true)
         }
         
-        if combinedText.contains("birthday") {
-            return HolidayInfo(emoji: "🎂", isHoliday: true)
-        }
-        
-        if combinedText.contains("anniversary") {
-            return HolidayInfo(emoji: "💍", isHoliday: true)
-        }
-        
-        // Check specific dates for common holidays
-        switch monthDay {
-        case 1101:  // November 1 - Día de Muertos
-            return HolidayInfo(emoji: "💀", isHoliday: true)
-        case 1225:  // December 25 - Christmas (fallback)
-            return HolidayInfo(emoji: "🎄", isHoliday: true)
-        case 101:   // January 1 - New Year's Day
-            return HolidayInfo(emoji: "⭐", isHoliday: true)
-        case 704:   // July 4
-            return HolidayInfo(emoji: "🇺🇸", isHoliday: true)
-        default:
-            break
-        }
-        
-        // Generic holiday keyword
         if combinedText.contains("holiday") {
             return HolidayInfo(emoji: "🎉", isHoliday: true)
         }
@@ -105,28 +101,28 @@ final class PlatformIconProvider {
         switch platform {
         case .zoom:
             return PlatformIconInfo(
-                iconName: "z.circle.fill",  // Distinct Zoom icon
+                iconName: "video.fill",  // Zoom
                 color: NSColor(calibratedRed: 0.04, green: 0.36, blue: 1.0, alpha: 1.0),  // #0B5CFF Zoom Blue
                 isSystemIcon: true
             )
         
         case .meet:
             return PlatformIconInfo(
-                iconName: "person.2.circle.fill",  // Google Meet icon
+                iconName: "person.2.fill",  // Google Meet
                 color: NSColor(calibratedRed: 0.0, green: 0.53, blue: 0.48, alpha: 1.0),  // #00897B Meet Green
                 isSystemIcon: true
             )
         
         case .teams:
             return PlatformIconInfo(
-                iconName: "person.3.circle.fill",  // Teams icon
+                iconName: "person.3.fill",  // Teams
                 color: NSColor(calibratedRed: 0.48, green: 0.41, blue: 0.93, alpha: 1.0),  // #7B68EE Teams Purple
                 isSystemIcon: true
             )
         
         case .webex:
             return PlatformIconInfo(
-                iconName: "w.circle.fill",  // Webex icon
+                iconName: "person.wave.2.fill",  // Webex
                 color: NSColor(calibratedRed: 0.0, green: 0.35, blue: 0.61, alpha: 1.0),  // #005A9C Webex Blue
                 isSystemIcon: true
             )

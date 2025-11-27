@@ -8,7 +8,16 @@ struct MeetingRowView: View {
     @Environment(\.colorScheme) private var colorScheme
     
     private var isPastEvent: Bool {
+        // An event is past if it has already ended
         meeting.endDate < Date()
+    }
+    
+    private var isPastDate: Bool {
+        // A date is in the past if the entire day has passed
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let eventDay = calendar.startOfDay(for: meeting.startDate)
+        return eventDay < today
     }
 
     var body: some View {
@@ -52,14 +61,15 @@ struct MeetingRowView: View {
             .padding(.vertical, 6)
             .padding(.horizontal, 10)
             .contentShape(Rectangle())
-            .opacity(isPastEvent ? 0.5 : 1.0)  // Fade entire row including text and icon
+            .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)  // Fade if event ended OR date is in past
+            .foregroundColor((isPastEvent || isPastDate) ? .gray : .primary)  // Grey out text too
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04))
             )
         }
         .buttonStyle(.plain)
-        .disabled(isPastEvent)  // Disable join for past events
+        .disabled(isPastEvent || isPastDate)  // Disable join for past events or events from past dates
     }
 
     private func timeRangeText(for meeting: Meeting) -> String {
