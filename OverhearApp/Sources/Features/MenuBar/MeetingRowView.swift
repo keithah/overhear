@@ -29,7 +29,7 @@ struct MeetingRowView: View {
                       (colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04)))
             
             // Content
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
                 // Holiday emoji or icon
                 if meeting.holidayInfo.isHoliday {
                     Text(meeting.holidayEmoji)
@@ -60,7 +60,7 @@ struct MeetingRowView: View {
                 Spacer()
             }
             .padding(.vertical, 6)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
         }
         .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)
         .contentShape(Rectangle())
@@ -115,7 +115,7 @@ struct MinimalistMeetingRowView: View {
              RoundedRectangle(cornerRadius: 4)
                  .fill(isHovered ? Color.blue.opacity(0.15) : Color.clear)
              
-             HStack(alignment: .center, spacing: 8) {
+HStack(alignment: .center, spacing: 10) {
                  // Icon (Meeter size: ~14px)
                  if meeting.holidayInfo.isHoliday {
                      Text(meeting.holidayEmoji)
