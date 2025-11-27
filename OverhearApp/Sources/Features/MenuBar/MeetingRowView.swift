@@ -58,13 +58,6 @@ struct MeetingRowView: View {
                 }
                 
                 Spacer()
-                
-                // Join indicator if has URL (non-interactive, just visual)
-                if meeting.url != nil {
-                    Image(systemName: "link.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(meeting.iconInfo.color))
-                }
             }
             .padding(.vertical, 6)
             .padding(.horizontal, 10)
@@ -88,9 +81,97 @@ struct MeetingRowView: View {
         }
         let start = formatter.string(from: meeting.startDate)
         let end = formatter.string(from: meeting.endDate)
-        if meeting.isAllDay {
-            return "All day"
-        }
-        return "\(start) – \(end)"
+         if meeting.isAllDay {
+             return "All day"
+         }
+         return "\(start) – \(end)"
+     }
+ }
+
+// MARK: - Minimalist View (Meeter-style)
+
+struct MinimalistMeetingRowView: View {
+    let meeting: Meeting
+    let use24HourClock: Bool
+    var onJoin: (Meeting) -> Void
+
+    @State private var isHovered = false
+    
+    private var isPastEvent: Bool {
+        meeting.endDate < Date()
     }
-}
+    
+    private var isPastDate: Bool {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let eventDay = calendar.startOfDay(for: meeting.startDate)
+        return eventDay < today
+    }
+
+    var body: some View {
+         // Simple one-line format matching Meeter exactly
+         ZStack {
+             // Hover background
+             RoundedRectangle(cornerRadius: 4)
+                 .fill(isHovered ? Color.blue.opacity(0.15) : Color.clear)
+             
+             HStack(alignment: .center, spacing: 8) {
+                 // Icon (Meeter size: ~14px)
+                 if meeting.holidayInfo.isHoliday {
+                     Text(meeting.holidayEmoji)
+                         .font(.system(size: 16))
+                         .frame(width: 18)
+                 } else {
+                     let iconColor = Color(red: meeting.iconInfo.color.redComponent,
+                                          green: meeting.iconInfo.color.greenComponent,
+                                          blue: meeting.iconInfo.color.blueComponent)
+                     Image(systemName: meeting.iconInfo.iconName)
+                         .font(.system(size: 12, weight: .semibold))
+                         .foregroundColor(iconColor)
+                         .frame(width: 16)
+                 }
+                 
+                 // Time (Meeter size: 13px)
+                 if !meeting.isAllDay {
+                     Text(timeString(for: meeting))
+                         .font(.system(size: 13, weight: .regular))
+                         .foregroundColor(.secondary)
+                         .frame(width: 56, alignment: .leading)
+                 } else {
+                     Text("All day")
+                         .font(.system(size: 13, weight: .regular))
+                         .foregroundColor(.secondary)
+                         .frame(width: 56, alignment: .leading)
+                 }
+                 
+                 // Title (Meeter size: 13px, truncated with ...)
+                 Text(meeting.title)
+                     .font(.system(size: 13, weight: .regular))
+                     .lineLimit(1)
+                     .truncationMode(.tail)
+                 
+                 Spacer()
+             }
+             .frame(height: 24)
+         }
+         .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)
+         .contentShape(Rectangle())
+         .onHover { hovering in
+             isHovered = hovering
+         }
+         .onTapGesture {
+             onJoin(meeting)
+         }
+     }
+    
+    private func timeString(for meeting: Meeting) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        if use24HourClock {
+            formatter.dateFormat = "HH:mm"
+        }
+        return formatter.string(from: meeting.startDate)
+    }
+ }
+

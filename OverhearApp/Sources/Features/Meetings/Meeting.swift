@@ -26,72 +26,76 @@ enum GenericMeetingType {
 
 final class HolidayDetector {
     static func detectHoliday(title: String, calendarName: String?, date: Date) -> HolidayInfo {
-        let calendar = Calendar.current
-        let month = calendar.component(.month, from: date)
-        let day = calendar.component(.day, from: date)
-        let monthDay = month * 100 + day
-        
-        // Check specific dates for fixed holidays (most reliable)
-        switch monthDay {
-        case 101:   // January 1 - New Year's Day
-            return HolidayInfo(emoji: "⭐", isHoliday: true)
-        case 214:   // February 14 - Valentine's Day
-            return HolidayInfo(emoji: "❤️", isHoliday: true)
-        case 317:   // March 17 - St. Patrick's Day (if needed)
-            return HolidayInfo(emoji: "🍀", isHoliday: true)
-        case 704:   // July 4 - Independence Day
-            return HolidayInfo(emoji: "🇺🇸", isHoliday: true)
-        case 1031:  // October 31 - Halloween
-            return HolidayInfo(emoji: "🎃", isHoliday: true)
-        case 1101:  // November 1 - Day of the Dead
-            return HolidayInfo(emoji: "💀", isHoliday: true)
-        case 1225:  // December 25 - Christmas
-            return HolidayInfo(emoji: "🎄", isHoliday: true)
-        case 1231:  // December 31 - New Year's Eve
-            return HolidayInfo(emoji: "⭐", isHoliday: true)
-        default:
-            break
-        }
-        
-        // Check for Thanksgiving (4th Thursday of November)
-        if month == 11 {
-            let weekday = calendar.component(.weekday, from: date)  // 1=Sunday, 5=Thursday
-            let weekOfMonth = (day - 1) / 7 + 1
-            if weekday == 5 && weekOfMonth == 4 {  // Thursday of 4th week
-                return HolidayInfo(emoji: "🦃", isHoliday: true)
-            }
-        }
-        
-        // Check for Easter (varies by year - check title as fallback)
-        if let titleLower = title.lowercased() as String?, titleLower.contains("easter") {
-            return HolidayInfo(emoji: "🥚", isHoliday: true)
-        }
-        
-        // Fall back to text matching for flexible holidays and user-defined
-        let combinedText = (title + " " + (calendarName ?? "")).lowercased()
-        
-        if combinedText.contains("thanksgiving") {
-            return HolidayInfo(emoji: "🦃", isHoliday: true)
-        }
-        
-        if combinedText.contains("christmas") || combinedText.contains("xmas") || combinedText.contains("noel") {
-            return HolidayInfo(emoji: "🎄", isHoliday: true)
-        }
-        
-        if combinedText.contains("black friday") {
-            return HolidayInfo(emoji: "🛍️", isHoliday: true)
-        }
-        
-        if combinedText.contains("cyber monday") {
-            return HolidayInfo(emoji: "💻", isHoliday: true)
-        }
-        
-        if combinedText.contains("holiday") {
-            return HolidayInfo(emoji: "🎉", isHoliday: true)
-        }
-        
-        return HolidayInfo(emoji: "", isHoliday: false)
-    }
+         let combinedText = (title + " " + (calendarName ?? "")).lowercased()
+         
+         // First check title/calendar name for explicit holiday mentions
+         if combinedText.contains("thanksgiving") {
+             return HolidayInfo(emoji: "🦃", isHoliday: true)
+         }
+         
+         if combinedText.contains("christmas") || combinedText.contains("xmas") || combinedText.contains("noel") {
+             return HolidayInfo(emoji: "🎄", isHoliday: true)
+         }
+         
+         if combinedText.contains("black friday") {
+             return HolidayInfo(emoji: "🛍️", isHoliday: true)
+         }
+         
+         if combinedText.contains("cyber monday") {
+             return HolidayInfo(emoji: "💻", isHoliday: true)
+         }
+         
+         if combinedText.contains("easter") {
+             return HolidayInfo(emoji: "🥚", isHoliday: true)
+         }
+         
+         if combinedText.contains("holiday") {
+             return HolidayInfo(emoji: "🎉", isHoliday: true)
+         }
+         
+         // Only check fixed dates if the event title suggests it's actually a holiday
+         let calendar = Calendar.current
+         let month = calendar.component(.month, from: date)
+         let day = calendar.component(.day, from: date)
+         let monthDay = month * 100 + day
+         
+         // Only apply date-based holidays for events with generic/holiday-like titles
+         // Avoid marking random events on holiday dates with holiday emojis
+         let hasGenericTitle = combinedText.contains("day off") || 
+                               combinedText.contains("time off") ||
+                               combinedText.contains("vacation") ||
+                               combinedText.contains("holiday") ||
+                               combinedText.isEmpty
+         
+         if !hasGenericTitle {
+             // Only apply fixed dates if title is generic/empty or explicitly mentions time off
+             return HolidayInfo(emoji: "", isHoliday: false)
+         }
+         
+         // Now check specific dates for fixed holidays (only for generic events)
+         switch monthDay {
+         case 101:   // January 1 - New Year's Day
+             return HolidayInfo(emoji: "⭐", isHoliday: true)
+         case 214:   // February 14 - Valentine's Day
+             return HolidayInfo(emoji: "❤️", isHoliday: true)
+         case 317:   // March 17 - St. Patrick's Day
+             return HolidayInfo(emoji: "🍀", isHoliday: true)
+         case 704:   // July 4 - Independence Day
+             return HolidayInfo(emoji: "🇺🇸", isHoliday: true)
+         case 1031:  // October 31 - Halloween
+             return HolidayInfo(emoji: "🎃", isHoliday: true)
+         case 1101:  // November 1 - Day of the Dead
+             return HolidayInfo(emoji: "💀", isHoliday: true)
+         case 1225:  // December 25 - Christmas
+             return HolidayInfo(emoji: "🎄", isHoliday: true)
+         case 1231:  // December 31 - New Year's Eve
+             return HolidayInfo(emoji: "⭐", isHoliday: true)
+         default:
+             break
+         }
+         
+         return HolidayInfo(emoji: "", isHoliday: false)
+     }
 }
 
 // MARK: - Platform Icon Provider
@@ -285,30 +289,32 @@ struct Meeting: Identifiable, Hashable {
     }
     
     /// Returns platform-specific icon info
-    var iconInfo: PlatformIconInfo {
-        if isAllDay {
-            return PlatformIconProvider.genericIconInfo(for: .allDay)
-        }
-        
-        // Check if it's a holiday first
-        if holidayInfo.isHoliday {
-            // For holidays, return a generic all-day style icon
-            return PlatformIconProvider.genericIconInfo(for: .allDay)
-        }
-        
-        // If no URL, it's a generic meeting
-        if url == nil {
-            return PlatformIconProvider.genericIconInfo(for: .generic)
-        }
-        
-        // Check if title suggests a phone call
-        if title.lowercased().contains("call") || title.lowercased().contains("phone") {
-            return PlatformIconProvider.genericIconInfo(for: .phone)
-        }
-        
-        // Otherwise, use platform-specific icon
-        return PlatformIconProvider.iconInfo(for: platform)
-    }
+     var iconInfo: PlatformIconInfo {
+         if isAllDay {
+             return PlatformIconProvider.genericIconInfo(for: .allDay)
+         }
+         
+         // Check if it's a holiday first
+         if holidayInfo.isHoliday {
+             // For holidays, return a generic all-day style icon
+             return PlatformIconProvider.genericIconInfo(for: .allDay)
+         }
+         
+         // If there's a URL, use platform-specific icon (highest priority)
+         if url != nil {
+             // Platform detection takes priority over title-based detection
+             // So Zoom/Meet/Teams/Webex icons override "call" in title
+             return PlatformIconProvider.iconInfo(for: platform)
+         }
+         
+         // No URL - check if title suggests a phone call
+         if title.lowercased().contains("call") || title.lowercased().contains("phone") {
+             return PlatformIconProvider.genericIconInfo(for: .phone)
+         }
+         
+         // Fallback to generic meeting icon
+         return PlatformIconProvider.genericIconInfo(for: .generic)
+     }
     
     /// Returns the emoji for holidays, empty string otherwise
     var holidayEmoji: String {

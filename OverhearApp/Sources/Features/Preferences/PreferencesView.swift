@@ -25,15 +25,27 @@ struct PreferencesView: View {
     }
 
     private var generalTab: some View {
-        Form {
-            Toggle("Launch at login", isOn: $preferences.launchAtLogin)
-            Toggle("Use 24-hour clock", isOn: $preferences.use24HourClock)
-            Toggle("Show events without links", isOn: $preferences.showEventsWithoutLinks)
-            Toggle("Show maybe events", isOn: $preferences.showMaybeEvents)
-            Stepper("Days ahead: \(preferences.daysAhead)", value: $preferences.daysAhead, in: 1...14)
-            Stepper("Days back: \(preferences.daysBack)", value: $preferences.daysBack, in: 0...7)
-        }
-    }
+         Form {
+             Toggle("Launch at login", isOn: $preferences.launchAtLogin)
+             Toggle("Use 24-hour clock", isOn: $preferences.use24HourClock)
+             Toggle("Show events without links", isOn: $preferences.showEventsWithoutLinks)
+             Toggle("Show maybe events", isOn: $preferences.showMaybeEvents)
+             
+             Divider()
+             
+             Picker("View mode", selection: $preferences.viewMode) {
+                 ForEach(ViewMode.allCases, id: \.self) { mode in
+                     Text(mode.displayName).tag(mode)
+                 }
+             }
+             
+             Stepper("Days to show: \(preferences.menubarDaysToShow)", value: $preferences.menubarDaysToShow, in: 1...7)
+             
+              Divider()
+              
+              Stepper("Days ahead: \(preferences.daysAhead)", value: $preferences.daysAhead, in: 1...14)
+         }
+     }
 
     private var calendarsTab: some View {
         VStack(alignment: .leading, spacing: 12) {

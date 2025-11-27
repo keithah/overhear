@@ -1,6 +1,19 @@
 import Combine
 import Foundation
 import ServiceManagement
+
+enum ViewMode: String, CaseIterable {
+    case compact = "compact"
+    case minimalist = "minimalist"
+
+    var displayName: String {
+        switch self {
+        case .compact: return "Compact"
+        case .minimalist: return "Minimalist"
+        }
+    }
+}
+
 @MainActor
 final class PreferencesService: ObservableObject {
     @Published var launchAtLogin: Bool {
@@ -55,6 +68,14 @@ final class PreferencesService: ObservableObject {
         didSet { persist(webexOpenBehavior, key: .webexOpenBehavior) }
     }
 
+    @Published var viewMode: ViewMode {
+        didSet { persist(viewMode.rawValue, key: .viewMode) }
+    }
+
+    @Published var menubarDaysToShow: Int {
+        didSet { persist(menubarDaysToShow, key: .menubarDaysToShow) }
+    }
+
     private let defaults: UserDefaults
     private var cancellables: Set<AnyCancellable> = []
 
@@ -64,17 +85,19 @@ final class PreferencesService: ObservableObject {
         self.use24HourClock = defaults.object(forKey: PreferenceKey.use24HourClock.rawValue) as? Bool ?? false
         self.showEventsWithoutLinks = defaults.object(forKey: PreferenceKey.showEventsWithoutLinks.rawValue) as? Bool ?? true
         self.showMaybeEvents = defaults.object(forKey: PreferenceKey.showMaybeEvents.rawValue) as? Bool ?? true
-        self.daysAhead = defaults.object(forKey: PreferenceKey.daysAhead.rawValue) as? Int ?? 2
-        self.daysBack = defaults.object(forKey: PreferenceKey.daysBack.rawValue) as? Int ?? 1
+         self.daysAhead = defaults.object(forKey: PreferenceKey.daysAhead.rawValue) as? Int ?? 2
+         self.daysBack = defaults.object(forKey: PreferenceKey.daysBack.rawValue) as? Int ?? 90
         self.countdownEnabled = defaults.object(forKey: PreferenceKey.countdownEnabled.rawValue) as? Bool ?? true
         self.notificationMinutesBefore = defaults.object(forKey: PreferenceKey.notificationMinutesBefore.rawValue) as? Int ?? 5
         self.selectedCalendarIDs = PreferencesService.loadCalendarIDs(defaults: defaults)
-        self.zoomOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .zoomOpenBehavior, default: .zoommtg)
-        self.meetOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .meetOpenBehavior, default: .browser)
-        self.teamsOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .teamsOpenBehavior, default: .browser)
-        self.webexOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .webexOpenBehavior, default: .browser)
+         self.zoomOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .zoomOpenBehavior, default: .zoommtg)
+         self.meetOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .meetOpenBehavior, default: .browser)
+         self.teamsOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .teamsOpenBehavior, default: .browser)
+         self.webexOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .webexOpenBehavior, default: .browser)
+         self.viewMode = PreferencesService.loadViewMode(defaults: defaults)
+         self.menubarDaysToShow = defaults.object(forKey: PreferenceKey.menubarDaysToShow.rawValue) as? Int ?? 3
 
-        updateLaunchAtLogin(launchAtLogin)
+         updateLaunchAtLogin(launchAtLogin)
     }
     
     /// Initialize selected calendars with all available calendars on first run
@@ -143,13 +166,21 @@ final class PreferencesService: ObservableObject {
     }
 
     private static func loadOpenBehavior(defaults: UserDefaults, key: PreferenceKey, default defaultValue: OpenBehavior) -> OpenBehavior {
-        guard let rawValue = defaults.string(forKey: key.rawValue),
-              let behavior = OpenBehavior(rawValue: rawValue) else {
-            return defaultValue
-        }
-        return behavior
-    }
-}
+         guard let rawValue = defaults.string(forKey: key.rawValue),
+               let behavior = OpenBehavior(rawValue: rawValue) else {
+             return defaultValue
+         }
+         return behavior
+     }
+
+    private static func loadViewMode(defaults: UserDefaults) -> ViewMode {
+         guard let rawValue = defaults.string(forKey: PreferenceKey.viewMode.rawValue),
+               let mode = ViewMode(rawValue: rawValue) else {
+             return .compact
+         }
+         return mode
+     }
+ }
 
 private enum PreferenceKey: String {
     case launchAtLogin
@@ -163,6 +194,8 @@ private enum PreferenceKey: String {
     case selectedCalendars
     case zoomOpenBehavior
     case meetOpenBehavior
-    case teamsOpenBehavior
-    case webexOpenBehavior
-}
+     case teamsOpenBehavior
+     case webexOpenBehavior
+     case viewMode
+     case menubarDaysToShow
+ }
