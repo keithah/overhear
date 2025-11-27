@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import AppKit
+import Foundation
 
 /// View for searching and browsing stored transcripts
 struct TranscriptSearchView: View {
@@ -35,6 +36,26 @@ struct TranscriptSearchView: View {
                         ProgressView()
                         Spacer()
                     }
+                } else if let errorMessage = viewModel.errorMessage {
+                    VStack(spacing: 12) {
+                        Spacer()
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.orange)
+                        Text("Error")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text(errorMessage)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                        Button("Retry") {
+                            Task { await viewModel.loadTranscripts() }
+                        }
+                        .buttonStyle(.bordered)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.transcripts.isEmpty {
                     VStack(spacing: 12) {
                         Spacer()
@@ -198,6 +219,7 @@ final class TranscriptSearchViewModel: ObservableObject {
     @Published var searchQuery = ""
     @Published var transcripts: [StoredTranscript] = []
     @Published var isLoading = false
+    @Published var errorMessage: String?
     
     private let store = TranscriptStore()
     private var searchTask: Task<Void, Never>?
@@ -215,10 +237,12 @@ final class TranscriptSearchViewModel: ObservableObject {
     
     func loadTranscripts() async {
         isLoading = true
+        errorMessage = nil
         do {
             let allTranscripts = try await store.allTranscripts()
             self.transcripts = allTranscripts
         } catch {
+            self.errorMessage = "Failed to load transcripts: \(error.localizedDescription)"
             print("Failed to load transcripts: \(error)")
         }
         isLoading = false
@@ -232,6 +256,7 @@ final class TranscriptSearchViewModel: ObservableObject {
         searchTask?.cancel()
         searchTask = Task {
             isLoading = true
+            errorMessage = nil
             
             do {
                 if searchQuery.isEmpty {
@@ -242,6 +267,7 @@ final class TranscriptSearchViewModel: ObservableObject {
                     self.transcripts = results
                 }
             } catch {
+                self.errorMessage = "Search failed: \(error.localizedDescription)"
                 print("Search failed: \(error)")
                 self.transcripts = []
             }

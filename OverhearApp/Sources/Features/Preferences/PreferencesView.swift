@@ -113,7 +113,24 @@ struct PreferencesView: View {
 
     private func loadCalendars() async {
         isLoadingCalendars = true
-        let accessGranted = await calendarService.requestAccessIfNeeded()
+        
+        // Check current permission status without asking again
+        let status = EKEventStore.authorizationStatus(for: .event)
+        
+        if status == .denied || status == .restricted {
+            isLoadingCalendars = false
+            calendarsBySource = []
+            return
+        }
+        
+        // Only ask for permission if status is notDetermined
+        var accessGranted = false
+        if status == .notDetermined {
+            accessGranted = await calendarService.requestAccessIfNeeded()
+        } else {
+            accessGranted = true
+        }
+        
         guard accessGranted else {
             isLoadingCalendars = false
             calendarsBySource = []

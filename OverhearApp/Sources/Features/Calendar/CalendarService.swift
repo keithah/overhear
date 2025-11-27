@@ -7,6 +7,7 @@ final class CalendarService: ObservableObject {
 
       private let eventStore = EKEventStore()
       private static let defaults = UserDefaults(suiteName: "com.overhear.app") ?? .standard
+      private var hasAskedForPermission = false
 
       func requestAccessIfNeeded() async -> Bool {
         let status = EKEventStore.authorizationStatus(for: .event)
@@ -22,7 +23,13 @@ final class CalendarService: ObservableObject {
             return false
         }
         
+        // If we already asked in this session, don't ask again
+        if hasAskedForPermission {
+            return false
+        }
+        
         // If status is notDetermined, ask for permission
+        hasAskedForPermission = true
         let granted = await withCheckedContinuation { continuation in
             if #available(macOS 14.0, *) {
                 eventStore.requestFullAccessToEvents { granted, error in

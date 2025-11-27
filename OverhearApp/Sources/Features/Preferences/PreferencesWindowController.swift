@@ -28,7 +28,6 @@ final class PreferencesWindowController: NSWindowController {
         }
         
         window.makeKeyAndOrderFront(nil)
-        window.level = .floating
         NSApp.activate(ignoringOtherApps: true)
     }
 }

@@ -26,12 +26,26 @@ actor TranscriptionService {
     private let modelPath: String
     
     init(whisperBinaryPath: String? = nil, modelPath: String? = nil) {
-        // Default paths
-        self.whisperBinaryPath = whisperBinaryPath ?? (ProcessInfo.processInfo.environment["WHISPER_BIN"] ?? "/usr/local/bin/main")
-        self.modelPath = modelPath ?? (ProcessInfo.processInfo.environment["WHISPER_MODEL"] ?? 
-            FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".cache/whisper.cpp/ggml-base.en.bin")
-                .path)
+        // Default paths - use application support directory for better resource management
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let whisperDir = appSupport.appendingPathComponent("com.overhear.app/whisper")
+        
+        // Try environment variables first, then use app bundle resources, then fallback to standard locations
+        if let customBinaryPath = whisperBinaryPath ?? ProcessInfo.processInfo.environment["WHISPER_BIN"] {
+            self.whisperBinaryPath = customBinaryPath
+        } else if let bundleBinary = Bundle.main.path(forResource: "main", ofType: nil) {
+            self.whisperBinaryPath = bundleBinary
+        } else {
+            self.whisperBinaryPath = "/usr/local/bin/main"
+        }
+        
+        if let customModelPath = modelPath ?? ProcessInfo.processInfo.environment["WHISPER_MODEL"] {
+            self.modelPath = customModelPath
+        } else if let bundleModel = Bundle.main.path(forResource: "ggml-base.en", ofType: "bin") {
+            self.modelPath = bundleModel
+        } else {
+            self.modelPath = whisperDir.appendingPathComponent("ggml-base.en.bin").path
+        }
     }
     
     /// Transcribe an audio file
