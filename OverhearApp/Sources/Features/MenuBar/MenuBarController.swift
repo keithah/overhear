@@ -50,7 +50,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         button.action = #selector(togglePopoverAction)
         
         // Setup popover
-        popover.behavior = .semitransient
+        popover.behavior = .transient  // Close immediately when clicking outside
         popover.contentSize = NSSize(width: 380, height: 520)
         popover.contentViewController = NSHostingController(rootView: MenuBarContentView(viewModel: viewModel, preferences: preferences) {
             self.showPreferences()

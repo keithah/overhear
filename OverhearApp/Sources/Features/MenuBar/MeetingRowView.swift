@@ -6,9 +6,9 @@ struct MeetingRowView: View {
     var onJoin: (Meeting) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
     
     private var isPastEvent: Bool {
-        // An event is past if it has already ended
         meeting.endDate < Date()
     }
     
@@ -62,10 +62,15 @@ struct MeetingRowView: View {
             .padding(.horizontal, 10)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04))
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isHovered && !(isPastEvent || isPastDate) ? 
+                          Color.blue.opacity(0.3) :
+                          (colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04)))
             )
             .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)  // Fade if event ended OR date is in past
+            .onHover { hovering in
+                isHovered = hovering
+            }
         }
         .buttonStyle(.plain)
         .disabled(isPastEvent || isPastDate)  // Disable join for past events or events from past dates
