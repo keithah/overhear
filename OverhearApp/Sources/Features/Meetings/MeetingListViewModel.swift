@@ -28,7 +28,14 @@ final class MeetingListViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        Task { await reload() }
+        Task {
+            // Initialize calendars on first launch
+            let allCalendars = calendarService.availableCalendars()
+            preferences.initializeWithAllCalendars(allCalendars.map { $0.calendarIdentifier })
+
+            // Then reload to fetch meetings
+            await reload()
+        }
     }
 
     func reload() async {
@@ -36,17 +43,13 @@ final class MeetingListViewModel: ObservableObject {
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
 
         let authorized = await calendarService.requestAccessIfNeeded()
-         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-         guard authorized else {
-             isLoading = false
-             return
-         }
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        guard authorized else {
+            isLoading = false
+            return
+        }
 
-        // Initialize calendar selection on first launch (select all calendars by default)
-         let allCalendars = calendarService.availableCalendars()
-         preferences.initializeWithAllCalendars(allCalendars.map { $0.calendarIdentifier })
-
-         let preferences = preferencesSnapshot()
+        let preferences = preferencesSnapshot()
         let meetings = await calendarService.fetchMeetings(daysAhead: preferences.daysAhead,
                                                            daysBack: preferences.daysBack,
                                                            includeEventsWithoutLinks: preferences.showEventsWithoutLinks,
@@ -76,7 +79,7 @@ final class MeetingListViewModel: ObservableObject {
             return nil
         }
         let path = url.path
-        
+
         // Extract meeting ID from various Zoom URL formats
         // /j/123456789 or /meeting/123456789 or /webinar/123456789
         let components = path.split(separator: "/").filter { !$0.isEmpty }
@@ -84,7 +87,7 @@ final class MeetingListViewModel: ObservableObject {
             if let meetingID = components.last?.split(separator: "?").first {
                 // Extract password and other params from query string
                 var zoommtgURLString = "zoommtg://zoom.us/join?confno=\(meetingID)"
-                
+
                 // Preserve password and other params from original URL
                 if let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems {
                     for item in queryItems {
@@ -95,7 +98,7 @@ final class MeetingListViewModel: ObservableObject {
                         }
                     }
                 }
-                
+
                 if let zoommtgURL = URL(string: zoommtgURLString) {
                     return zoommtgURL
                 }
