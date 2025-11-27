@@ -6,43 +6,54 @@ struct MeetingRowView: View {
     var onJoin: (Meeting) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    
+    private var isPastEvent: Bool {
+        meeting.endDate < Date()
+    }
 
     var body: some View {
         Button(action: { onJoin(meeting) }) {
             HStack(alignment: .center, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(meeting.title)
-                        .font(.body.weight(.medium))
-                        .lineLimit(1)
-                    Text(timeRangeText(for: meeting))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                // Holiday emoji or icon
+                if meeting.holidayInfo.isHoliday {
+                    Text(meeting.holidayEmoji)
+                        .font(.system(size: 16))
+                } else {
+                    Image(systemName: meeting.iconInfo.iconName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(meeting.iconInfo.color))
+                        .frame(width: 14)
                 }
+                
+                // Title and time
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(meeting.title)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                    
+                    if !meeting.isAllDay {
+                        Text(timeRangeText(for: meeting))
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
                 Spacer()
-                platformIcon(for: meeting.platform)
-                    .foregroundColor(.accentColor)
+                
+                // Join button if has URL
+                if meeting.url != nil {
+                    Image(systemName: "link")
+                        .font(.system(size: 10))
+                        .frame(width: 20, height: 20)
+                }
             }
-            .padding(10)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
             .contentShape(Rectangle())
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04))
-            )
+            .opacity(isPastEvent ? 0.5 : 1.0)  // Fade entire row including text and icon
         }
         .buttonStyle(.plain)
-    }
-
-    private func platformIcon(for platform: MeetingPlatform) -> some View {
-        let symbol: String
-        switch platform {
-        case .zoom: symbol = "video"
-        case .meet: symbol = "person.2.wave.2"
-        case .teams: symbol = "person.3.sequence"
-        case .webex: symbol = "person.badge.clock"
-        case .unknown: symbol = "link"
-        }
-        return Image(systemName: symbol)
-            .imageScale(.medium)
+        .disabled(isPastEvent)  // Disable join for past events
     }
 
     private func timeRangeText(for meeting: Meeting) -> String {
