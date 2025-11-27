@@ -35,7 +35,9 @@ struct MenuBarContentView: View {
                                 
                                 // Meetings for this date
                                 ForEach(group.meetings) { meeting in
-                                    MeetingRow(meeting: meeting, onJoin: viewModel.join)
+                                    MeetingRowView(meeting: meeting, use24HourClock: preferences.use24HourClock, onJoin: viewModel.join)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
                                 }
                             }
                         }
@@ -114,64 +116,5 @@ struct MenuBarContentView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, d MMMM"
         return formatter.string(from: date)
-    }
-}
-
-private struct MeetingRow: View {
-    let meeting: Meeting
-    var onJoin: (Meeting) -> Void
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            // Icon - smaller
-            Image(systemName: meetingIcon)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.blue)
-                .frame(width: 12)
-            
-            // Title and time
-            VStack(alignment: .leading, spacing: 0) {
-                Text(meeting.title)
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(1)
-                
-                if !meeting.isAllDay {
-                    Text(timeString)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            // Join button if has URL
-            if meeting.url != nil {
-                Button(action: { onJoin(meeting) }) {
-                    Image(systemName: "link")
-                        .font(.system(size: 10))
-                        .frame(width: 20, height: 20)
-                }
-                .buttonStyle(.borderless)
-                .help("Join meeting")
-            }
-        }
-        .padding(.vertical, 2)
-        .padding(.horizontal, 10)
-    }
-    
-    private var meetingIcon: String {
-        if meeting.url != nil {
-            return "video.fill"
-        } else if meeting.isAllDay {
-            return "calendar"
-        } else {
-            return "clock"
-        }
-    }
-    
-    private var timeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: meeting.startDate)
     }
 }

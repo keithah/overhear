@@ -59,9 +59,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         
         // Store status item (must be retained)
         statusItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            self.updateStatusItemIcon()  // Call after brief delay to ensure data is loaded
+        
+        // Update menubar when meetings data is available
+        Task { @MainActor in
+            // Wait for initial data load
+            while viewModel.upcomingSections.isEmpty && viewModel.pastSections.isEmpty {
+                try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
+            }
+            self.updateStatusItemIcon()
         }
+        
         scheduleNextIconUpdate()
         
         // Update every minute to refresh time display
