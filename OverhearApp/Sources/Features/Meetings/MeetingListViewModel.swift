@@ -36,13 +36,17 @@ final class MeetingListViewModel: ObservableObject {
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
 
         let authorized = await calendarService.requestAccessIfNeeded()
-        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-        guard authorized else {
-            isLoading = false
-            return
-        }
+         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+         guard authorized else {
+             isLoading = false
+             return
+         }
 
-        let preferences = preferencesSnapshot()
+        // Initialize calendar selection on first launch (select all calendars by default)
+         let allCalendars = calendarService.availableCalendars()
+         preferences.initializeWithAllCalendars(allCalendars.map { $0.calendarIdentifier })
+
+         let preferences = preferencesSnapshot()
         let meetings = await calendarService.fetchMeetings(daysAhead: preferences.daysAhead,
                                                            daysBack: preferences.daysBack,
                                                            includeEventsWithoutLinks: preferences.showEventsWithoutLinks,
