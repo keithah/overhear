@@ -97,13 +97,24 @@ final class MenuBarController: NSObject, NSMenuDelegate {
                 return event
             }
             
-            // Check if the click is outside the popover
+            // Check if the click is inside the popover window
             if let popoverWindow = self.popover.contentViewController?.view.window {
-                let clickLocation = event.locationInWindow
-                let popoverFrame = popoverWindow.frame
+                // Get the click location in screen coordinates
+                let clickScreenPoint = NSEvent.mouseLocation
+                let popoverScreenFrame = popoverWindow.frame
                 
-                if !popoverFrame.contains(clickLocation) {
-                    self.closePopover()
+                // If click is outside popover and not on status item button, close it
+                if !popoverScreenFrame.contains(clickScreenPoint) {
+                    // Check it's not on the menubar button
+                    if let button = self.statusItem?.button,
+                       let buttonWindow = button.window {
+                        let buttonScreenFrame = buttonWindow.convertToScreen(button.frame)
+                        if !buttonScreenFrame.contains(clickScreenPoint) {
+                            self.closePopover()
+                        }
+                    } else {
+                        self.closePopover()
+                    }
                 }
             }
             
@@ -149,7 +160,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         if let nextEvent = nextEvent {
             let timeStr = getTimeUntilString(nextEvent.startDate)
             button.title = "\(nextEvent.title) \(timeStr)"
-            button.font = NSFont.systemFont(ofSize: 11)
+            // Match Meeter style: thin/light weight, system font
+            button.font = NSFont.systemFont(ofSize: 12, weight: .regular)
         } else {
             button.title = ""
             button.imagePosition = .imageOnly
