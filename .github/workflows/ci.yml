@@ -15,4 +15,4 @@ jobs:
     - name: Xcode build
       working-directory: OverhearApp
       run: |
-        xcodebuild -scheme OverhearApp -configuration Debug
+        xcodebuild -scheme Overhear -configuration Debug
