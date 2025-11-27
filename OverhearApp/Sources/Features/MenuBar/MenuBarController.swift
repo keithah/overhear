@@ -59,8 +59,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         
         // Store status item (must be retained)
         statusItem = item
-        DispatchQueue.main.async {
-            self.updateStatusItemIcon()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.updateStatusItemIcon()  // Call after brief delay to ensure data is loaded
         }
         scheduleNextIconUpdate()
         

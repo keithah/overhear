@@ -51,11 +51,12 @@ struct MeetingRowView: View {
             
             Spacer()
             
-            // Join indicator if has URL
+            // Join indicator if has URL (non-interactive, just visual)
             if meeting.url != nil {
                 Image(systemName: "link.circle.fill")
                     .font(.system(size: 12))
                     .foregroundColor(Color(meeting.iconInfo.color))
+                    .allowsHitTesting(false)  // Ensure click passes through to gesture
             }
         }
         .padding(.vertical, 6)
@@ -67,14 +68,13 @@ struct MeetingRowView: View {
                       Color.blue.opacity(0.3) :
                       (colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04)))
         )
-        .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)
-        .onHover { hovering in
-            isHovered = hovering
-        }
-        .contentShape(Rectangle())
         .onTapGesture {
             onJoin(meeting)  // Always allow click, even for past events
         }
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)
     }
 
     private func timeRangeText(for meeting: Meeting) -> String {
