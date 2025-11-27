@@ -1,0 +1,441 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+	0E7293B8D630456E9682C251 /* MeetingRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */; };
+	104FDF64364D0379F6D338CC /* MeetingListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E591C5A0CD919B0CBADE2347 /* MeetingListViewModel.swift */; };
+	0F7E66604E78C6557390EB28 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8F31D34C5A2AFDA7D17E0476 /* Assets.xcassets */; };
+	4C460327A9D08F6F394261F2 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9643B3F6CF09183E7E9EE4A /* MenuBarController.swift */; };
+	553ADF43BEB23110DAFF4EBC /* CalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C7FE5C6BFB9491A6568F7C /* CalendarService.swift */; };
+	672895B9E03830086B5E32E1 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0467AC2803809ABEE6368BF8 /* PreferencesService.swift */; };
+	7B4976A61FDC8DF74F991A16 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6760441C0977FD19F2B6838 /* PreferencesView.swift */; };
+	B09ACBBF34AF004C83A0835A /* OverhearApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5563B52A06A54C980A22A14 /* OverhearApp.swift */; };
+	C2D5E6CE6C1B18A934FB6917 /* MenuBarContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12220410D1DBBF18A9BA1D0 /* MenuBarContentView.swift */; };
+	C3BAC7E2A8CDBF78BAB8A332 /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1126CA13260065D9BC095422 /* Meeting.swift */; };
+	EAF99761927E193EB588F6CA /* PreferencesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C268D5AFB48081C5B8477301 /* PreferencesWindowController.swift */; };
+	EDF853AFF500BEEA7B7EB51C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01606FEE32B43E2DE0C9D8E /* AppDelegate.swift */; };
+	016A546E4C2C7638A8013832 /* AppContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0753D3EBF878CDDA7278CF7 /* AppContext.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+	0467AC2803809ABEE6368BF8 /* PreferencesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesService.swift; sourceTree = "<group>"; };
+	05C7FE5C6BFB9491A6568F7C /* CalendarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarService.swift; sourceTree = "<group>"; };
+	1126CA13260065D9BC095422 /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
+	8AF60D2CD395349366EFBB74 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+	8F31D34C5A2AFDA7D17E0476 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+	B0753D3EBF878CDDA7278CF7 /* AppContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContext.swift; sourceTree = "<group>"; };
+	B450443A64541675999965EF /* Overhear.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Overhear.app; sourceTree = BUILT_PRODUCTS_DIR; };
+	B9643B3F6CF09183E7E9EE4A /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+	C01606FEE32B43E2DE0C9D8E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+	C268D5AFB48081C5B8477301 /* PreferencesWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesWindowController.swift; sourceTree = "<group>"; };
+	C5563B52A06A54C980A22A14 /* OverhearApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverhearApp.swift; sourceTree = "<group>"; };
+	D12220410D1DBBF18A9BA1D0 /* MenuBarContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarContentView.swift; sourceTree = "<group>"; };
+	E591C5A0CD919B0CBADE2347 /* MeetingListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingListViewModel.swift; sourceTree = "<group>"; };
+	E6760441C0977FD19F2B6838 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
+	82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRowView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+	8DE5E4A3E95C44C1031E57D0 /* Frameworks */ = {
+		isa = PBXFrameworksBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+	8C39F975C240A321E98F405C = {
+		isa = PBXGroup;
+		children = (
+			13B9D780C478343D6CA1F161 /* Sources */,
+			69C6201F665875E4A8CE81A9 /* Resources */,
+			D2B8E6BF76808FD739F37E61 /* Products */,
+		);
+		sourceTree = "<group>";
+	};
+	13B9D780C478343D6CA1F161 /* Sources */ = {
+		isa = PBXGroup;
+		children = (
+			F37611B41ED4F928AEF4F417 /* App */,
+			B4660A6143C7552E72DDD35E /* Features */,
+		);
+		path = Sources;
+		sourceTree = "<group>";
+	};
+	F37611B41ED4F928AEF4F417 /* App */ = {
+		isa = PBXGroup;
+		children = (
+			C5563B52A06A54C980A22A14 /* OverhearApp.swift */,
+			C01606FEE32B43E2DE0C9D8E /* AppDelegate.swift */,
+			B0753D3EBF878CDDA7278CF7 /* AppContext.swift */,
+		);
+		path = App;
+		sourceTree = "<group>";
+	};
+	B4660A6143C7552E72DDD35E /* Features */ = {
+		isa = PBXGroup;
+		children = (
+			398C13C597346930EA1881FE /* Calendar */,
+			202177B91B82810447ECD1FD /* Meetings */,
+			40B0354D1D851BD3A7C984F6 /* MenuBar */,
+			F03B5CD4DB434356547DACE5 /* Preferences */,
+			B11DC2DCA910211818176E12 /* Audio */,
+			91D16B06DEA86C9B36D95D3E /* Shared */,
+			1131C6A76F3E0B6371D1BE44 /* Transcription */,
+		);
+		path = Features;
+		sourceTree = "<group>";
+	};
+	398C13C597346930EA1881FE /* Calendar */ = {
+		isa = PBXGroup;
+		children = (
+			05C7FE5C6BFB9491A6568F7C /* CalendarService.swift */,
+		);
+		path = Calendar;
+		sourceTree = "<group>";
+	};
+	202177B91B82810447ECD1FD /* Meetings */ = {
+		isa = PBXGroup;
+		children = (
+			1126CA13260065D9BC095422 /* Meeting.swift */,
+			E591C5A0CD919B0CBADE2347 /* MeetingListViewModel.swift */,
+		);
+		path = Meetings;
+		sourceTree = "<group>";
+	};
+	40B0354D1D851BD3A7C984F6 /* MenuBar */ = {
+		isa = PBXGroup;
+		children = (
+			B9643B3F6CF09183E7E9EE4A /* MenuBarController.swift */,
+			D12220410D1DBBF18A9BA1D0 /* MenuBarContentView.swift */,
+			82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */,
+		);
+		path = MenuBar;
+		sourceTree = "<group>";
+	};
+	F03B5CD4DB434356547DACE5 /* Preferences */ = {
+		isa = PBXGroup;
+		children = (
+			0467AC2803809ABEE6368BF8 /* PreferencesService.swift */,
+			E6760441C0977FD19F2B6838 /* PreferencesView.swift */,
+			C268D5AFB48081C5B8477301 /* PreferencesWindowController.swift */,
+		);
+		path = Preferences;
+		sourceTree = "<group>";
+	};
+	B11DC2DCA910211818176E12 /* Audio */ = {
+		isa = PBXGroup;
+		children = (
+		);
+		path = Audio;
+		sourceTree = "<group>";
+	};
+	91D16B06DEA86C9B36D95D3E /* Shared */ = {
+		isa = PBXGroup;
+		children = (
+		);
+		path = Shared;
+		sourceTree = "<group>";
+	};
+	1131C6A76F3E0B6371D1BE44 /* Transcription */ = {
+		isa = PBXGroup;
+		children = (
+		);
+		path = Transcription;
+		sourceTree = "<group>";
+	};
+	69C6201F665875E4A8CE81A9 /* Resources */ = {
+		isa = PBXGroup;
+		children = (
+			8F31D34C5A2AFDA7D17E0476 /* Assets.xcassets */,
+			8AF60D2CD395349366EFBB74 /* Info.plist */,
+		);
+		path = Resources;
+		sourceTree = "<group>";
+	};
+	D2B8E6BF76808FD739F37E61 /* Products */ = {
+		isa = PBXGroup;
+		children = (
+			B450443A64541675999965EF /* Overhear.app */,
+		);
+		name = Products;
+		sourceTree = "<group>";
+	};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+	77A9AB70BCB9480D0E2567B5 /* Overhear */ = {
+		isa = PBXNativeTarget;
+		buildConfigurationList = 11DA417D0736C8ADF76AB320 /* Build configuration list for PBXNativeTarget "Overhear" */;
+		buildPhases = (
+			D03A1A98F776E5AB7BD121A9 /* Sources */,
+			8DE5E4A3E95C44C1031E57D0 /* Frameworks */,
+			1549E9B5BB5355F9120D2A52 /* Resources */,
+		);
+		buildRules = (
+		);
+		dependencies = (
+		);
+		name = Overhear;
+		productName = Overhear;
+		productReference = B450443A64541675999965EF /* Overhear.app */;
+		productType = "com.apple.product-type.application";
+	};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+	F5D72C8DB1660CE48CC2B4D9 /* Project object */ = {
+		isa = PBXProject;
+		attributes = {
+			LastSwiftUpdateCheck = 1500;
+			LastUpgradeCheck = 1500;
+			TargetAttributes = {
+				77A9AB70BCB9480D0E2567B5 = {
+					LastSwiftMigration = 1500;
+				};
+			};
+			ORGANIZATIONNAME = "";
+		};
+		buildConfigurationList = EE265EB7FED8A0902E459B73 /* Build configuration list for PBXProject "Overhear" */;
+		compatibilityVersion = "Xcode 14.0";
+		developmentRegion = en;
+		hasScannedForEncodings = 0;
+		knownRegions = (
+			en,
+		);
+		mainGroup = 8C39F975C240A321E98F405C;
+		productRefGroup = D2B8E6BF76808FD739F37E61 /* Products */;
+		projectDirPath = "";
+		projectRoot = "";
+		targets = (
+			77A9AB70BCB9480D0E2567B5 /* Overhear */,
+		);
+	};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+	1549E9B5BB5355F9120D2A52 /* Resources */ = {
+		isa = PBXResourcesBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+			0F7E66604E78C6557390EB28 /* Assets.xcassets in Resources */,
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+	D03A1A98F776E5AB7BD121A9 /* Sources */ = {
+		isa = PBXSourcesBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+			B09ACBBF34AF004C83A0835A /* OverhearApp.swift in Sources */,
+			EDF853AFF500BEEA7B7EB51C /* AppDelegate.swift in Sources */,
+			016A546E4C2C7638A8013832 /* AppContext.swift in Sources */,
+			4C460327A9D08F6F394261F2 /* MenuBarController.swift in Sources */,
+			C2D5E6CE6C1B18A934FB6917 /* MenuBarContentView.swift in Sources */,
+			0E7293B8D630456E9682C251 /* MeetingRowView.swift in Sources */,
+			C3BAC7E2A8CDBF78BAB8A332 /* Meeting.swift in Sources */,
+			104FDF64364D0379F6D338CC /* MeetingListViewModel.swift in Sources */,
+			553ADF43BEB23110DAFF4EBC /* CalendarService.swift in Sources */,
+			672895B9E03830086B5E32E1 /* PreferencesService.swift in Sources */,
+			7B4976A61FDC8DF74F991A16 /* PreferencesView.swift in Sources */,
+			EAF99761927E193EB588F6CA /* PreferencesWindowController.swift in Sources */,
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+	AE7B5B8DC42678F564D2D981 /* Debug */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+			CODE_SIGN_IDENTITY = "-";
+			CODE_SIGN_STYLE = Manual;
+			COMBINE_HIDPI_IMAGES = YES;
+			CURRENT_PROJECT_VERSION = 1;
+			DEVELOPMENT_TEAM = "";
+			ENABLE_HARDENED_RUNTIME = YES;
+			GENERATE_INFOPLIST_FILE = NO;
+			INFOPLIST_FILE = Resources/Info.plist;
+			LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MARKETING_VERSION = 0.1.0;
+			PRODUCT_BUNDLE_IDENTIFIER = com.overhear.app;
+			PRODUCT_NAME = "$(TARGET_NAME)";
+			PROVISIONING_PROFILE_SPECIFIER = "";
+			SDKROOT = macosx;
+			SWIFT_EMIT_LOC_STRINGS = YES;
+			SWIFT_VERSION = 5.0;
+		};
+		name = Debug;
+	};
+	E513CE8E625AEB6184583D15 /* Release */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+			CODE_SIGN_IDENTITY = "-";
+			CODE_SIGN_STYLE = Manual;
+			COMBINE_HIDPI_IMAGES = YES;
+			CURRENT_PROJECT_VERSION = 1;
+			DEVELOPMENT_TEAM = "";
+			ENABLE_HARDENED_RUNTIME = YES;
+			GENERATE_INFOPLIST_FILE = NO;
+			INFOPLIST_FILE = Resources/Info.plist;
+			LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MARKETING_VERSION = 0.1.0;
+			PRODUCT_BUNDLE_IDENTIFIER = com.overhear.app;
+			PRODUCT_NAME = "$(TARGET_NAME)";
+			PROVISIONING_PROFILE_SPECIFIER = "";
+			SDKROOT = macosx;
+			SWIFT_EMIT_LOC_STRINGS = YES;
+			SWIFT_VERSION = 5.0;
+		};
+		name = Release;
+	};
+	69B7F21EC53E0DA447DA6C10 /* Debug */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ANALYZER_NONNULL = YES;
+			CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+			CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+			CLANG_ENABLE_MODULES = YES;
+			CLANG_ENABLE_OBJC_ARC = YES;
+			CLANG_ENABLE_OBJC_WEAK = YES;
+			CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+			CLANG_WARN_BOOL_CONVERSION = YES;
+			CLANG_WARN_COMMA = YES;
+			CLANG_WARN_CONSTANT_CONVERSION = YES;
+			CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+			CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+			CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+			CLANG_WARN_EMPTY_BODY = YES;
+			CLANG_WARN_ENUM_CONVERSION = YES;
+			CLANG_WARN_INFINITE_RECURSION = YES;
+			CLANG_WARN_INT_CONVERSION = YES;
+			CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+			CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+			CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+			CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+			CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+			CLANG_WARN_STRICT_PROTOTYPES = YES;
+			CLANG_WARN_SUSPICIOUS_MOVE = YES;
+			CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+			CLANG_WARN_UNREACHABLE_CODE = YES;
+			CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+			COPY_PHASE_STRIP = NO;
+			DEBUG_INFORMATION_FORMAT = dwarf;
+			ENABLE_STRICT_OBJC_MSGSEND = YES;
+			ENABLE_TESTABILITY = YES;
+			GCC_C_LANGUAGE_STANDARD = gnu17;
+			GCC_DYNAMIC_NO_PIC = NO;
+			GCC_NO_COMMON_BLOCKS = YES;
+			GCC_OPTIMIZATION_LEVEL = 0;
+			GCC_PREPROCESSOR_DEFINITIONS = (
+				"DEBUG=1",
+				"$(inherited)",
+			);
+			GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+			GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+			GCC_WARN_UNDECLARED_SELECTOR = YES;
+			GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+			GCC_WARN_UNUSED_FUNCTION = YES;
+			GCC_WARN_UNUSED_VARIABLE = YES;
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+			MTL_FAST_MATH = YES;
+			ONLY_ACTIVE_ARCH = YES;
+			SDKROOT = macosx;
+			SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+			SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+		};
+		name = Debug;
+	};
+	2B96F9A03043751176C47902 /* Release */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ANALYZER_NONNULL = YES;
+			CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+			CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+			CLANG_ENABLE_MODULES = YES;
+			CLANG_ENABLE_OBJC_ARC = YES;
+			CLANG_ENABLE_OBJC_WEAK = YES;
+			CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+			CLANG_WARN_BOOL_CONVERSION = YES;
+			CLANG_WARN_COMMA = YES;
+			CLANG_WARN_CONSTANT_CONVERSION = YES;
+			CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+			CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+			CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+			CLANG_WARN_EMPTY_BODY = YES;
+			CLANG_WARN_ENUM_CONVERSION = YES;
+			CLANG_WARN_INFINITE_RECURSION = YES;
+			CLANG_WARN_INT_CONVERSION = YES;
+			CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+			CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+			CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+			CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+			CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+			CLANG_WARN_STRICT_PROTOTYPES = YES;
+			CLANG_WARN_SUSPICIOUS_MOVE = YES;
+			CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+			CLANG_WARN_UNREACHABLE_CODE = YES;
+			CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+			COPY_PHASE_STRIP = NO;
+			DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+			ENABLE_NS_ASSERTIONS = NO;
+			ENABLE_STRICT_OBJC_MSGSEND = YES;
+			GCC_C_LANGUAGE_STANDARD = gnu17;
+			GCC_NO_COMMON_BLOCKS = YES;
+			GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+			GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+			GCC_WARN_UNDECLARED_SELECTOR = YES;
+			GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+			GCC_WARN_UNUSED_FUNCTION = YES;
+			GCC_WARN_UNUSED_VARIABLE = YES;
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MTL_ENABLE_DEBUG_INFO = NO;
+			MTL_FAST_MATH = YES;
+			SDKROOT = macosx;
+			SWIFT_COMPILATION_MODE = wholemodule;
+			SWIFT_OPTIMIZATION_LEVEL = "-O";
+		};
+		name = Release;
+	};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+	11DA417D0736C8ADF76AB320 /* Build configuration list for PBXNativeTarget "Overhear" */ = {
+		isa = XCConfigurationList;
+		buildConfigurations = (
+			AE7B5B8DC42678F564D2D981 /* Debug */,
+			E513CE8E625AEB6184583D15 /* Release */,
+		);
+		defaultConfigurationIsVisible = 0;
+		defaultConfigurationName = Debug;
+	};
+	EE265EB7FED8A0902E459B73 /* Build configuration list for PBXProject "Overhear" */ = {
+		isa = XCConfigurationList;
+		buildConfigurations = (
+			69B7F21EC53E0DA447DA6C10 /* Debug */,
+			2B96F9A03043751176C47902 /* Release */,
+		);
+		defaultConfigurationIsVisible = 0;
+		defaultConfigurationName = Debug;
+	};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = F5D72C8DB1660CE48CC2B4D9 /* Project object */;
+}

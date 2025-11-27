@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.overhear.audiospike</string>
+	<key>CFBundleName</key>
+	<string>AudioSpike</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>AudioSpike needs microphone access to mix mic input for transcription tests.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>AudioSpike captures display audio via ScreenCaptureKit for transcription tests.</string>
+	<key>NSSystemAudioUsageDescription</key>
+	<string>AudioSpike captures system audio via ScreenCaptureKit for transcription tests.</string>
+</dict>
+</plist>
