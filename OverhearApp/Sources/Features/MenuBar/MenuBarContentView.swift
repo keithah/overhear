@@ -8,105 +8,144 @@ struct MenuBarContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            // Meetings list
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 0) {
                     if viewModel.isLoading {
-                        HStack { Spacer(); ProgressView("Loading events..."); Spacer() }
+                        HStack { Spacer(); ProgressView().scaleEffect(0.7); Spacer() }
+                            .frame(height: 32)
+                    } else if allMeetings.isEmpty {
+                        Text("No meetings")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .frame(height: 32)
                     } else {
-                        if !viewModel.pastSections.isEmpty {
-                            SectionHeader(title: "Past")
-                            MeetingSectionList(sections: viewModel.pastSections,
-                                               preferences: preferences,
-                                               onJoin: viewModel.join)
+                        ForEach(groupedMeetings, id: \.date) { group in
+                            // Date header
+                            Text(formattedDate(group.date))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .padding(.top, 4)
+                                .padding(.horizontal, 10)
+                                .padding(.bottom, 1)
+                            
+                            // Meetings for this date
+                            ForEach(group.meetings) { meeting in
+                                MeetingRow(meeting: meeting, onJoin: viewModel.join)
+                            }
                         }
-                        SectionHeader(title: "Upcoming")
-                        MeetingSectionList(sections: viewModel.upcomingSections,
-                                           preferences: preferences,
-                                           onJoin: viewModel.join)
                     }
                 }
-                .padding(.vertical, 12)
+                .padding(.vertical, 4)
             }
+            
             Divider()
-            footer
-        }
-        .frame(width: 360, height: 520)
-        .padding(.horizontal, 12)
-    }
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text("Overhear")
-                    .font(.title2.bold())
-                if let updated = viewModel.lastUpdated {
-                    Text("Updated \(relativeDate(updated))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("Meeting launcher")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            
+            // Footer
+            HStack(spacing: 10) {
+                Button(action: openPreferences) {
+                    Text("Preferences…")
+                        .font(.system(size: 11))
                 }
-            }
-            Spacer()
-            Button(action: { Task { await viewModel.reload() } }) {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.borderless)
-        }
-        .padding(.vertical, 12)
-    }
-
-    private var footer: some View {
-        HStack {
-            Button("Preferences…") { openPreferences() }
-            Spacer()
-            Button("Quit") { NSApp.terminate(nil) }
+                .keyboardShortcut("p")
+                
+                Button(action: {}) {
+                    Text("Send Feedback…")
+                        .font(.system(size: 11))
+                }
+                .keyboardShortcut("f")
+                
+                Spacer()
+                
+                Button(action: { NSApp.terminate(nil) }) {
+                    Text("Quit")
+                        .font(.system(size: 11))
+                }
                 .keyboardShortcut("q")
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
         }
-        .padding(.vertical, 10)
+        .frame(width: 320, height: 380)
     }
-
-    private func relativeDate(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
+    
+    private var allMeetings: [Meeting] {
+        (viewModel.pastSections + viewModel.upcomingSections)
+            .flatMap { $0.meetings }
+    }
+    
+    private var groupedMeetings: [(date: Date, meetings: [Meeting])] {
+        let grouped = Dictionary(grouping: allMeetings) { meeting -> Date in
+            Calendar.current.startOfDay(for: meeting.startDate)
+        }
+        
+        return grouped.sorted { $0.key < $1.key }
+            .map { ($0.key, $0.value.sorted { $0.startDate < $1.startDate }) }
+    }
+    
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, d MMMM"
+        return formatter.string(from: date)
     }
 }
 
-private struct MeetingSectionList: View {
-    let sections: [MeetingSection]
-    @ObservedObject var preferences: PreferencesService
+private struct MeetingRow: View {
+    let meeting: Meeting
     var onJoin: (Meeting) -> Void
-
+    
     var body: some View {
-        ForEach(sections) { section in
-            VStack(alignment: .leading, spacing: 8) {
-                Text(section.title)
-                    .font(.headline)
-                ForEach(section.meetings) { meeting in
-                    MeetingRowView(meeting: meeting,
-                                   use24HourClock: preferences.use24HourClock,
-                                   onJoin: onJoin)
+        HStack(spacing: 8) {
+            // Icon - smaller
+            Image(systemName: meetingIcon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.blue)
+                .frame(width: 12)
+            
+            // Title and time
+            VStack(alignment: .leading, spacing: 0) {
+                Text(meeting.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                
+                if !meeting.isAllDay {
+                    Text(timeString)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
                 }
             }
-            .padding(.bottom, 8)
+            
+            Spacer()
+            
+            // Join button if has URL
+            if meeting.url != nil {
+                Button(action: { onJoin(meeting) }) {
+                    Image(systemName: "link")
+                        .font(.system(size: 10))
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.borderless)
+                .help("Join meeting")
+            }
+        }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 10)
+    }
+    
+    private var meetingIcon: String {
+        if meeting.url != nil {
+            return "video.fill"
+        } else if meeting.isAllDay {
+            return "calendar"
+        } else {
+            return "clock"
         }
     }
-}
-
-private struct SectionHeader: View {
-    let title: String
-    var body: some View {
-        HStack {
-            Text(title)
-                .font(.subheadline)
-                .textCase(.uppercase)
-                .foregroundColor(.secondary)
-            Spacer()
-        }
+    
+    private var timeString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: meeting.startDate)
     }
 }

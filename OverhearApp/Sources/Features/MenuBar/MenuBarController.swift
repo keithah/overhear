@@ -23,24 +23,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
         
         button.title = "📅"
-        
-        // Create menu
-        let menu = NSMenu()
-        menu.delegate = self
-        
-        // Create menu item with proper target/action
-        let menuItem = NSMenuItem(title: "Show Meetings", action: #selector(togglePopoverAction), keyEquivalent: "")
-        menuItem.target = self
-        menu.addItem(menuItem)
-        
-        // Attach menu to status item
-        item.menu = menu
+        button.target = self
+        button.action = #selector(togglePopoverAction)
         
         // Setup popover
         popover.behavior = .semitransient
         popover.contentSize = NSSize(width: 380, height: 520)
         popover.contentViewController = NSHostingController(rootView: MenuBarContentView(viewModel: viewModel, preferences: preferences) {
-            self.preferencesWindowController.show()
+            self.showPreferences()
         })
         
         // Store status item (must be retained)
@@ -59,5 +49,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
         }
+    }
+    
+    func closePopover() {
+        if popover.isShown {
+            popover.performClose(nil)
+        }
+    }
+    
+    func showPreferences() {
+        // Close popover first
+        if popover.isShown {
+            popover.performClose(nil)
+        }
+        
+        // Show preferences window
+        preferencesWindowController.show()
     }
 }

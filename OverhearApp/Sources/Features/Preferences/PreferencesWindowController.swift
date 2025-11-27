@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 final class PreferencesWindowController: NSWindowController {
+    var context: AppContext?
+    
     init(preferences: PreferencesService, calendarService: CalendarService) {
         let hostingController = NSHostingController(rootView: PreferencesView(preferences: preferences, calendarService: calendarService))
         let window = NSWindow(contentViewController: hostingController)
@@ -19,7 +21,14 @@ final class PreferencesWindowController: NSWindowController {
 
     func show() {
         guard let window else { return }
+        
+        // Close popover first if it's open
+        if let menuBarController = context?.menuBarController {
+            menuBarController.closePopover()
+        }
+        
         window.makeKeyAndOrderFront(nil)
+        window.level = .floating
         NSApp.activate(ignoringOtherApps: true)
     }
 }

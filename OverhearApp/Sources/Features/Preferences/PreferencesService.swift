@@ -76,6 +76,13 @@ final class PreferencesService: ObservableObject {
 
         updateLaunchAtLogin(launchAtLogin)
     }
+    
+    /// Initialize selected calendars with all available calendars on first run
+    func initializeWithAllCalendars(_ calendarIDs: [String]) {
+        if selectedCalendarIDs.isEmpty {
+            selectedCalendarIDs = Set(calendarIDs)
+        }
+    }
 
     var timeFormatter: DateFormatter {
         let formatter = DateFormatter()

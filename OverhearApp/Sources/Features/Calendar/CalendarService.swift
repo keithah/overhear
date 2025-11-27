@@ -10,13 +10,20 @@ final class CalendarService: ObservableObject {
     func requestAccessIfNeeded() async -> Bool {
         let status = EKEventStore.authorizationStatus(for: .event)
         authorizationStatus = status
+        
         switch status {
         case .authorized:
             return true
         case .notDetermined:
             let granted = await withCheckedContinuation { continuation in
-                eventStore.requestAccess(to: .event) { granted, _ in
-                    continuation.resume(returning: granted)
+                if #available(macOS 14.0, *) {
+                    eventStore.requestFullAccessToEvents { granted, _ in
+                        continuation.resume(returning: granted)
+                    }
+                } else {
+                    eventStore.requestAccess(to: .event) { granted, _ in
+                        continuation.resume(returning: granted)
+                    }
                 }
             }
             authorizationStatus = EKEventStore.authorizationStatus(for: .event)
@@ -28,6 +35,21 @@ final class CalendarService: ObservableObject {
 
     func availableCalendars() -> [EKCalendar] {
         eventStore.calendars(for: .event)
+    }
+    
+    func calendarsBySource() -> [(source: EKSource, calendars: [EKCalendar])] {
+        let calendars = eventStore.calendars(for: .event)
+        let grouped = Dictionary(grouping: calendars) { $0.source }
+        return grouped
+            .compactMap { source, cals -> (source: EKSource, calendars: [EKCalendar])? in
+                guard let source = source else { return nil }
+                return (source: source, calendars: cals.sorted { $0.title < $1.title })
+            }
+            .sorted { $0.source.title < $1.source.title }
+    }
+    
+    func getSource(for calendar: EKCalendar) -> EKSource? {
+        calendar.source
     }
 
     func fetchMeetings(daysAhead: Int,
