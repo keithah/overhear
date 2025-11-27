@@ -55,7 +55,30 @@ final class MeetingListViewModel: ObservableObject {
 
     func join(meeting: Meeting) {
         guard let url = meeting.url else { return }
-        NSWorkspace.shared.open(url)
+        var urlToOpen = url
+        if meeting.platform == .zoom, let zoommtgURL = convertToZoomMTG(url) {
+            urlToOpen = zoommtgURL
+        }
+        let success = NSWorkspace.shared.open(urlToOpen)
+        if !success {
+            // Copy to clipboard as fallback
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        }
+    }
+
+    private func convertToZoomMTG(_ url: URL) -> URL? {
+        guard let host = url.host?.lowercased(), host.contains("zoom.us") || host.contains("zoom.com") else {
+            return nil
+        }
+        let path = url.path
+        if path.hasPrefix("/j/") || path.hasPrefix("/meeting/") {
+            let components = path.split(separator: "/")
+            if components.count >= 3, let meetingID = components.last {
+                return URL(string: "zoommtg://zoom.us/join?confno=\(meetingID)")
+            }
+        }
+        return nil
     }
 
     private func apply(meetings: [Meeting]) {

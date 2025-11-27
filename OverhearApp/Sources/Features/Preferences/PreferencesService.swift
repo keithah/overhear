@@ -1,7 +1,6 @@
 import Combine
 import Foundation
 import ServiceManagement
-
 @MainActor
 final class PreferencesService: ObservableObject {
     @Published var launchAtLogin: Bool {
@@ -40,6 +39,22 @@ final class PreferencesService: ObservableObject {
         didSet { persistSelectedCalendars() }
     }
 
+    @Published var zoomOpenBehavior: OpenBehavior {
+        didSet { persist(zoomOpenBehavior, key: .zoomOpenBehavior) }
+    }
+
+    @Published var meetOpenBehavior: OpenBehavior {
+        didSet { persist(meetOpenBehavior, key: .meetOpenBehavior) }
+    }
+
+    @Published var teamsOpenBehavior: OpenBehavior {
+        didSet { persist(teamsOpenBehavior, key: .teamsOpenBehavior) }
+    }
+
+    @Published var webexOpenBehavior: OpenBehavior {
+        didSet { persist(webexOpenBehavior, key: .webexOpenBehavior) }
+    }
+
     private let defaults: UserDefaults
     private var cancellables: Set<AnyCancellable> = []
 
@@ -54,6 +69,10 @@ final class PreferencesService: ObservableObject {
         self.countdownEnabled = defaults.object(forKey: PreferenceKey.countdownEnabled.rawValue) as? Bool ?? true
         self.notificationMinutesBefore = defaults.object(forKey: PreferenceKey.notificationMinutesBefore.rawValue) as? Int ?? 5
         self.selectedCalendarIDs = PreferencesService.loadCalendarIDs(defaults: defaults)
+        self.zoomOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .zoomOpenBehavior, default: .zoommtg)
+        self.meetOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .meetOpenBehavior, default: .browser)
+        self.teamsOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .teamsOpenBehavior, default: .browser)
+        self.webexOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .webexOpenBehavior, default: .browser)
 
         updateLaunchAtLogin(launchAtLogin)
     }
@@ -75,6 +94,16 @@ final class PreferencesService: ObservableObject {
             selectedCalendarIDs.insert(id)
         } else {
             selectedCalendarIDs.remove(id)
+        }
+    }
+
+    func openBehavior(for platform: MeetingPlatform) -> OpenBehavior {
+        switch platform {
+        case .zoom: return zoomOpenBehavior
+        case .meet: return meetOpenBehavior
+        case .teams: return teamsOpenBehavior
+        case .webex: return webexOpenBehavior
+        case .unknown: return .browser
         }
     }
 
@@ -105,6 +134,14 @@ final class PreferencesService: ObservableObject {
         }
         return Set(array)
     }
+
+    private static func loadOpenBehavior(defaults: UserDefaults, key: PreferenceKey, default defaultValue: OpenBehavior) -> OpenBehavior {
+        guard let rawValue = defaults.string(forKey: key.rawValue),
+              let behavior = OpenBehavior(rawValue: rawValue) else {
+            return defaultValue
+        }
+        return behavior
+    }
 }
 
 private enum PreferenceKey: String {
@@ -117,4 +154,8 @@ private enum PreferenceKey: String {
     case countdownEnabled
     case notificationMinutesBefore
     case selectedCalendars
+    case zoomOpenBehavior
+    case meetOpenBehavior
+    case teamsOpenBehavior
+    case webexOpenBehavior
 }

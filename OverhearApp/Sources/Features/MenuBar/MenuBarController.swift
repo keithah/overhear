@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-final class MenuBarController: NSObject {
+final class MenuBarController: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var popover = NSPopover()
     private let viewModel: MeetingListViewModel
@@ -17,27 +17,47 @@ final class MenuBarController: NSObject {
 
     func setup() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Overhear")
-        item.button?.target = self
-        item.button?.action = #selector(togglePopover(_:))
-        item.button?.appearsDisabled = false
-        statusItem = item
-
-        popover.behavior = .transient
+        
+        guard let button = item.button else {
+            return
+        }
+        
+        button.title = "📅"
+        
+        // Create menu
+        let menu = NSMenu()
+        menu.delegate = self
+        
+        // Create menu item with proper target/action
+        let menuItem = NSMenuItem(title: "Show Meetings", action: #selector(togglePopoverAction), keyEquivalent: "")
+        menuItem.target = self
+        menu.addItem(menuItem)
+        
+        // Attach menu to status item
+        item.menu = menu
+        
+        // Setup popover
+        popover.behavior = .semitransient
         popover.contentSize = NSSize(width: 380, height: 520)
         popover.contentViewController = NSHostingController(rootView: MenuBarContentView(viewModel: viewModel, preferences: preferences) {
             self.preferencesWindowController.show()
         })
+        
+        // Store status item (must be retained)
+        statusItem = item
     }
-
+    
     @objc
-    private func togglePopover(_ sender: AnyObject?) {
-        guard let button = statusItem?.button else { return }
+    func togglePopoverAction() {
+        guard let button = statusItem?.button else {
+            return
+        }
+        
         if popover.isShown {
-            popover.performClose(sender)
+            popover.performClose(nil)
         } else {
+            NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
-            popover.contentViewController?.view.window?.makeKey()
         }
     }
 }

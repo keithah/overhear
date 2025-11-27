@@ -1,5 +1,6 @@
 import Foundation
 import EventKit
+import AppKit
 
 enum MeetingPlatform: String, Codable, CaseIterable {
     case zoom
@@ -23,6 +24,61 @@ enum MeetingPlatform: String, Codable, CaseIterable {
             return .webex
         }
         return .unknown
+    }
+
+    func openURL(_ url: URL, openBehavior: OpenBehavior) -> Bool {
+        let urlToOpen: URL
+        switch self {
+        case .zoom:
+            switch openBehavior {
+            case .zoommtg, .app:
+                urlToOpen = convertToZoomMTG(url) ?? url
+            case .browser:
+                urlToOpen = url
+            }
+        case .meet, .teams, .webex, .unknown:
+            urlToOpen = url
+        }
+
+        return NSWorkspace.shared.open(urlToOpen)
+    }
+
+    private func convertToZoomMTG(_ url: URL) -> URL? {
+        // Basic conversion: if it's a zoom.us link, try to extract meeting ID and create zoommtg://
+        guard let host = url.host?.lowercased(), host.contains("zoom.us") || host.contains("zoom.com") else {
+            return nil
+        }
+        let path = url.path
+        // Zoom URLs like https://zoom.us/j/123456789 or https://zoom.us/meeting/123456789
+        if path.hasPrefix("/j/") || path.hasPrefix("/meeting/") {
+            let components = path.split(separator: "/")
+            if components.count >= 3, let meetingID = components.last {
+                return URL(string: "zoommtg://zoom.us/join?confno=\(meetingID)")
+            }
+        }
+        return nil
+    }
+}
+
+enum OpenBehavior: String, Codable, CaseIterable {
+    case browser
+    case app
+    case zoommtg // Only for Zoom
+
+    var displayName: String {
+        switch self {
+        case .browser: return "Browser"
+        case .app: return "App"
+        case .zoommtg: return "Zoom App"
+        }
+    }
+
+    static func available(for platform: MeetingPlatform) -> [OpenBehavior] {
+        switch platform {
+        case .zoom: return [.browser, .app, .zoommtg]
+        case .meet, .teams, .webex: return [.browser, .app]
+        case .unknown: return [.browser]
+        }
     }
 }
 

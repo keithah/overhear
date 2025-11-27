@@ -2,20 +2,24 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var context: AppContext?
+    var menuBarController: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
-        guard let context else { return }
-
-        let controller = MenuBarController(viewModel: context.meetingViewModel,
-                                           preferencesWindowController: context.preferencesWindowController,
-                                           preferences: context.preferencesService)
+        NSApp.setActivationPolicy(.regular)
+        
+        let context = AppContext()
+        self.context = context
+        
+        let controller = MenuBarController(viewModel: context.meetingViewModel, preferencesWindowController: context.preferencesWindowController, preferences: context.preferencesService)
         controller.setup()
+        
+        // Keep strong reference to controller
+        self.menuBarController = controller
         context.menuBarController = controller
 
-        // Close any auto-created windows for this menubar-first app.
+        // Keep windows hidden but present for proper event delivery to menubar
         DispatchQueue.main.async {
-            NSApp.windows.forEach { $0.close() }
+            NSApp.windows.forEach { $0.orderOut(nil) }
         }
     }
 }
