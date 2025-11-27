@@ -28,14 +28,8 @@ final class MeetingListViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        Task {
-            // Initialize calendars on first launch
-            let allCalendars = calendarService.availableCalendars()
-            preferences.initializeWithAllCalendars(allCalendars.map { $0.calendarIdentifier })
-
-            // Then reload to fetch meetings
-            await reload()
-        }
+        // Schedule reload on main thread
+        Task { await reload() }
     }
 
     func reload() async {
