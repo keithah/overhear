@@ -61,12 +61,11 @@ struct MeetingRowView: View {
             .padding(.vertical, 6)
             .padding(.horizontal, 10)
             .contentShape(Rectangle())
-            .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)  // Fade if event ended OR date is in past
-            .foregroundColor((isPastEvent || isPastDate) ? .gray : .primary)  // Grey out text too
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04))
             )
+            .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)  // Fade if event ended OR date is in past
         }
         .buttonStyle(.plain)
         .disabled(isPastEvent || isPastDate)  // Disable join for past events or events from past dates

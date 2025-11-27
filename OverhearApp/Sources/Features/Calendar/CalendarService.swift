@@ -12,7 +12,7 @@ final class CalendarService: ObservableObject {
         authorizationStatus = status
         
         switch status {
-        case .authorized:
+        case .authorized, .fullAccess:
             return true
         case .notDetermined:
             let granted = await withCheckedContinuation { continuation in
@@ -29,6 +29,7 @@ final class CalendarService: ObservableObject {
             authorizationStatus = EKEventStore.authorizationStatus(for: .event)
             return granted
         default:
+            // Denied, limited, or unknown - don't request again
             return false
         }
     }
