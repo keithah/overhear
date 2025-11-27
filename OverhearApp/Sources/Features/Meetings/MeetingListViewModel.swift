@@ -78,8 +78,21 @@ final class MeetingListViewModel: ObservableObject {
         let components = path.split(separator: "/").filter { !$0.isEmpty }
         if components.count >= 2 {
             if let meetingID = components.last?.split(separator: "?").first {
-                // Try zoommtg:// protocol first
-                if let zoommtgURL = URL(string: "zoommtg://zoom.us/join?confno=\(meetingID)") {
+                // Extract password and other params from query string
+                var zoommtgURLString = "zoommtg://zoom.us/join?confno=\(meetingID)"
+                
+                // Preserve password and other params from original URL
+                if let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems {
+                    for item in queryItems {
+                        if item.name == "pwd" || item.name == "password" {
+                            if let value = item.value {
+                                zoommtgURLString += "&pwd=\(value)"
+                            }
+                        }
+                    }
+                }
+                
+                if let zoommtgURL = URL(string: zoommtgURLString) {
                     return zoommtgURL
                 }
             }

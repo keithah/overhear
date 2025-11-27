@@ -63,7 +63,7 @@ struct MeetingRowView: View {
         .contentShape(Rectangle())
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isHovered && !(isPastEvent || isPastDate) ? 
+                .fill(isHovered ? 
                       Color.blue.opacity(0.3) :
                       (colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04)))
         )
@@ -73,9 +73,7 @@ struct MeetingRowView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if !(isPastEvent || isPastDate) {
-                onJoin(meeting)
-            }
+            onJoin(meeting)  // Always allow click, even for past events
         }
     }
 

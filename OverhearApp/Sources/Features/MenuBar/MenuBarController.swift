@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Combine
 
 final class MenuBarController: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
