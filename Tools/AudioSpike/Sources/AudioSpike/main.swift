@@ -189,7 +189,7 @@ final class AudioMixer: NSObject, SCStreamOutput {
     }
 
     func stop() {
-        engine.mainMixerNode.removeTap(onBus: 0)
+        recordingMixer.removeTap(onBus: 0)
         tapInstalled = false
         systemAudioPlayer.stop()
         engine.stop()
@@ -253,12 +253,12 @@ private extension AVAudioPCMBuffer {
     func rms() -> Float {
         guard let floatChannelData = floatChannelData else { return 0 }
         let channelCount = Int(format.channelCount)
-        let frameLength = Int(frameLength)
+        let frameLengthInt = Int(frameLength)
         var total: Float = 0
         var sampleCount: Int = 0
         for channel in 0..<channelCount {
             let samples = floatChannelData[channel]
-            for frame in 0..<frameLength {
+            for frame in 0..<frameLengthInt {
                 let sample = samples[frame]
                 total += sample * sample
                 sampleCount += 1
