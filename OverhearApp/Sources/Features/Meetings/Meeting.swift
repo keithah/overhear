@@ -105,28 +105,28 @@ final class PlatformIconProvider {
         switch platform {
         case .zoom:
             return PlatformIconInfo(
-                iconName: "video.fill",
+                iconName: "z.circle.fill",  // Distinct Zoom icon
                 color: NSColor(calibratedRed: 0.04, green: 0.36, blue: 1.0, alpha: 1.0),  // #0B5CFF Zoom Blue
                 isSystemIcon: true
             )
         
         case .meet:
             return PlatformIconInfo(
-                iconName: "video.fill",
+                iconName: "person.2.circle.fill",  // Google Meet icon
                 color: NSColor(calibratedRed: 0.0, green: 0.53, blue: 0.48, alpha: 1.0),  // #00897B Meet Green
                 isSystemIcon: true
             )
         
         case .teams:
             return PlatformIconInfo(
-                iconName: "video.fill",
+                iconName: "person.3.circle.fill",  // Teams icon
                 color: NSColor(calibratedRed: 0.48, green: 0.41, blue: 0.93, alpha: 1.0),  // #7B68EE Teams Purple
                 isSystemIcon: true
             )
         
         case .webex:
             return PlatformIconInfo(
-                iconName: "video.fill",
+                iconName: "w.circle.fill",  // Webex icon
                 color: NSColor(calibratedRed: 0.0, green: 0.35, blue: 0.61, alpha: 1.0),  // #005A9C Webex Blue
                 isSystemIcon: true
             )

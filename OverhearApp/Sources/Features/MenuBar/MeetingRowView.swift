@@ -12,7 +12,9 @@ struct MeetingRowView: View {
     }
 
     var body: some View {
-        Button(action: { onJoin(meeting) }) {
+        Button(action: { 
+            onJoin(meeting) 
+        }) {
             HStack(alignment: .center, spacing: 8) {
                 // Holiday emoji or icon
                 if meeting.holidayInfo.isHoliday {
@@ -40,17 +42,21 @@ struct MeetingRowView: View {
                 
                 Spacer()
                 
-                // Join button if has URL
+                // Join indicator if has URL
                 if meeting.url != nil {
-                    Image(systemName: "link")
-                        .font(.system(size: 10))
-                        .frame(width: 20, height: 20)
+                    Image(systemName: "link.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(meeting.iconInfo.color))
                 }
             }
             .padding(.vertical, 6)
             .padding(.horizontal, 10)
             .contentShape(Rectangle())
             .opacity(isPastEvent ? 0.5 : 1.0)  // Fade entire row including text and icon
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04))
+            )
         }
         .buttonStyle(.plain)
         .disabled(isPastEvent)  // Disable join for past events
