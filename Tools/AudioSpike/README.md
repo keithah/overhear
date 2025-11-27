@@ -10,7 +10,7 @@ swift run AudioSpike --duration 20 --output ~/Desktop/overhear-spike.wav
 ```
 
 - Requires macOS 13+ (ScreenCaptureKit).
-- Prompts for Microphone + Screen Recording permissions on first run.
+- Prompts for Microphone + Screen Recording permissions on first run (enable Terminal/AudioSpike in System Settings > Privacy & Security > Screen Recording).
 - Default output: `~/Desktop/overhear-spike.wav` if `--output` is omitted.
 
 ## Transcribe the spike (whisper.cpp example)

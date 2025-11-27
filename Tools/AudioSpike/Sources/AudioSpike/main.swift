@@ -1,5 +1,7 @@
 import AVFoundation
 import AudioToolbox
+import AppKit
+import CoreGraphics
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
@@ -22,6 +24,10 @@ struct AudioSpikeCLI {
                 fputs("Microphone access denied. Grant permission in System Settings > Privacy.\n", stderr)
                 exit(1)
             }
+            let hasScreenPermission = CGPreflightScreenCaptureAccess()
+            print("Screen Recording permission: \(hasScreenPermission ? "granted" : "not granted")")
+            try AudioSpikeCLI.ensureScreenRecordingPermission()
+            AudioSpikeCLI.playStartBeep()
 
             let coordinator = try await AudioCaptureCoordinator(outputURL: outputURL, duration: duration)
             try await coordinator.start()
@@ -53,6 +59,23 @@ struct AudioSpikeCLI {
         return (desktop ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
             .appendingPathComponent("overhear-spike.wav")
     }
+
+    private static func playStartBeep() {
+        // Use the system alert sound so the user hears a start cue.
+        NSSound.beep()
+        AudioServicesPlayAlertSound(SystemSoundID(kSystemSoundID_UserPreferredAlert))
+    }
+
+    private static func ensureScreenRecordingPermission() throws {
+        guard !CGPreflightScreenCaptureAccess() else { return }
+        print("Requesting Screen Recording permission...")
+        if CGRequestScreenCaptureAccess() {
+            print("Screen Recording permission granted. Re-run the command to start capture.")
+            exit(0)
+        } else {
+            throw CaptureError.screenRecordingPermissionDenied
+        }
+    }
 }
 
 @available(macOS 13.0, *)
@@ -75,8 +98,8 @@ final class AudioCaptureCoordinator {
         let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
         let configuration = SCStreamConfiguration()
         configuration.capturesAudio = true
-        configuration.width = 1
-        configuration.height = 1
+        configuration.width = display.width
+        configuration.height = display.height
         configuration.sampleRate = 48_000
         configuration.channelCount = 2
 
@@ -87,7 +110,13 @@ final class AudioCaptureCoordinator {
 
     func start() async throws {
         try mixer.start()
-        try await stream.startCapture()
+        do {
+            try await stream.startCapture()
+        } catch {
+            let nsError = error as NSError
+            fputs("startCapture failed: domain=\(nsError.domain) code=\(nsError.code) desc=\(nsError.localizedDescription)\n", stderr)
+            throw error
+        }
 
         try await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
 
@@ -103,10 +132,14 @@ final class AudioCaptureCoordinator {
 @available(macOS 13.0, *)
 final class AudioMixer: NSObject, SCStreamOutput {
     private let engine = AVAudioEngine()
+    private let recordingMixer = AVAudioMixerNode()
     private let systemAudioPlayer = AVAudioPlayerNode()
     private var file: AVAudioFile?
     private var tapInstalled = false
     private let writingQueue = DispatchQueue(label: "com.overhear.audiospike.writer")
+    private let monitorVolume: Float = 0.0
+    private var loggedMicRMS = false
+    private var loggedStreamRMS = false
 
     private let outputURL: URL
 
@@ -117,19 +150,29 @@ final class AudioMixer: NSObject, SCStreamOutput {
 
     func start() throws {
         let mainMixer = engine.mainMixerNode
-        let mixerFormat = AudioMixer.mixerFormat(for: mainMixer)
-        self.file = try AVAudioFile(forWriting: outputURL,
-                                    settings: mixerFormat.settings)
+        engine.attach(recordingMixer)
         engine.attach(systemAudioPlayer)
 
-        // Connect microphone (input) and system audio player into the main mixer.
         let micInput = engine.inputNode
-        engine.connect(micInput, to: mainMixer, format: micInput.inputFormat(forBus: 0))
-        engine.connect(systemAudioPlayer, to: mainMixer, format: mainMixer.outputFormat(forBus: 0))
+        let recordingFormat = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+        // Route mic + system audio into a dedicated recording mixer.
+        engine.connect(micInput, to: recordingMixer, format: micInput.inputFormat(forBus: 0))
+        engine.connect(systemAudioPlayer, to: recordingMixer, format: recordingFormat)
+
+        self.file = try AVAudioFile(forWriting: outputURL,
+                                    settings: recordingFormat.settings)
+
+        // Feed the recording mixer into the main mixer just for hardware output (muted).
+        engine.connect(recordingMixer, to: mainMixer, format: recordingFormat)
+        mainMixer.outputVolume = monitorVolume // mute monitor while leaving tap intact
 
         if !tapInstalled {
-            mainMixer.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
+            recordingMixer.installTap(onBus: 0, bufferSize: 4096, format: recordingFormat) { [weak self] buffer, _ in
                 guard let self, let file = self.file else { return }
+                if !self.loggedMicRMS {
+                    print(String(format: "mic+mix tap rms=%.5f", buffer.rms()))
+                    self.loggedMicRMS = true
+                }
                 self.writingQueue.async {
                     do {
                         try file.write(from: buffer)
@@ -161,20 +204,32 @@ final class AudioMixer: NSObject, SCStreamOutput {
               let pcmBuffer = sampleBuffer.makePCMBuffer() else {
             return
         }
+        if !loggedStreamRMS {
+            print(String(format: "system stream rms=%.5f", pcmBuffer.rms()))
+            loggedStreamRMS = true
+        }
         systemAudioPlayer.scheduleBuffer(pcmBuffer, completionHandler: nil)
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         fputs("Stream stopped with error: \(error)\n", stderr)
     }
-
-    private static func mixerFormat(for mixer: AVAudioMixerNode) -> AVAudioFormat {
-        mixer.outputFormat(forBus: 0)
-    }
 }
 
 enum CaptureError: Error {
     case noDisplayFound
+    case screenRecordingPermissionDenied
+}
+
+extension CaptureError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .noDisplayFound:
+            return "No display found to capture."
+        case .screenRecordingPermissionDenied:
+            return "Screen Recording permission denied. Allow Terminal in System Settings > Privacy & Security > Screen Recording, then rerun."
+        }
+    }
 }
 
 private extension CMSampleBuffer {
@@ -191,5 +246,24 @@ private extension CMSampleBuffer {
                                                                   frameCount: Int32(sampleCount),
                                                                   into: buffer.mutableAudioBufferList)
         return status == noErr ? buffer : nil
+    }
+}
+
+private extension AVAudioPCMBuffer {
+    func rms() -> Float {
+        guard let floatChannelData = floatChannelData else { return 0 }
+        let channelCount = Int(format.channelCount)
+        let frameLength = Int(frameLength)
+        var total: Float = 0
+        var sampleCount: Int = 0
+        for channel in 0..<channelCount {
+            let samples = floatChannelData[channel]
+            for frame in 0..<frameLength {
+                let sample = samples[frame]
+                total += sample * sample
+                sampleCount += 1
+            }
+        }
+        return sampleCount > 0 ? sqrtf(total / Float(sampleCount)) : 0
     }
 }

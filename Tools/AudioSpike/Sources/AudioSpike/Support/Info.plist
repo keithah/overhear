@@ -8,7 +8,9 @@
 	<string>AudioSpike</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>AudioSpike needs microphone access to mix mic input for transcription tests.</string>
-	<key>NSScreenCaptureDescription</key>
+	<key>NSScreenCaptureUsageDescription</key>
 	<string>AudioSpike captures display audio via ScreenCaptureKit for transcription tests.</string>
+	<key>NSSystemAudioUsageDescription</key>
+	<string>AudioSpike captures system audio via ScreenCaptureKit for transcription tests.</string>
 </dict>
 </plist>
