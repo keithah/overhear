@@ -71,14 +71,15 @@ final class MeetingListViewModel: ObservableObject {
         let now = Date()
         let calendar = Calendar.current
         // Extended cutoff: meetings remain "upcoming" until 5 minutes after their end time
-        let fiveMinutesFromNow = now.addingTimeInterval(5 * 60)
+        // We check if the end time is older than 5 minutes ago.
+        let fiveMinutesAgo = now.addingTimeInterval(-5 * 60)
 
         let grouped = Dictionary(grouping: meetings) { event in
             calendar.startOfDay(for: event.startDate)
         }
 
         let sections: [MeetingSection] = grouped.map { date, events in
-            let isPast = isPastDate(date, events: events, now: now, calendar: calendar, fiveMinutesFromNow: fiveMinutesFromNow)
+            let isPast = isPastDate(date, events: events, now: now, calendar: calendar, fiveMinutesAgo: fiveMinutesAgo)
             let title = dayTitle(for: date, calendar: calendar)
             let sortedEvents = events.sorted { $0.startDate < $1.startDate }
             return MeetingSection(id: UUID().uuidString, date: date, title: title, isPast: isPast, meetings: sortedEvents)
@@ -103,7 +104,7 @@ final class MeetingListViewModel: ObservableObject {
         return formatter.string(from: date)
     }
 
-    private func isPastDate(_ date: Date, events: [Meeting], now: Date, calendar: Calendar, fiveMinutesFromNow: Date) -> Bool {
+    private func isPastDate(_ date: Date, events: [Meeting], now: Date, calendar: Calendar, fiveMinutesAgo: Date) -> Bool {
         let today = calendar.startOfDay(for: now)
         
         if date < today {
@@ -111,7 +112,7 @@ final class MeetingListViewModel: ObservableObject {
         }
         
         if date == today {
-            return events.allSatisfy { $0.endDate < fiveMinutesFromNow }
+            return events.allSatisfy { $0.endDate < fiveMinutesAgo }
         }
         
         return false
