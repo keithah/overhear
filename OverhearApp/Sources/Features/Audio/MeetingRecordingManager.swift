@@ -43,6 +43,7 @@ final class MeetingRecordingManager: ObservableObject {
     private let recordingDirectory: URL
     
     private var captureStartTime: Date?
+    private var transcriptionTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
     
     init(
@@ -92,7 +93,11 @@ final class MeetingRecordingManager: ObservableObject {
     /// Stop the current recording
     func stopRecording() {
         captureService.stopCapture()
-        // Transcription will continue if in progress
+        
+        // If we are already transcribing, cancel it
+        if case .transcribing = status {
+            transcriptionTask?.cancel()
+        }
     }
     
     // MARK: - Private
@@ -100,12 +105,18 @@ final class MeetingRecordingManager: ObservableObject {
     private func startTranscription(audioURL: URL) async {
         status = .transcribing
         
-        do {
-            let text = try await transcriptionService.transcribe(audioURL: audioURL)
-            self.transcript = text
-            status = .completed
-        } catch {
-            status = .failed(RecordingError.transcriptionService(error))
+        let task = Task {
+            do {
+                let text = try await transcriptionService.transcribe(audioURL: audioURL)
+                self.transcript = text
+                status = .completed
+            } catch is CancellationError {
+                status = .idle // Reset status on cancellation
+            } catch {
+                status = .failed(RecordingError.transcriptionService(error))
+            }
         }
+        self.transcriptionTask = task
+        _ = await task.result
     }
 }

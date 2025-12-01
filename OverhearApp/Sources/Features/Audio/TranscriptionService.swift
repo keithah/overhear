@@ -91,50 +91,60 @@ actor TranscriptionService {
         process.standardOutput = pipe
         process.standardError = errorPipe
         
-        do {
-            try process.run()
-            
-            return try await withCheckedThrowingContinuation { continuation in
-                var finished = false
-                let queue = DispatchQueue(label: "com.overhear.transcription")
-                queue.async {
-                    guard !finished else { return }
-                    process.waitUntilExit()
-                    
-                    do {
-                        let errorData = try errorPipe.fileHandleForReading.readDataToEndOfFile()
-                        let errorString = String(data: errorData, encoding: .utf8) ?? ""
-                        
+        return try await withTaskCancellationHandler {
+            do {
+                try process.run()
+                
+                return try await withCheckedThrowingContinuation { continuation in
+                    var finished = false
+                    let queue = DispatchQueue(label: "com.overhear.transcription")
+                    queue.async {
                         guard !finished else { return }
-                        finished = true
+                        process.waitUntilExit()
                         
-                        if process.terminationStatus != 0 {
-                            let error = Error.transcriptionFailed(errorString.isEmpty ? "Unknown error" : errorString)
-                            continuation.resume(throwing: error)
-                            return
-                        }
-                        
-                        // Read the output text file
-                        let outputPath = outputPrefix + ".txt"
                         do {
-                            let transcript = try String(contentsOfFile: outputPath, encoding: .utf8)
+                            let errorData = try errorPipe.fileHandleForReading.readDataToEndOfFile()
+                            let errorString = String(data: errorData, encoding: .utf8) ?? ""
                             
-                            // Clean up temp files
-                            try? FileManager.default.removeItem(atPath: outputPath)
+                            guard !finished else { return }
+                            finished = true
                             
-                            continuation.resume(returning: transcript)
+                            if process.terminationStatus != 0 {
+                                // Check if it was terminated by cancellation (signal 15/SIGTERM)
+                                if process.terminationStatus == 15 {
+                                    continuation.resume(throwing: CancellationError())
+                                    return
+                                }
+                                
+                                let error = Error.transcriptionFailed(errorString.isEmpty ? "Unknown error" : errorString)
+                                continuation.resume(throwing: error)
+                                return
+                            }
+                            
+                            // Read the output text file
+                            let outputPath = outputPrefix + ".txt"
+                            do {
+                                let transcript = try String(contentsOfFile: outputPath, encoding: .utf8)
+                                
+                                // Clean up temp files
+                                try? FileManager.default.removeItem(atPath: outputPath)
+                                
+                                continuation.resume(returning: transcript)
+                            } catch {
+                                continuation.resume(throwing: Error.transcriptionFailed("Could not read transcript: \(error.localizedDescription)"))
+                            }
                         } catch {
-                            continuation.resume(throwing: Error.transcriptionFailed("Could not read transcript: \(error.localizedDescription)"))
+                            guard !finished else { return }
+                            finished = true
+                            continuation.resume(throwing: Error.transcriptionFailed("Failed to read process output: \(error.localizedDescription)"))
                         }
-                    } catch {
-                        guard !finished else { return }
-                        finished = true
-                        continuation.resume(throwing: Error.transcriptionFailed("Failed to read process output: \(error.localizedDescription)"))
                     }
                 }
+            } catch {
+                throw Error.transcriptionFailed(error.localizedDescription)
             }
-        } catch {
-            throw Error.transcriptionFailed(error.localizedDescription)
+        } onCancel: {
+            process.terminate()
         }
     }
 }
