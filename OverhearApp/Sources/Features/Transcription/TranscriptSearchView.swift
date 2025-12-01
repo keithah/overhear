@@ -117,7 +117,7 @@ struct TranscriptRow: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.gray)
             }
-            Text(transcript.transcript.prefix(100) + "...")
+            Text(transcript.transcript.count > 100 ? String(transcript.transcript.prefix(100)) + "..." : transcript.transcript)
                 .font(.system(size: 11))
                 .lineLimit(2)
                 .foregroundStyle(.gray)

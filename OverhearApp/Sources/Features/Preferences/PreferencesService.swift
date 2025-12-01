@@ -52,20 +52,20 @@ final class PreferencesService: ObservableObject {
         didSet { persistSelectedCalendars() }
     }
 
-    @Published var zoomOpenBehavior: OpenBehavior {
-        didSet { persist(zoomOpenBehavior, key: .zoomOpenBehavior) }
+@Published var zoomOpenBehavior: OpenBehavior {
+        didSet { persist(zoomOpenBehavior.rawValue, key: .zoomOpenBehavior) }
     }
-
+    
     @Published var meetOpenBehavior: OpenBehavior {
-        didSet { persist(meetOpenBehavior, key: .meetOpenBehavior) }
+        didSet { persist(meetOpenBehavior.rawValue, key: .meetOpenBehavior) }
     }
-
+    
     @Published var teamsOpenBehavior: OpenBehavior {
-        didSet { persist(teamsOpenBehavior, key: .teamsOpenBehavior) }
+        didSet { persist(teamsOpenBehavior.rawValue, key: .teamsOpenBehavior) }
     }
-
+    
     @Published var webexOpenBehavior: OpenBehavior {
-        didSet { persist(webexOpenBehavior, key: .webexOpenBehavior) }
+        didSet { persist(webexOpenBehavior.rawValue, key: .webexOpenBehavior) }
     }
 
     @Published var viewMode: ViewMode {

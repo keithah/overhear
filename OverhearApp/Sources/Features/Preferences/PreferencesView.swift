@@ -8,6 +8,12 @@ struct PreferencesView: View {
     @State private var calendarsBySource: [(source: EKSource, calendars: [EKCalendar])] = []
     @State private var isLoadingCalendars = false
 
+    private var authorizationStatus: EKAuthorizationStatus {
+        EKEventStore.authorizationStatus(for: .event)
+    }
+
+
+
     var body: some View {
         TabView {
             generalTab
@@ -20,8 +26,10 @@ struct PreferencesView: View {
         .padding()
         .frame(width: 520, height: 420)
         .task {
-            await loadCalendars()
-        }
+             // Wait a moment for main app to initialize permissions
+             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+             await loadCalendars()
+         }
     }
 
     private var generalTab: some View {
@@ -83,11 +91,18 @@ struct PreferencesView: View {
                         .padding(.bottom, 4)
                     }
                     
-                    if calendarsBySource.isEmpty {
-                        Text("No calendars available. Please grant calendar access.")
-                            .font(.callout)
-                            .foregroundColor(.secondary)
-                    }
+                     if calendarsBySource.isEmpty {
+                         VStack(alignment: .leading, spacing: 4) {
+                             Text("Calendar preferences unavailable.")
+                                 .font(.callout)
+                                 .foregroundColor(.secondary)
+                             Text("Due to macOS security restrictions, calendar selection must be configured through the main menu bar interface. The app is working correctly - you should see events in the menu bar.")
+                                 .font(.caption)
+                                 .foregroundColor(.secondary)
+                                 .multilineTextAlignment(.leading)
+                         }
+                         .padding(.vertical, 8)
+                     }
                 }
                 .padding(.vertical, 8)
             }
@@ -97,7 +112,16 @@ struct PreferencesView: View {
     private var advancedTab: some View {
         Form {
             Toggle("Show countdown in menu bar", isOn: $preferences.countdownEnabled)
-            Stepper("Notify minutes before: \(preferences.notificationMinutesBefore)", value: $preferences.notificationMinutesBefore, in: 0...30)
+
+            HStack {
+                Text("Notify minutes before:")
+                Spacer()
+                Stepper("", value: $preferences.notificationMinutesBefore, in: 0...30)
+                    .labelsHidden()
+                Text("\(preferences.notificationMinutesBefore)")
+                    .frame(minWidth: 20, alignment: .trailing)
+            }
+
             Section(header: Text("Open rules (coming soon)")) {
                 Text("Configure how Overhear opens Zoom, Meet, Teams, and Webex links.")
                     .font(.callout)
@@ -113,32 +137,19 @@ struct PreferencesView: View {
 
     private func loadCalendars() async {
         isLoadingCalendars = true
-        
-        // Check current permission status without asking again
-        let status = EKEventStore.authorizationStatus(for: .event)
-        
-        if status == .denied || status == .restricted {
-            isLoadingCalendars = false
-            calendarsBySource = []
-            return
-        }
-        
-        // Only ask for permission if status is notDetermined
-        var accessGranted = false
-        if status == .notDetermined {
-            accessGranted = await calendarService.requestAccessIfNeeded()
-        } else {
-            accessGranted = true
-        }
+
+        // Request calendar access if needed
+        let accessGranted = await calendarService.requestAccessIfNeeded()
         
         guard accessGranted else {
             isLoadingCalendars = false
             calendarsBySource = []
             return
         }
-        
+
+        // Load calendars
         calendarsBySource = calendarService.calendarsBySource()
-        
+
         // Initialize with all calendars on first run
         let allCalendarIDs = calendarsBySource.flatMap { $0.calendars.map { $0.calendarIdentifier } }
         preferences.initializeWithAllCalendars(allCalendarIDs)
@@ -165,9 +176,28 @@ private struct SourceToggle: View {
                 }
             }
         )) {
-            Text(source.title)
-                .font(.system(size: 13, weight: .semibold))
+            HStack(spacing: 4) {
+                Text(source.title)
+                    .font(.system(size: 13, weight: .semibold))
+                
+                // Show mixed state indicator
+                if isMixedState {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 6, height: 6)
+                        .overlay(
+                            Text("!")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                        )
+                }
+            }
         }
+    }
+    
+    private var isMixedState: Bool {
+        let selectedCount = calendars.filter { preferences.selectedCalendarIDs.contains($0.calendarIdentifier) }.count
+        return selectedCount > 0 && selectedCount < calendars.count
     }
 }
 

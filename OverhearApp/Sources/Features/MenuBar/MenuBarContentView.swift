@@ -9,6 +9,9 @@ struct MenuBarContentView: View {
      @State private var lastScrollTime: Date = Date()
      @State private var canScrollToPast: Bool = true
      @State private var lastScrollOffset: CGFloat = 0
+     
+     
+     
 
       var body: some View {
          VStack(spacing: 0) {
@@ -53,12 +56,19 @@ struct MenuBarContentView: View {
                      }
                      .padding(.vertical, 4)
                   }
-                  .onAppear {
-                      // Scroll to today when view appears
-                      withAnimation {
-                          proxy.scrollTo(dateIdentifier(todayDate), anchor: .top)
-                      }
-                  }
+.onAppear {
+                       // Scroll to today when view appears
+                       withAnimation {
+                           proxy.scrollTo(dateIdentifier(todayDate), anchor: .top)
+                       }
+                   }
+                   .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ScrollToToday"))) { _ in
+                       DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                           withAnimation {
+                               proxy.scrollTo(dateIdentifier(todayDate), anchor: .top)
+                           }
+                       }
+                   }
               }
               .scrollIndicators(.hidden)
               .scrollDismissesKeyboard(.interactively)
@@ -67,19 +77,31 @@ struct MenuBarContentView: View {
             
             // Footer
              HStack(spacing: 10) {
-                 Button(action: openPreferences) {
-                     Text("Preferences…")
+                 // Today button on left
+                 Button(action: scrollToToday) {
+                     Text("Today")
                          .font(.system(size: 11))
                  }
-                 .keyboardShortcut("p")
                  
                  Spacer()
                  
-                 Button(action: { NSApp.terminate(nil) }) {
-                     Text("Quit")
-                         .font(.system(size: 11))
+                 // Gear icon menu on right
+                 Menu {
+                     Button(action: openPreferences) {
+                         Text("Preferences…")
+                     }
+                     .keyboardShortcut("p")
+                     
+                     Button(action: { NSApp.terminate(nil) }) {
+                         Text("Quit")
+                     }
+                     .keyboardShortcut("q")
+                 } label: {
+                     Image(systemName: "gear")
+                         .font(.system(size: 12))
+                         .foregroundColor(.secondary)
                  }
-                 .keyboardShortcut("q")
+                 .menuStyle(.borderlessButton)
              }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -92,9 +114,9 @@ struct MenuBarContentView: View {
             .flatMap { $0.meetings }
     }
     
-     private var groupedMeetings: [(date: Date, meetings: [Meeting])] {
+private var groupedMeetings: [(date: Date, meetings: [Meeting])] {
          let grouped = Dictionary(grouping: allMeetings) { meeting -> Date in
-             Calendar.current.startOfDay(for: meeting.startDate)
+              Calendar.current.startOfDay(for: meeting.startDate)
          }
          
          // Sort by date
@@ -133,6 +155,11 @@ struct MenuBarContentView: View {
          return formatter.string(from: date)
      }
     
+    private func scrollToToday() {
+        // Scroll to today's position
+        NotificationCenter.default.post(name: NSNotification.Name("ScrollToToday"), object: nil)
+    }
+    
     private func calculateHeight() -> CGFloat {
         if allMeetings.isEmpty {
             return 150
@@ -168,7 +195,7 @@ struct MenuBarContentView: View {
         totalHeight += 8
         
         // Minimum height, maximum around 700 to accommodate most scenarios
-         return min(max(totalHeight, 150), 700)
+        return min(max(totalHeight, 150), 700)
      }
   }
 

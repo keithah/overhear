@@ -3,17 +3,17 @@ import Foundation
 /// Manages transcription of audio files using whisper.cpp
 actor TranscriptionService {
     enum Error: LocalizedError {
-        case whisperBinaryNotFound
-        case modelNotFound
+        case whisperBinaryNotFound(String)
+        case modelNotFound(String)
         case transcriptionFailed(String)
         case invalidInputPath
         
         var errorDescription: String? {
             switch self {
-            case .whisperBinaryNotFound:
-                return "Whisper.cpp binary not found. Please install whisper.cpp first."
-            case .modelNotFound:
-                return "Whisper model not found. Please download ggml-base.en.bin."
+            case .whisperBinaryNotFound(let path):
+                return "Whisper.cpp binary not found at \(path). Install whisper.cpp or set WHISPER_BIN environment variable."
+            case .modelNotFound(let path):
+                return "Whisper model not found at \(path). Download ggml-base.en.bin from whisper.cpp repository."
             case .transcriptionFailed(let message):
                 return "Transcription failed: \(message)"
             case .invalidInputPath:
@@ -27,7 +27,8 @@ actor TranscriptionService {
     
     init(whisperBinaryPath: String? = nil, modelPath: String? = nil) {
         // Default paths - use application support directory for better resource management
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first 
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library")
         let whisperDir = appSupport.appendingPathComponent("com.overhear.app/whisper")
         
         // Try environment variables first, then use app bundle resources, then fallback to standard locations
@@ -54,11 +55,11 @@ actor TranscriptionService {
     func transcribe(audioURL: URL) async throws -> String {
         // Verify files exist
         guard FileManager.default.fileExists(atPath: whisperBinaryPath) else {
-            throw Error.whisperBinaryNotFound
+            throw Error.whisperBinaryNotFound(whisperBinaryPath)
         }
         
         guard FileManager.default.fileExists(atPath: modelPath) else {
-            throw Error.modelNotFound
+            throw Error.modelNotFound(modelPath)
         }
         
         guard FileManager.default.fileExists(atPath: audioURL.path) else {

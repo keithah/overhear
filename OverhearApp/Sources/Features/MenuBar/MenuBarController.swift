@@ -1,11 +1,13 @@
 import AppKit
 import SwiftUI
 import Combine
+import Foundation
 
 final class MenuBarController: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var popover = NSPopover()
     private var iconUpdateTimer: Timer?
+    private var minuteUpdateTimer: Timer?
     private var eventMonitor: Any?
     private let viewModel: MeetingListViewModel
     private let preferencesWindowController: PreferencesWindowController
@@ -34,6 +36,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     deinit {
         iconUpdateTimer?.invalidate()
+        minuteUpdateTimer?.invalidate()
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
         }
@@ -62,19 +65,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         
          // Update menubar when meetings data is available
          Task { @MainActor in
-             // Wait for initial data load with timeout
-             var attempts = 0
-             while viewModel.upcomingSections.isEmpty && viewModel.pastSections.isEmpty && attempts < 50 {
-                 try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
-                 attempts += 1
+             do {
+                 try await Task.sleep(nanoseconds: 500_000_000) // 0.5s timeout
+                 self.updateStatusItemIcon()
+             } catch is CancellationError {
+                 // Task was cancelled
+             } catch {
+                 print("Failed to wait for initial data: \(error)")
+                 self.updateStatusItemIcon() // Update anyway
              }
-             self.updateStatusItemIcon()
          }
         
         scheduleNextIconUpdate()
         
         // Update every minute to refresh time display
-        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        minuteUpdateTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
                 self?.updateStatusItemIcon()
             }

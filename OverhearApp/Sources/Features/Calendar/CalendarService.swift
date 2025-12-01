@@ -51,14 +51,17 @@ final class CalendarService: ObservableObject {
     }
     
     func calendarsBySource() -> [(source: EKSource, calendars: [EKCalendar])] {
-        let calendars = eventStore.calendars(for: .event)
+        let calendars = availableCalendars()
         let grouped = Dictionary(grouping: calendars) { $0.source }
-        return grouped
+        let result = grouped
             .compactMap { source, cals -> (source: EKSource, calendars: [EKCalendar])? in
-                guard let source = source else { return nil }
+                guard let source = source else {
+                    return nil
+                }
                 return (source: source, calendars: cals.sorted { $0.title < $1.title })
             }
             .sorted { $0.source.title < $1.source.title }
+        return result
     }
     
     func getSource(for calendar: EKCalendar) -> EKSource? {

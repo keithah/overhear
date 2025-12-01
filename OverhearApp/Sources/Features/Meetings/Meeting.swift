@@ -168,6 +168,7 @@ final class PlatformIconProvider {
 
 // MARK: - Platform Detection
 
+@MainActor
 enum MeetingPlatform: String, Codable, CaseIterable {
     case zoom
     case meet
@@ -175,7 +176,7 @@ enum MeetingPlatform: String, Codable, CaseIterable {
     case webex
     case unknown
 
-    static func detect(from url: URL?) -> MeetingPlatform {
+    nonisolated static func detect(from url: URL?) -> MeetingPlatform {
         guard let host = url?.host?.lowercased() else { return .unknown }
         if host.contains("zoom.us") || host.contains("zoom.com") {
             return .zoom
@@ -192,17 +193,48 @@ enum MeetingPlatform: String, Codable, CaseIterable {
         return .unknown
     }
 
+    @MainActor
     func openURL(_ url: URL, openBehavior: OpenBehavior) -> Bool {
         let urlToOpen: URL
+        
         switch self {
         case .zoom:
             switch openBehavior {
             case .zoommtg, .app:
+                // Try to open with Zoom app using custom protocol
                 urlToOpen = convertToZoomMTG(url) ?? url
             case .browser:
+                // Open with browser
                 urlToOpen = url
             }
-        case .meet, .teams, .webex, .unknown:
+        case .meet:
+            switch openBehavior {
+            case .app:
+                // Google Meet web app
+                urlToOpen = url
+            case .browser, .zoommtg:
+                // Open with browser
+                urlToOpen = url
+            }
+        case .teams:
+            switch openBehavior {
+            case .app:
+                // Microsoft Teams web app
+                urlToOpen = url
+            case .browser, .zoommtg:
+                // Open with browser
+                urlToOpen = url
+            }
+        case .webex:
+            switch openBehavior {
+            case .app:
+                // Webex web app
+                urlToOpen = url
+            case .browser, .zoommtg:
+                // Open with browser
+                urlToOpen = url
+            }
+        case .unknown:
             urlToOpen = url
         }
 
@@ -210,26 +242,42 @@ enum MeetingPlatform: String, Codable, CaseIterable {
     }
 
     private func convertToZoomMTG(_ url: URL) -> URL? {
-        // Basic conversion: if it's a zoom.us link, try to extract meeting ID and create zoommtg://
-        guard let host = url.host?.lowercased(), host.contains("zoom.us") || host.contains("zoom.com") else {
+        // Convert https://zoom.us/j/<id> to zoommtg://zoom.us/join?confno=<id>
+        guard let host = url.host?.lowercased(), 
+              (host.contains("zoom.us") || host.contains("zoom.com")) else {
             return nil
         }
+        
         let path = url.path
-        // Zoom URLs like https://zoom.us/j/123456789 or https://zoom.us/meeting/123456789
-        if path.hasPrefix("/j/") || path.hasPrefix("/meeting/") {
-            let components = path.split(separator: "/")
-            if components.count >= 3, let meetingID = components.last {
-                return URL(string: "zoommtg://zoom.us/join?confno=\(meetingID)")
-            }
+        var meetingID: String?
+        
+        // Extract meeting ID from /j/<id> or /meeting/<id> paths
+        if path.hasPrefix("/j/") {
+            let components = path.dropFirst(3).split(separator: "/", maxSplits: 1).first
+            meetingID = components.map(String.init)
+        } else if path.hasPrefix("/meeting/") {
+            let components = path.dropFirst(9).split(separator: "/", maxSplits: 1).first
+            meetingID = components.map(String.init)
         }
+        
+        // Create zoommtg:// URL with the meeting ID
+        if let meetingID = meetingID, !meetingID.isEmpty {
+            var urlString = "zoommtg://zoom.us/join?confno=\(meetingID)"
+            // Preserve password if present in query parameters
+            if let queryParams = url.query, queryParams.contains("pwd=") {
+                urlString += "&\(queryParams)"
+            }
+            return URL(string: urlString)
+        }
+        
         return nil
     }
 }
 
 enum OpenBehavior: String, Codable, CaseIterable {
-    case browser
-    case app
-    case zoommtg // Only for Zoom
+    case browser = "browser"
+    case app = "app"
+    case zoommtg = "zoommtg" // Only for Zoom
 
     var displayName: String {
         switch self {
@@ -329,12 +377,43 @@ private extension Meeting {
         }
 
         let textSources: [String?] = [event.location, event.notes]
+        
+        // First, try to find meeting-specific URLs (Teams, Meet, Zoom, Webex)
+        let meetingURLs = ["teams.microsoft.com", "meet.google.com", "zoom.us", "zoom.com", "webex.com"]
+        for text in textSources {
+            if let text, let url = detectSpecificURL(in: text, containing: meetingURLs) {
+                return url
+            }
+        }
+        
+        // Fallback to any URL
         for text in textSources {
             if let text, let url = detectFirstURL(in: text) {
                 return url
             }
         }
 
+        return nil
+    }
+    
+    static func detectSpecificURL(in text: String, containing domains: [String]) -> URL? {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let matches = detector.matches(in: text, options: [], range: range)
+        
+        // Find first URL matching one of the specified domains
+        for match in matches {
+            if let url = match.url, let host = url.host?.lowercased() {
+                for domain in domains {
+                    if host.contains(domain) {
+                        return url
+                    }
+                }
+            }
+        }
+        
         return nil
     }
 

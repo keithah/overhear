@@ -56,11 +56,7 @@ final class MeetingListViewModel: ObservableObject {
 
     func join(meeting: Meeting) {
         guard let url = meeting.url else { return }
-        var urlToOpen = url
-        if meeting.platform == .zoom, let zoommtgURL = convertToZoomMTG(url) {
-            urlToOpen = zoommtgURL
-        }
-        let success = NSWorkspace.shared.open(urlToOpen)
+        let success = meeting.platform.openURL(url, openBehavior: preferences.openBehavior(for: meeting.platform))
         if !success {
             // Copy to clipboard as fallback
             NSPasteboard.general.clearContents()
@@ -68,49 +64,22 @@ final class MeetingListViewModel: ObservableObject {
         }
     }
 
-    private func convertToZoomMTG(_ url: URL) -> URL? {
-        guard let host = url.host?.lowercased(), host.contains("zoom.us") || host.contains("zoom.com") else {
-            return nil
-        }
-        let path = url.path
 
-        // Extract meeting ID from various Zoom URL formats
-        // /j/123456789 or /meeting/123456789 or /webinar/123456789
-        let components = path.split(separator: "/").filter { !$0.isEmpty }
-        if components.count >= 2 {
-            if let meetingID = components.last?.split(separator: "?").first {
-                // Extract password and other params from query string
-                var zoommtgURLString = "zoommtg://zoom.us/join?confno=\(meetingID)"
-
-                // Preserve password and other params from original URL
-                if let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems {
-                    for item in queryItems {
-                        if item.name == "pwd" || item.name == "password" {
-                            if let value = item.value {
-                                zoommtgURLString += "&pwd=\(value)"
-                            }
-                        }
-                    }
-                }
-
-                if let zoommtgURL = URL(string: zoommtgURLString) {
-                    return zoommtgURL
-                }
-            }
-        }
-        return nil
-    }
+        
 
     private func apply(meetings: [Meeting]) {
         let now = Date()
         let calendar = Calendar.current
+        // Extended cutoff: meetings remain "upcoming" until 5 minutes after their end time
+        let fiveMinutesFromNow = now.addingTimeInterval(5 * 60)
 
         let grouped = Dictionary(grouping: meetings) { event in
             calendar.startOfDay(for: event.startDate)
         }
 
         let sections: [MeetingSection] = grouped.map { date, events in
-            let isPast = date < calendar.startOfDay(for: now) || (date == calendar.startOfDay(for: now) && events.allSatisfy { $0.endDate < now })
+            // A date is "past" if it's before today OR it's today but all events ended more than 5 minutes ago
+            let isPast = date < calendar.startOfDay(for: now) || (date == calendar.startOfDay(for: now) && events.allSatisfy { $0.endDate < fiveMinutesFromNow })
             let title = dayTitle(for: date, calendar: calendar)
             let sortedEvents = events.sorted { $0.startDate < $1.startDate }
             return MeetingSection(id: UUID().uuidString, date: date, title: title, isPast: isPast, meetings: sortedEvents)

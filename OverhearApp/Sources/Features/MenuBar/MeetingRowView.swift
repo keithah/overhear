@@ -30,6 +30,10 @@ struct MeetingRowView: View {
             
             // Content
             HStack(alignment: .center, spacing: 10) {
+                // Left spacing
+                Spacer()
+                    .frame(width: 4)
+                
                 // Holiday emoji or icon
                 if meeting.holidayInfo.isHoliday {
                     Text(meeting.holidayEmoji)
@@ -116,7 +120,11 @@ struct MinimalistMeetingRowView: View {
                  .fill(isHovered ? Color.blue.opacity(0.15) : Color.clear)
              
 HStack(alignment: .center, spacing: 10) {
-                 // Icon (Meeter size: ~14px)
+                  // Left spacing
+                  Spacer()
+                      .frame(width: 4)
+                  
+                  // Icon (Meeter size: ~14px)
                  if meeting.holidayInfo.isHoliday {
                      Text(meeting.holidayEmoji)
                          .font(.system(size: 16))
@@ -170,6 +178,8 @@ HStack(alignment: .center, spacing: 10) {
         formatter.timeStyle = .short
         if use24HourClock {
             formatter.dateFormat = "HH:mm"
+        } else {
+            formatter.dateFormat = "h:mm a"
         }
         return formatter.string(from: meeting.startDate)
     }
