@@ -54,8 +54,10 @@ final class MeetingRecordingManager: ObservableObject {
         self.captureService = captureService
         self.transcriptionService = transcriptionService
         
-        // Create recording directory in app support
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+// Create recording directory in app support
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            fatalError("Application support directory not found")
+        }
         self.recordingDirectory = appSupport.appendingPathComponent("com.overhear.app/Recordings")
         
         try? FileManager.default.createDirectory(at: recordingDirectory, withIntermediateDirectories: true)

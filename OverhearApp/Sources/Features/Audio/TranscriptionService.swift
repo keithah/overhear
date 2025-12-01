@@ -95,30 +95,41 @@ actor TranscriptionService {
             try process.run()
             
             return try await withCheckedThrowingContinuation { continuation in
+                var finished = false
                 let queue = DispatchQueue(label: "com.overhear.transcription")
                 queue.async {
+                    guard !finished else { return }
                     process.waitUntilExit()
                     
-                    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                    let errorString = String(data: errorData, encoding: .utf8) ?? ""
-                    
-                    if process.terminationStatus != 0 {
-                        let error = Error.transcriptionFailed(errorString.isEmpty ? "Unknown error" : errorString)
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    
-                    // Read the output text file
-                    let outputPath = outputPrefix + ".txt"
                     do {
-                        let transcript = try String(contentsOfFile: outputPath, encoding: .utf8)
+                        let errorData = try errorPipe.fileHandleForReading.readDataToEndOfFile()
+                        let errorString = String(data: errorData, encoding: .utf8) ?? ""
                         
-                        // Clean up temp files
-                        try? FileManager.default.removeItem(atPath: outputPath)
+                        guard !finished else { return }
+                        finished = true
                         
-                        continuation.resume(returning: transcript)
+                        if process.terminationStatus != 0 {
+                            let error = Error.transcriptionFailed(errorString.isEmpty ? "Unknown error" : errorString)
+                            continuation.resume(throwing: error)
+                            return
+                        }
+                        
+                        // Read the output text file
+                        let outputPath = outputPrefix + ".txt"
+                        do {
+                            let transcript = try String(contentsOfFile: outputPath, encoding: .utf8)
+                            
+                            // Clean up temp files
+                            try? FileManager.default.removeItem(atPath: outputPath)
+                            
+                            continuation.resume(returning: transcript)
+                        } catch {
+                            continuation.resume(throwing: Error.transcriptionFailed("Could not read transcript: \(error.localizedDescription)"))
+                        }
                     } catch {
-                        continuation.resume(throwing: Error.transcriptionFailed("Could not read transcript: \(error.localizedDescription)"))
+                        guard !finished else { return }
+                        finished = true
+                        continuation.resume(throwing: Error.transcriptionFailed("Failed to read process output: \(error.localizedDescription)"))
                     }
                 }
             }

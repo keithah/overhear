@@ -51,11 +51,17 @@ actor TranscriptStore {
         if let provided = storageDirectory {
             self.storageDirectory = provided
         } else {
-            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+                fatalError("Application support directory not found")
+            }
             self.storageDirectory = appSupport.appendingPathComponent("com.overhear.app/Transcripts")
         }
         
-        try? FileManager.default.createDirectory(at: self.storageDirectory, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: self.storageDirectory, withIntermediateDirectories: true)
+        } catch {
+            print("Warning: Failed to create transcript storage directory: \(error)")
+        }
     }
     
     /// Save a transcript

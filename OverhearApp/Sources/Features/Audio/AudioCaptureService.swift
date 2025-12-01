@@ -93,14 +93,19 @@ actor AudioCaptureService {
                 queue.async {
                     process.waitUntilExit()
                     
-                    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                    let errorString = String(data: errorData, encoding: .utf8) ?? ""
-                    
-                    if process.terminationStatus != 0 {
-                        let error = Error.captureFailed(errorString.isEmpty ? "Unknown error" : errorString)
+                    do {
+                        let errorData = try errorPipe.fileHandleForReading.readDataToEndOfFile()
+                        let errorString = String(data: errorData, encoding: .utf8) ?? ""
+                        
+                        if process.terminationStatus != 0 {
+                            let error = Error.captureFailed(errorString.isEmpty ? "Unknown error" : errorString)
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume(returning: outputURL)
+                        }
+                    } catch {
+                        let error = Error.captureFailed("Failed to read process output: \(error.localizedDescription)")
                         continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume(returning: outputURL)
                     }
                 }
             }

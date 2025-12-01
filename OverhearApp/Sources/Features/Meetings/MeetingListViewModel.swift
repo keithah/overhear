@@ -78,8 +78,7 @@ final class MeetingListViewModel: ObservableObject {
         }
 
         let sections: [MeetingSection] = grouped.map { date, events in
-            // A date is "past" if it's before today OR it's today but all events ended more than 5 minutes ago
-            let isPast = date < calendar.startOfDay(for: now) || (date == calendar.startOfDay(for: now) && events.allSatisfy { $0.endDate < fiveMinutesFromNow })
+            let isPast = isPastDate(date, events: events, now: now, calendar: calendar, fiveMinutesFromNow: fiveMinutesFromNow)
             let title = dayTitle(for: date, calendar: calendar)
             let sortedEvents = events.sorted { $0.startDate < $1.startDate }
             return MeetingSection(id: UUID().uuidString, date: date, title: title, isPast: isPast, meetings: sortedEvents)
@@ -104,6 +103,20 @@ final class MeetingListViewModel: ObservableObject {
         return formatter.string(from: date)
     }
 
+    private func isPastDate(_ date: Date, events: [Meeting], now: Date, calendar: Calendar, fiveMinutesFromNow: Date) -> Bool {
+        let today = calendar.startOfDay(for: now)
+        
+        if date < today {
+            return true
+        }
+        
+        if date == today {
+            return events.allSatisfy { $0.endDate < fiveMinutesFromNow }
+        }
+        
+        return false
+    }
+    
     private func preferencesSnapshot() -> PreferencesSnapshot {
         PreferencesSnapshot(daysAhead: preferences.daysAhead,
                             daysBack: preferences.daysBack,

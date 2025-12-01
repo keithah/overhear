@@ -25,11 +25,16 @@ struct PreferencesView: View {
         }
         .padding()
         .frame(width: 520, height: 420)
-        .task {
-             // Wait a moment for main app to initialize permissions
-             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-             await loadCalendars()
-         }
+.task {
+              // Wait a moment for main app to initialize permissions
+              do {
+                  try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+              } catch {
+                  // Cancelled or error
+                  return
+              }
+              await loadCalendars()
+          }
     }
 
     private var generalTab: some View {

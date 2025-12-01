@@ -255,24 +255,27 @@ final class TranscriptSearchViewModel: ObservableObject {
     private func performSearch() {
         searchTask?.cancel()
         searchTask = Task {
-            isLoading = true
-            errorMessage = nil
+            defer { isLoading = false }
             
             do {
+                guard !Task.isCancelled else { return }
+                
                 if searchQuery.isEmpty {
                     let allTranscripts = try await store.allTranscripts()
+                    guard !Task.isCancelled else { return }
                     self.transcripts = allTranscripts
                 } else {
                     let results = try await store.search(query: searchQuery)
+                    guard !Task.isCancelled else { return }
                     self.transcripts = results
                 }
+            } catch is CancellationError {
+                // Expected - task was cancelled
             } catch {
                 self.errorMessage = "Search failed: \(error.localizedDescription)"
                 print("Search failed: \(error)")
                 self.transcripts = []
             }
-            
-            isLoading = false
         }
     }
 }
