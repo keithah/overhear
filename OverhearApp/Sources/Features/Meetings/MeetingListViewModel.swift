@@ -61,6 +61,12 @@ final class MeetingListViewModel: ObservableObject {
             // Copy to clipboard as fallback
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url.absoluteString, forType: .string)
+            
+            // Show user feedback
+            let alert = NSAlert()
+            alert.messageText = "Failed to open link. URL copied to clipboard."
+            alert.alertStyle = .informational
+            alert.runModal()
         }
     }
 

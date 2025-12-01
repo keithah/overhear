@@ -130,6 +130,8 @@ struct TranscriptRow: View {
 struct TranscriptDetailView: View {
     let transcript: StoredTranscript
     @Environment(\.dismiss) var dismiss
+    @State private var exportError: String?
+    @State private var showExportError = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -187,6 +189,11 @@ struct TranscriptDetailView: View {
             .background(Color(nsColor: .controlBackgroundColor))
             .border(Color(nsColor: .separatorColor), width: 1)
         }
+        .alert("Export Failed", isPresented: $showExportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportError ?? "Unknown error")
+        }
     }
     
     private func copyTranscript() {
@@ -208,6 +215,8 @@ struct TranscriptDetailView: View {
                 try transcript.transcript.write(to: url, atomically: true, encoding: String.Encoding.utf8)
             } catch {
                 print("Failed to export transcript: \(error)")
+                self.exportError = error.localizedDescription
+                self.showExportError = true
             }
         }
     }

@@ -3,14 +3,14 @@ import Foundation
 /// Manages audio capture for meetings using the AudioSpike CLI tool
 actor AudioCaptureService {
     enum Error: LocalizedError {
-        case audioSpikeNotFound
+        case audioSpikeNotFound(String)
         case captureFailed(String)
         case invalidOutputPath
         
         var errorDescription: String? {
             switch self {
-            case .audioSpikeNotFound:
-                return "AudioSpike tool not found. Please build it first."
+            case .audioSpikeNotFound(let path):
+                return "AudioSpike tool not found at \(path). Please build and install it to ~/.overhear/bin/AudioSpike."
             case .captureFailed(let message):
                 return "Audio capture failed: \(message)"
             case .invalidOutputPath:
@@ -50,7 +50,7 @@ actor AudioCaptureService {
         
         // Verify AudioSpike exists
         guard FileManager.default.fileExists(atPath: audioSpikeExecutablePath) else {
-            throw Error.audioSpikeNotFound
+            throw Error.audioSpikeNotFound(audioSpikeExecutablePath)
         }
         
         // Create output directory if needed

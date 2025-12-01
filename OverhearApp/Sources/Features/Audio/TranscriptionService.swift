@@ -11,9 +11,9 @@ actor TranscriptionService {
         var errorDescription: String? {
             switch self {
             case .whisperBinaryNotFound(let path):
-                return "Whisper.cpp binary not found at \(path). Install whisper.cpp or set WHISPER_BIN environment variable."
+                return "Whisper.cpp binary not found at \(path). Install whisper.cpp or set the WHISPER_BIN environment variable."
             case .modelNotFound(let path):
-                return "Whisper model not found at \(path). Download ggml-base.en.bin from whisper.cpp repository."
+                return "Whisper model not found at \(path). Download ggml-base.en.bin from the whisper.cpp repository."
             case .transcriptionFailed(let message):
                 return "Transcription failed: \(message)"
             case .invalidInputPath:

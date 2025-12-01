@@ -187,14 +187,10 @@ private struct SourceToggle: View {
                 
                 // Show mixed state indicator
                 if isMixedState {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 6, height: 6)
-                        .overlay(
-                            Text("!")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
-                        )
+                    Rectangle()
+                        .fill(Color.gray)
+                        .frame(width: 10, height: 2)
+                        .cornerRadius(1)
                 }
             }
         }

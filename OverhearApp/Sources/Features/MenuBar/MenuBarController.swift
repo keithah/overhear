@@ -51,7 +51,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         button.title = ""
         button.target = self
-        button.action = #selector(togglePopoverAction)
+        button.action = #selector(togglePopover)
         
         // Setup popover
         popover.behavior = .transient  // Close immediately when clicking outside
@@ -87,7 +87,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
     
     @objc
-    func togglePopoverAction() {
+    func togglePopover() {
         guard let button = statusItem?.button else {
             return
         }
