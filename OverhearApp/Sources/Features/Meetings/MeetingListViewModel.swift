@@ -70,9 +70,6 @@ final class MeetingListViewModel: ObservableObject {
         }
     }
 
-
-        
-
     private func apply(meetings: [Meeting]) {
         let now = Date()
         let calendar = Calendar.current
