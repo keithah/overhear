@@ -120,15 +120,24 @@ actor TranscriptStore {
         return transcripts.sorted { $0.date > $1.date }
     }
     
-    /// Search transcripts by text content
-    func search(query: String) async throws -> [StoredTranscript] {
+    /// Search transcripts by text content, with optional pagination
+    func search(query: String, limit: Int = 50, offset: Int = 0) async throws -> [StoredTranscript] {
         let transcripts = try await allTranscripts()
         let lowerQuery = query.lowercased()
         
-        return transcripts.filter { transcript in
+        let filtered = transcripts.filter { transcript in
             transcript.title.lowercased().contains(lowerQuery) ||
             transcript.transcript.lowercased().contains(lowerQuery)
         }
+        
+        let start = min(offset, filtered.count)
+        let end = min(start + limit, filtered.count)
+        
+        if start >= end {
+            return []
+        }
+        
+        return Array(filtered[start..<end])
     }
     
     /// Delete a transcript
