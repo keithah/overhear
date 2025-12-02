@@ -8,15 +8,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
-        // Request notification permissions
-        requestNotificationPermissions()
-
         let context = AppContext()
         self.context = context
 
-        // Request calendar permissions early so preferences window can access them
+        // Request permissions early via centralized service
         Task {
-            _ = await context.calendarService.requestAccessIfNeeded()
+            // Request notification permissions
+            let notificationGranted = await context.permissionsService.requestNotificationPermissions()
+            if notificationGranted {
+                print("Notification permissions granted")
+            } else {
+                print("Notification permissions denied or unavailable")
+            }
+            
+            // Request calendar permissions
+            let calendarGranted = await context.permissionsService.requestCalendarAccessIfNeeded()
+            if !calendarGranted {
+                print("Calendar permissions denied or unavailable")
+            }
         }
 
         let controller = MenuBarController(viewModel: context.meetingViewModel, preferencesWindowController: context.preferencesWindowController, preferences: context.preferencesService)
@@ -29,19 +38,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Keep windows hidden but present for proper event delivery to menubar
         DispatchQueue.main.async {
             NSApp.windows.forEach { $0.orderOut(nil) }
-        }
-    }
-
-    private func requestNotificationPermissions() {
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error = error {
-                print("Notification permission error: \(error.localizedDescription)")
-            } else if granted {
-                print("Notification permissions granted")
-            } else {
-                print("Notification permissions denied")
-            }
         }
     }
 }

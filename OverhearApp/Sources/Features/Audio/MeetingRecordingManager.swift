@@ -50,18 +50,18 @@ final class MeetingRecordingManager: ObservableObject {
         meetingID: String,
         captureService: AudioCaptureService = AudioCaptureService(),
         transcriptionService: TranscriptionService = TranscriptionService()
-    ) {
+    ) throws {
         self.meetingID = meetingID
         self.captureService = captureService
         self.transcriptionService = transcriptionService
         
-// Create recording directory in app support
+        // Create recording directory in app support
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            fatalError("Application support directory not found")
+            throw RecordingError.captureService(NSError(domain: "MeetingRecordingManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Application support directory not found"]))
         }
         self.recordingDirectory = appSupport.appendingPathComponent("com.overhear.app/Recordings")
         
-        try? FileManager.default.createDirectory(at: recordingDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: recordingDirectory, withIntermediateDirectories: true)
     }
     
     /// Start recording the meeting

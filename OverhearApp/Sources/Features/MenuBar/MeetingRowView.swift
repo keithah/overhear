@@ -39,12 +39,9 @@ struct MeetingRowView: View {
                     Text(meeting.holidayEmoji)
                         .font(.system(size: 16))
                 } else {
-                    let iconColor = Color(red: meeting.iconInfo.color.redComponent,
-                                         green: meeting.iconInfo.color.greenComponent,
-                                         blue: meeting.iconInfo.color.blueComponent)
                     Image(systemName: meeting.iconInfo.iconName)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(iconColor)
+                        .foregroundColor(meeting.iconInfo.swiftUIColor)
                         .frame(width: 14)
                 }
                 
@@ -129,15 +126,12 @@ HStack(alignment: .center, spacing: 10) {
                      Text(meeting.holidayEmoji)
                          .font(.system(size: 16))
                          .frame(width: 18)
-                 } else {
-                     let iconColor = Color(red: meeting.iconInfo.color.redComponent,
-                                          green: meeting.iconInfo.color.greenComponent,
-                                          blue: meeting.iconInfo.color.blueComponent)
-                     Image(systemName: meeting.iconInfo.iconName)
-                         .font(.system(size: 12, weight: .semibold))
-                         .foregroundColor(iconColor)
-                         .frame(width: 16)
-                 }
+                  } else {
+                      Image(systemName: meeting.iconInfo.iconName)
+                          .font(.system(size: 12, weight: .semibold))
+                          .foregroundColor(meeting.iconInfo.swiftUIColor)
+                          .frame(width: 16)
+                  }
                  
                  // Time (Meeter size: 13px)
                  if !meeting.isAllDay {

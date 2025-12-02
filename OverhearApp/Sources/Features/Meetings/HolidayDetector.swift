@@ -1,0 +1,99 @@
+import Foundation
+
+// MARK: - Holiday Detection
+
+final class HolidayDetector {
+    /// Detects if a meeting title/calendar indicates a holiday and returns emoji
+    static func detectHoliday(title: String, calendarName: String?, date: Date) -> HolidayInfo {
+        let combinedText = (title + " " + (calendarName ?? "")).lowercased()
+        let calendar = Calendar.current
+        let monthDay = calendar.component(.month, from: date) * 100 + calendar.component(.day, from: date)
+        
+        // Check title and calendar keywords (High confidence - returns immediately)
+        if combinedText.contains("thanksgiving") {
+            return HolidayInfo(emoji: "🦃", isHoliday: true)
+        }
+        
+        if combinedText.contains("christmas") || combinedText.contains("xmas") || combinedText.contains("noel") {
+            return HolidayInfo(emoji: "🎄", isHoliday: true)
+        }
+        
+        if combinedText.contains("new year") || combinedText.contains("nye") || combinedText.contains("new year's eve") {
+            return HolidayInfo(emoji: "⭐", isHoliday: true)
+        }
+        
+        if combinedText.contains("halloween") || combinedText.contains("hallows") {
+            return HolidayInfo(emoji: "🎃", isHoliday: true)
+        }
+        
+        if combinedText.contains("easter") {
+            return HolidayInfo(emoji: "🥚", isHoliday: true)
+        }
+        
+        if combinedText.contains("valentine") {
+            return HolidayInfo(emoji: "❤️", isHoliday: true)
+        }
+        
+        if combinedText.contains("independence day") || combinedText.contains("4th of july") {
+            return HolidayInfo(emoji: "🇺🇸", isHoliday: true)
+        }
+        
+        if combinedText.contains("black friday") {
+            return HolidayInfo(emoji: "🛍️", isHoliday: true)
+        }
+        
+        if combinedText.contains("cyber monday") {
+            return HolidayInfo(emoji: "💻", isHoliday: true)
+        }
+        
+        if combinedText.contains("birthday") {
+            return HolidayInfo(emoji: "🎂", isHoliday: true)
+        }
+        
+        if combinedText.contains("anniversary") {
+            return HolidayInfo(emoji: "💍", isHoliday: true)
+        }
+        
+        // Only apply date-based holidays for events with generic/holiday-like titles
+        // Avoid marking random events on holiday dates with holiday emojis (e.g. "Project Sync" on July 4th)
+        let hasGenericTitle = combinedText.contains("day off") ||
+                              combinedText.contains("time off") ||
+                              combinedText.contains("vacation") ||
+                              combinedText.contains("holiday") ||
+                              combinedText.isEmpty
+        
+        if !hasGenericTitle {
+            // Only apply fixed dates if title is generic/empty or explicitly mentions time off
+            return HolidayInfo(emoji: "", isHoliday: false)
+        }
+        
+        // Check specific dates for common holidays
+        switch monthDay {
+        case 1101:  // November 1 - Día de Muertos
+            return HolidayInfo(emoji: "💀", isHoliday: true)
+        case 1225:  // December 25 - Christmas (fallback)
+            return HolidayInfo(emoji: "🎄", isHoliday: true)
+        case 101:   // January 1 - New Year's Day
+            return HolidayInfo(emoji: "⭐", isHoliday: true)
+        case 704:   // July 4
+            return HolidayInfo(emoji: "🇺🇸", isHoliday: true)
+        case 214:   // February 14 - Valentine's Day
+            return HolidayInfo(emoji: "❤️", isHoliday: true)
+        case 317:   // March 17 - St. Patrick's Day
+            return HolidayInfo(emoji: "🍀", isHoliday: true)
+        case 1031:  // October 31 - Halloween
+            return HolidayInfo(emoji: "🎃", isHoliday: true)
+        case 1231:  // December 31 - New Year's Eve
+            return HolidayInfo(emoji: "⭐", isHoliday: true)
+        default:
+            break
+        }
+        
+        // Generic holiday keyword fallback
+        if combinedText.contains("holiday") {
+            return HolidayInfo(emoji: "🎉", isHoliday: true)
+        }
+        
+        return HolidayInfo(emoji: "", isHoliday: false)
+    }
+}

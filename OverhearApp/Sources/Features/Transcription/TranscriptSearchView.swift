@@ -251,7 +251,14 @@ final class TranscriptSearchViewModel: ObservableObject {
             let allTranscripts = try await store.allTranscripts()
             self.transcripts = allTranscripts
         } catch {
-            self.errorMessage = "Failed to load transcripts: \(error.localizedDescription)"
+            let nsError = error as NSError
+            if nsError.domain == NSURLErrorDomain {
+                self.errorMessage = "Network error: Please check your internet connection and try again. (\(nsError.localizedDescription))"
+            } else if nsError.domain == NSCocoaErrorDomain {
+                self.errorMessage = "Data error: There was a problem loading the transcripts. Please try again. (\(nsError.localizedDescription))"
+            } else {
+                self.errorMessage = "Failed to load transcripts. Please check your permissions and try again. If the problem persists, contact support. (\(error.localizedDescription))"
+            }
             print("Failed to load transcripts: \(error)")
         }
         isLoading = false
@@ -278,13 +285,20 @@ final class TranscriptSearchViewModel: ObservableObject {
                     guard !Task.isCancelled else { return }
                     self.transcripts = results
                 }
-            } catch is CancellationError {
-                // Expected - task was cancelled
-            } catch {
-                self.errorMessage = "Search failed: \(error.localizedDescription)"
-                print("Search failed: \(error)")
-                self.transcripts = []
-            }
+             } catch is CancellationError {
+                 // Expected - task was cancelled
+             } catch {
+                 let nsError = error as NSError
+                 if nsError.domain == NSURLErrorDomain {
+                     self.errorMessage = "Network error: Please check your internet connection and try again. (\(nsError.localizedDescription))"
+                 } else if nsError.domain == NSCocoaErrorDomain {
+                     self.errorMessage = "Data error: There was a problem processing the transcripts. (\(nsError.localizedDescription))"
+                 } else {
+                     self.errorMessage = "An unexpected error occurred during search. Please try again. (\(nsError.localizedDescription))"
+                 }
+                 print("Search failed: \(error)")
+                 self.transcripts = []
+             }
         }
     }
 }

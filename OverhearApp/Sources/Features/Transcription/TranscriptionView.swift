@@ -7,6 +7,11 @@ struct TranscriptionView: View {
     @State private var exportError: String?
     @State private var showExportError = false
     
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        return formatter
+    }()
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -106,8 +111,7 @@ struct TranscriptionView: View {
     private func exportTranscript() {
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.plainText]
-        let formatter = ISO8601DateFormatter()
-        let dateString = formatter.string(from: Date())
+        let dateString = Self.iso8601Formatter.string(from: Date())
         savePanel.nameFieldStringValue = "transcript-\(dateString).txt"
         
         savePanel.begin { response in

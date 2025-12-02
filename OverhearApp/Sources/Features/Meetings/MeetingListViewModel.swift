@@ -14,11 +14,13 @@ final class MeetingListViewModel: ObservableObject {
 
     private let calendarService: CalendarService
     private let preferences: PreferencesService
+    private let permissions: PermissionsService
     private var cancellables: Set<AnyCancellable> = []
 
-    init(calendarService: CalendarService, preferences: PreferencesService) {
+    init(calendarService: CalendarService, preferences: PreferencesService, permissions: PermissionsService) {
         self.calendarService = calendarService
         self.preferences = preferences
+        self.permissions = permissions
 
         preferences.$daysAhead
             .combineLatest(preferences.$daysBack, preferences.$showEventsWithoutLinks, preferences.$showMaybeEvents)
@@ -34,10 +36,11 @@ final class MeetingListViewModel: ObservableObject {
 
     func reload() async {
         isLoading = true
-        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-
-        let authorized = await calendarService.requestAccessIfNeeded()
-        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        
+        // Request calendar access through centralized permissions service
+        let authorized = await permissions.requestCalendarAccessIfNeeded()
+        authorizationStatus = permissions.calendarAuthorizationStatus
+        
         guard authorized else {
             isLoading = false
             return

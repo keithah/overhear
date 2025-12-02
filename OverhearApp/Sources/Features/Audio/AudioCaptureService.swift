@@ -88,31 +88,21 @@ actor AudioCaptureService {
             do {
                 try process.run()
                 
-                // Wait for process to complete
-                let queue = DispatchQueue(label: "com.overhear.audio.capture")
-                return try await withCheckedThrowingContinuation { continuation in
+                // Wait for process completion using async approach
+                return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Swift.Error>) in
+                    // Use DispatchQueue only for blocking I/O, not for concurrency control
+                    let queue = DispatchQueue(label: "com.overhear.audio.capture", qos: .userInitiated)
                     queue.async {
                         process.waitUntilExit()
                         
-                        do {
-                            let errorData = try errorPipe.fileHandleForReading.readDataToEndOfFile()
-                            let errorString = String(data: errorData, encoding: .utf8) ?? ""
-                            
-                            if process.terminationStatus != 0 {
-                                // Check for cancellation (SIGTERM = 15)
-                                if process.terminationStatus == 15 {
-                                    continuation.resume(throwing: CancellationError())
-                                    return
-                                }
-                                
-                                let error = Error.captureFailed(errorString.isEmpty ? "Unknown error" : errorString)
-                                continuation.resume(throwing: error)
-                            } else {
-                                continuation.resume(returning: outputURL)
-                            }
-                        } catch {
-                            let error = Error.captureFailed("Failed to read process output: \(error.localizedDescription)")
+                        // Read error output and determine result
+                        let errorString = Self.readErrorOutput(from: errorPipe)
+                        
+                        if process.terminationStatus != 0 {
+                            let error = Error.captureFailed(errorString.isEmpty ? "Unknown error" : errorString)
                             continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume(returning: outputURL)
                         }
                     }
                 }
@@ -121,6 +111,16 @@ actor AudioCaptureService {
             }
         } onCancel: {
             process.terminate()
+        }
+    }
+    
+    /// Helper method to safely read error pipe output
+    private static func readErrorOutput(from errorPipe: Pipe) -> String {
+        do {
+            let errorData = try errorPipe.fileHandleForReading.readDataToEndOfFile()
+            return String(data: errorData, encoding: .utf8) ?? ""
+        } catch {
+            return "Failed to read error output: \(error.localizedDescription)"
         }
     }
 }

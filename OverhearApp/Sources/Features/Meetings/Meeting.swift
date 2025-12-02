@@ -3,158 +3,7 @@ import EventKit
 import AppKit
 import SwiftUI
 
-// MARK: - Shared Types
-
-struct HolidayInfo {
-    let emoji: String
-    let isHoliday: Bool
-}
-
-struct PlatformIconInfo {
-    let iconName: String
-    let color: NSColor
-    let isSystemIcon: Bool
-}
-
-enum GenericMeetingType {
-    case allDay
-    case phone
-    case generic
-}
-
-// MARK: - Platform Detection
-
-@MainActor
-enum MeetingPlatform: String, Codable, CaseIterable {
-    case zoom
-    case meet
-    case teams
-    case webex
-    case unknown
-
-    nonisolated static func detect(from url: URL?) -> MeetingPlatform {
-        guard let host = url?.host?.lowercased() else { return .unknown }
-        if host.contains("zoom.us") || host.contains("zoom.com") {
-            return .zoom
-        }
-        if host.contains("meet.google.com") {
-            return .meet
-        }
-        if host.contains("teams.microsoft.com") || host.contains("microsoft.com") {
-            return .teams
-        }
-        if host.contains("webex.com") {
-            return .webex
-        }
-        return .unknown
-    }
-
-    @MainActor
-    func openURL(_ url: URL, openBehavior: OpenBehavior) -> Bool {
-        let urlToOpen: URL
-        
-        switch self {
-        case .zoom:
-            switch openBehavior {
-            case .zoommtg, .app:
-                // Try to open with Zoom app using custom protocol
-                urlToOpen = convertToZoomMTG(url) ?? url
-            case .browser:
-                // Open with browser
-                urlToOpen = url
-            }
-        case .meet:
-            switch openBehavior {
-            case .app:
-                // Google Meet web app
-                urlToOpen = url
-            case .browser, .zoommtg:
-                // Open with browser
-                urlToOpen = url
-            }
-        case .teams:
-            switch openBehavior {
-            case .app:
-                // Microsoft Teams web app
-                urlToOpen = url
-            case .browser, .zoommtg:
-                // Open with browser
-                urlToOpen = url
-            }
-        case .webex:
-            switch openBehavior {
-            case .app:
-                // Webex web app
-                urlToOpen = url
-            case .browser, .zoommtg:
-                // Open with browser
-                urlToOpen = url
-            }
-        case .unknown:
-            urlToOpen = url
-        }
-
-        return NSWorkspace.shared.open(urlToOpen)
-    }
-
-    private func convertToZoomMTG(_ url: URL) -> URL? {
-        // Convert https://zoom.us/j/<id> to zoommtg://zoom.us/join?confno=<id>
-        guard let host = url.host?.lowercased(), 
-              (host.contains("zoom.us") || host.contains("zoom.com")) else {
-            return nil
-        }
-        
-        let path = url.path
-        var meetingID: String?
-        
-        // Extract meeting ID from /j/<id> or /meeting/<id> paths
-        if path.hasPrefix("/j/") {
-            let components = path.dropFirst(3).split(separator: "/", maxSplits: 1)
-            if let first = components.first {
-                meetingID = String(first)
-            }
-        } else if path.hasPrefix("/meeting/") {
-            let components = path.dropFirst(9).split(separator: "/", maxSplits: 1)
-            if let first = components.first {
-                meetingID = String(first)
-            }
-        }
-        
-        // Create zoommtg:// URL with the meeting ID
-        if let meetingID = meetingID, !meetingID.isEmpty {
-            var urlString = "zoommtg://zoom.us/join?confno=\(meetingID)"
-            // Preserve password if present in query parameters
-            if let queryParams = url.query, queryParams.contains("pwd=") {
-                urlString += "&\(queryParams)"
-            }
-            return URL(string: urlString)
-        }
-        
-        return nil
-    }
-}
-
-enum OpenBehavior: String, Codable, CaseIterable {
-    case browser = "browser"
-    case app = "app"
-    case zoommtg = "zoommtg" // Only for Zoom
-
-    var displayName: String {
-        switch self {
-        case .browser: return "Browser"
-        case .app: return "App"
-        case .zoommtg: return "Zoom App"
-        }
-    }
-
-    static func available(for platform: MeetingPlatform) -> [OpenBehavior] {
-        switch platform {
-        case .zoom: return [.browser, .app, .zoommtg]
-        case .meet, .teams, .webex: return [.browser, .app]
-        case .unknown: return [.browser]
-        }
-    }
-}
+// MARK: - Core Meeting Model
 
 struct Meeting: Identifiable, Hashable {
     let id: String
@@ -174,7 +23,7 @@ struct Meeting: Identifiable, Hashable {
             return nil
         }
 
-        let link = Meeting.extractURL(from: event)
+        let link = Self.extractURL(from: event)
         if link == nil && !includeEventsWithoutLinks {
             return nil
         }
@@ -197,38 +46,40 @@ struct Meeting: Identifiable, Hashable {
     }
     
     /// Returns platform-specific icon info
-     var iconInfo: PlatformIconInfo {
-         if isAllDay {
-             return PlatformIconProvider.genericIconInfo(for: .allDay)
-         }
-         
-         // Check if it's a holiday first
-         if holidayInfo.isHoliday {
-             // For holidays, return a generic all-day style icon
-             return PlatformIconProvider.genericIconInfo(for: .allDay)
-         }
-         
-         // If there's a URL, use platform-specific icon (highest priority)
-         if url != nil {
-             // Platform detection takes priority over title-based detection
-             // So Zoom/Meet/Teams/Webex icons override "call" in title
-             return PlatformIconProvider.iconInfo(for: platform)
-         }
-         
-         // No URL - check if title suggests a phone call
-         if title.lowercased().contains("call") || title.lowercased().contains("phone") {
-             return PlatformIconProvider.genericIconInfo(for: .phone)
-         }
-         
-         // Fallback to generic meeting icon
-         return PlatformIconProvider.genericIconInfo(for: .generic)
-     }
+    var iconInfo: PlatformIconInfo {
+        if isAllDay {
+            return PlatformIconProvider.genericIconInfo(for: .allDay)
+        }
+        
+        // Check if it's a holiday first
+        if holidayInfo.isHoliday {
+            // For holidays, return a generic all-day style icon
+            return PlatformIconProvider.genericIconInfo(for: .allDay)
+        }
+        
+        // If there's a URL, use platform-specific icon (highest priority)
+        if url != nil {
+            // Platform detection takes priority over title-based detection
+            // So Zoom/Meet/Teams/Webex icons override "call" in title
+            return PlatformIconProvider.iconInfo(for: platform)
+        }
+        
+        // No URL - check if title suggests a phone call
+        if title.lowercased().contains("call") || title.lowercased().contains("phone") {
+            return PlatformIconProvider.genericIconInfo(for: .phone)
+        }
+        
+        // Fallback to generic meeting icon
+        return PlatformIconProvider.genericIconInfo(for: .generic)
+    }
     
     /// Returns the emoji for holidays, empty string otherwise
     var holidayEmoji: String {
         holidayInfo.emoji
     }
 }
+
+// MARK: - URL Extraction
 
 private extension Meeting {
     static func extractURL(from event: EKEvent) -> URL? {
@@ -290,170 +141,28 @@ private extension Meeting {
     }
 }
 
-// MARK: - Holiday Detection
+// MARK: - Shared Types
 
-final class HolidayDetector {
-    /// Detects if a meeting title/calendar indicates a holiday and returns emoji
-    static func detectHoliday(title: String, calendarName: String?, date: Date) -> HolidayInfo {
-        let combinedText = (title + " " + (calendarName ?? "")).lowercased()
-        let calendar = Calendar.current
-        let monthDay = calendar.component(.month, from: date) * 100 + calendar.component(.day, from: date)
-        
-        // Check title and calendar keywords (High confidence - returns immediately)
-        if combinedText.contains("thanksgiving") {
-            return HolidayInfo(emoji: "🦃", isHoliday: true)
-        }
-        
-        if combinedText.contains("christmas") || combinedText.contains("xmas") || combinedText.contains("noel") {
-            return HolidayInfo(emoji: "🎄", isHoliday: true)
-        }
-        
-        if combinedText.contains("new year") || combinedText.contains("nye") || combinedText.contains("new year's eve") {
-            return HolidayInfo(emoji: "⭐", isHoliday: true)
-        }
-        
-        if combinedText.contains("halloween") || combinedText.contains("hallows") {
-            return HolidayInfo(emoji: "🎃", isHoliday: true)
-        }
-        
-        if combinedText.contains("easter") {
-            return HolidayInfo(emoji: "🥚", isHoliday: true)
-        }
-        
-        if combinedText.contains("valentine") {
-            return HolidayInfo(emoji: "❤️", isHoliday: true)
-        }
-        
-        if combinedText.contains("independence day") || combinedText.contains("4th of july") {
-            return HolidayInfo(emoji: "🇺🇸", isHoliday: true)
-        }
-        
-        if combinedText.contains("black friday") {
-            return HolidayInfo(emoji: "🛍️", isHoliday: true)
-        }
-        
-        if combinedText.contains("cyber monday") {
-            return HolidayInfo(emoji: "💻", isHoliday: true)
-        }
-        
-        if combinedText.contains("birthday") {
-            return HolidayInfo(emoji: "🎂", isHoliday: true)
-        }
-        
-        if combinedText.contains("anniversary") {
-            return HolidayInfo(emoji: "💍", isHoliday: true)
-        }
-        
-        // Only apply date-based holidays for events with generic/holiday-like titles
-        // Avoid marking random events on holiday dates with holiday emojis (e.g. "Project Sync" on July 4th)
-        let hasGenericTitle = combinedText.contains("day off") ||
-                              combinedText.contains("time off") ||
-                              combinedText.contains("vacation") ||
-                              combinedText.contains("holiday") ||
-                              combinedText.isEmpty
-        
-        if !hasGenericTitle {
-            // Only apply fixed dates if title is generic/empty or explicitly mentions time off
-            return HolidayInfo(emoji: "", isHoliday: false)
-        }
-        
-        // Check specific dates for common holidays
-        switch monthDay {
-        case 1101:  // November 1 - Día de Muertos
-            return HolidayInfo(emoji: "💀", isHoliday: true)
-        case 1225:  // December 25 - Christmas (fallback)
-            return HolidayInfo(emoji: "🎄", isHoliday: true)
-        case 101:   // January 1 - New Year's Day
-            return HolidayInfo(emoji: "⭐", isHoliday: true)
-        case 704:   // July 4
-            return HolidayInfo(emoji: "🇺🇸", isHoliday: true)
-        case 214:   // February 14 - Valentine's Day
-            return HolidayInfo(emoji: "❤️", isHoliday: true)
-        case 317:   // March 17 - St. Patrick's Day
-            return HolidayInfo(emoji: "🍀", isHoliday: true)
-        case 1031:  // October 31 - Halloween
-            return HolidayInfo(emoji: "🎃", isHoliday: true)
-        case 1231:  // December 31 - New Year's Eve
-            return HolidayInfo(emoji: "⭐", isHoliday: true)
-        default:
-            break
-        }
-        
-        // Generic holiday keyword fallback
-        if combinedText.contains("holiday") {
-            return HolidayInfo(emoji: "🎉", isHoliday: true)
-        }
-        
-        return HolidayInfo(emoji: "", isHoliday: false)
+struct HolidayInfo {
+    let emoji: String
+    let isHoliday: Bool
+}
+
+struct PlatformIconInfo {
+    let iconName: String
+    let color: NSColor
+    let isSystemIcon: Bool
+    
+    /// Converts NSColor to SwiftUI Color
+    var swiftUIColor: Color {
+        Color(red: color.redComponent,
+              green: color.greenComponent,
+              blue: color.blueComponent)
     }
 }
 
-// MARK: - Platform Icon Provider
-
-final class PlatformIconProvider {
-    /// Maps meeting platform to icon info
-    static func iconInfo(for platform: MeetingPlatform) -> PlatformIconInfo {
-        switch platform {
-        case .zoom:
-            return PlatformIconInfo(
-                iconName: "video.circle.fill",  // Zoom - video icon in circle
-                color: NSColor(calibratedRed: 0.04, green: 0.36, blue: 1.0, alpha: 1.0),  // #0B5CFF Zoom Blue
-                isSystemIcon: true
-            )
-        
-        case .meet:
-            return PlatformIconInfo(
-                iconName: "person.2.fill",  // Google Meet - two people
-                color: NSColor(calibratedRed: 0.0, green: 0.53, blue: 0.48, alpha: 1.0),  // #00897B Meet Green
-                isSystemIcon: true
-            )
-        
-        case .teams:
-            return PlatformIconInfo(
-                iconName: "person.3.fill",  // Teams - three people
-                color: NSColor(calibratedRed: 0.48, green: 0.41, blue: 0.93, alpha: 1.0),  // #7B68EE Teams Purple
-                isSystemIcon: true
-            )
-        
-        case .webex:
-            return PlatformIconInfo(
-                iconName: "person.2.circle.fill",  // Webex - two people in circle
-                color: NSColor(calibratedRed: 0.0, green: 0.35, blue: 0.61, alpha: 1.0),  // #005A9C Webex Blue
-                isSystemIcon: true
-            )
-        
-        case .unknown:
-            return PlatformIconInfo(
-                iconName: "calendar.badge.clock",
-                color: NSColor(calibratedRed: 0.66, green: 0.66, blue: 0.66, alpha: 1.0),  // Grey
-                isSystemIcon: true
-            )
-        }
-    }
-    
-    /// Returns icon for generic meeting types (all-day, phone, etc)
-    static func genericIconInfo(for meetingType: GenericMeetingType) -> PlatformIconInfo {
-        switch meetingType {
-        case .allDay:
-            return PlatformIconInfo(
-                iconName: "calendar",
-                color: NSColor(calibratedRed: 0.66, green: 0.66, blue: 0.66, alpha: 1.0),
-                isSystemIcon: true
-            )
-        
-        case .phone:
-            return PlatformIconInfo(
-                iconName: "phone.fill",
-                color: NSColor(calibratedRed: 0.0, green: 0.48, blue: 1.0, alpha: 1.0),  // #007AFF Phone Blue
-                isSystemIcon: true
-            )
-        
-        case .generic:
-            return PlatformIconInfo(
-                iconName: "calendar.badge.clock",
-                color: NSColor(calibratedRed: 0.66, green: 0.66, blue: 0.66, alpha: 1.0),
-                isSystemIcon: true
-            )
-        }
-    }
+enum GenericMeetingType {
+    case allDay
+    case phone
+    case generic
 }
