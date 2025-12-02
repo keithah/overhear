@@ -99,6 +99,12 @@ actor TranscriptionService {
                     var finished = false
                     let queue = DispatchQueue(label: "com.overhear.transcription")
                     queue.async {
+                        // Clean up temp file when done (success or failure)
+                        defer {
+                            let outputPath = outputPrefix + ".txt"
+                            try? FileManager.default.removeItem(atPath: outputPath)
+                        }
+                        
                         guard !finished else { return }
                         process.waitUntilExit()
                         
@@ -125,10 +131,6 @@ actor TranscriptionService {
                             let outputPath = outputPrefix + ".txt"
                             do {
                                 let transcript = try String(contentsOfFile: outputPath, encoding: .utf8)
-                                
-                                // Clean up temp files
-                                try? FileManager.default.removeItem(atPath: outputPath)
-                                
                                 continuation.resume(returning: transcript)
                             } catch {
                                 continuation.resume(throwing: Error.transcriptionFailed("Could not read transcript: \(error.localizedDescription)"))

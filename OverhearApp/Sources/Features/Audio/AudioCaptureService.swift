@@ -84,33 +84,43 @@ actor AudioCaptureService {
         
         self.currentProcess = process
         
-        do {
-            try process.run()
-            
-            // Wait for process to complete
-            let queue = DispatchQueue(label: "com.overhear.audio.capture")
-            return try await withCheckedThrowingContinuation { continuation in
-                queue.async {
-                    process.waitUntilExit()
-                    
-                    do {
-                        let errorData = try errorPipe.fileHandleForReading.readDataToEndOfFile()
-                        let errorString = String(data: errorData, encoding: .utf8) ?? ""
+        return try await withTaskCancellationHandler {
+            do {
+                try process.run()
+                
+                // Wait for process to complete
+                let queue = DispatchQueue(label: "com.overhear.audio.capture")
+                return try await withCheckedThrowingContinuation { continuation in
+                    queue.async {
+                        process.waitUntilExit()
                         
-                        if process.terminationStatus != 0 {
-                            let error = Error.captureFailed(errorString.isEmpty ? "Unknown error" : errorString)
+                        do {
+                            let errorData = try errorPipe.fileHandleForReading.readDataToEndOfFile()
+                            let errorString = String(data: errorData, encoding: .utf8) ?? ""
+                            
+                            if process.terminationStatus != 0 {
+                                // Check for cancellation (SIGTERM = 15)
+                                if process.terminationStatus == 15 {
+                                    continuation.resume(throwing: CancellationError())
+                                    return
+                                }
+                                
+                                let error = Error.captureFailed(errorString.isEmpty ? "Unknown error" : errorString)
+                                continuation.resume(throwing: error)
+                            } else {
+                                continuation.resume(returning: outputURL)
+                            }
+                        } catch {
+                            let error = Error.captureFailed("Failed to read process output: \(error.localizedDescription)")
                             continuation.resume(throwing: error)
-                        } else {
-                            continuation.resume(returning: outputURL)
                         }
-                    } catch {
-                        let error = Error.captureFailed("Failed to read process output: \(error.localizedDescription)")
-                        continuation.resume(throwing: error)
                     }
                 }
+            } catch {
+                throw Error.captureFailed(error.localizedDescription)
             }
-        } catch {
-            throw Error.captureFailed(error.localizedDescription)
+        } onCancel: {
+            process.terminate()
         }
     }
 }

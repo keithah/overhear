@@ -67,9 +67,13 @@ final class MeetingRecordingManager: ObservableObject {
     /// Start recording the meeting
     /// - Parameter duration: Maximum recording duration in seconds (default 3600 = 1 hour)
     func startRecording(duration: TimeInterval = 3600) async {
-        guard case .idle = status else {
+        // Allow retrying if failed or starting new if completed/idle
+        switch status {
+        case .capturing, .transcribing:
             status = .failed(RecordingError.alreadyRecording)
             return
+        default:
+            break
         }
         
         status = .capturing
