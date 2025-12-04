@@ -6,8 +6,6 @@ final class CalendarService: ObservableObject {
       @Published private(set) var authorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
 
       private let eventStore = EKEventStore()
-      private static let defaults = UserDefaults(suiteName: "com.overhear.app") ?? .standard
-      private static let permissionAskedKey = "CalendarPermissionAsked"
 
      func requestAccessIfNeeded() async -> Bool {
          let status = EKEventStore.authorizationStatus(for: .event)

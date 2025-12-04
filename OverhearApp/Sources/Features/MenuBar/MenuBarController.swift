@@ -3,12 +3,14 @@ import SwiftUI
 import Combine
 import Foundation
 
+@MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
      private var statusItem: NSStatusItem?
      private var popover = NSPopover()
      private var iconUpdateTimer: Timer?
      private var minuteUpdateTimer: Timer?
      private var eventMonitor: Any?
+     private var dataCancellable: AnyCancellable?
      private let viewModel: MeetingListViewModel
      private let preferencesWindowController: PreferencesWindowController
      private let preferences: PreferencesService
@@ -34,9 +36,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
          super.init()
      }
 
-    deinit {
+    @MainActor deinit {
         iconUpdateTimer?.invalidate()
         minuteUpdateTimer?.invalidate()
+        dataCancellable?.cancel()
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
         }
@@ -60,8 +63,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
              self.showPreferences()
          })
          
-          // Store status item (must be retained)
+         // Store status item (must be retained)
          statusItem = item
+         
+         // Update whenever meeting data changes so we don't wait for the minute timer
+         dataCancellable = viewModel.$upcomingSections
+             .receive(on: RunLoop.main)
+             .sink { [weak self] _ in
+                 self?.updateStatusItemIcon()
+             }
          
          // Update menubar icon immediately (will update again when data loads)
          Task { @MainActor in

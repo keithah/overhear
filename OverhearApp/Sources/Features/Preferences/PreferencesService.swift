@@ -52,7 +52,7 @@ final class PreferencesService: ObservableObject {
         didSet { persistSelectedCalendars() }
     }
 
-@Published var zoomOpenBehavior: OpenBehavior {
+    @Published var zoomOpenBehavior: OpenBehavior {
         didSet { persist(zoomOpenBehavior.rawValue, key: .zoomOpenBehavior) }
     }
     
@@ -79,7 +79,7 @@ final class PreferencesService: ObservableObject {
     private let defaults: UserDefaults
     private var cancellables: Set<AnyCancellable> = []
 
-    init(userDefaults: UserDefaults = UserDefaults(suiteName: "com.overhear.app") ?? .standard) {
+    init(userDefaults: UserDefaults = .standard) {
         self.defaults = userDefaults
         self.launchAtLogin = defaults.bool(forKey: PreferenceKey.launchAtLogin.rawValue)
         self.use24HourClock = defaults.object(forKey: PreferenceKey.use24HourClock.rawValue) as? Bool ?? false

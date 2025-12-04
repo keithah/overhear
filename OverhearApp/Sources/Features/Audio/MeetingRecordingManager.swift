@@ -88,8 +88,8 @@ final class MeetingRecordingManager: ObservableObject {
     }
     
     /// Stop the current recording
-    func stopRecording() {
-        captureService.stopCapture()
+    func stopRecording() async {
+        await captureService.stopCapture()
         // Transcription will continue if in progress
     }
     

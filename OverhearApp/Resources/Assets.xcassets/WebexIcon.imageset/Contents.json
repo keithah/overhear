@@ -4,6 +4,11 @@
       "filename" : "webex-icon.png",
       "idiom" : "mac",
       "scale" : "1x"
+    },
+    {
+      "filename" : "webex-icon@2x.png",
+      "idiom" : "mac",
+      "scale" : "2x"
     }
   ],
   "info" : {

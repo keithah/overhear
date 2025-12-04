@@ -4,6 +4,11 @@
       "filename" : "meet-icon.png",
       "idiom" : "mac",
       "scale" : "1x"
+    },
+    {
+      "filename" : "meet-icon@2x.png",
+      "idiom" : "mac",
+      "scale" : "2x"
     }
   ],
   "info" : {
