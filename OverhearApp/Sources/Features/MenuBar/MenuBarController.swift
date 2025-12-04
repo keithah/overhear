@@ -60,21 +60,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             self.showPreferences()
         })
         
-        // Store status item (must be retained)
+         // Store status item (must be retained)
         statusItem = item
         
-         // Update menubar when meetings data is available
-         Task { @MainActor in
-             do {
-                 try await Task.sleep(nanoseconds: 500_000_000) // 0.5s timeout
-                 self.updateStatusItemIcon()
-             } catch is CancellationError {
-                 // Task was cancelled
-             } catch {
-                 print("Failed to wait for initial data: \(error)")
-                 self.updateStatusItemIcon() // Update anyway
-             }
-         }
+        // Update menubar icon immediately (will update again when data loads)
+        Task { @MainActor in
+            updateStatusItemIcon()
+        }
         
         scheduleNextIconUpdate()
         
