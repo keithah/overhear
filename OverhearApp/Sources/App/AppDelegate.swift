@@ -14,9 +14,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let context = AppContext()
         self.context = context
 
-        // Request calendar permissions early so preferences window can access them
+        // Request calendar permissions and load initial meetings
         Task {
             _ = await context.calendarService.requestAccessIfNeeded()
+            // Trigger initial reload after permission is granted
+            await context.meetingViewModel.reload()
         }
 
         let controller = MenuBarController(viewModel: context.meetingViewModel, preferencesWindowController: context.preferencesWindowController, preferences: context.preferencesService)
