@@ -66,6 +66,7 @@ final class MeetingListViewModel: ObservableObject {
             // Copy to clipboard as fallback
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url.absoluteString, forType: .string)
+            showClipboardAlert()
         }
     }
 
@@ -75,8 +76,8 @@ final class MeetingListViewModel: ObservableObject {
     private func apply(meetings: [Meeting]) {
         let now = Date()
         let calendar = Calendar.current
-        // Extended cutoff: meetings remain "upcoming" until 5 minutes after their end time
-        let fiveMinutesFromNow = now.addingTimeInterval(5 * 60)
+        // Extended cutoff: keep meetings upcoming until 5 minutes after they end
+        let fiveMinutesAgo = now.addingTimeInterval(-5 * 60)
 
         let grouped = Dictionary(grouping: meetings) { event in
             calendar.startOfDay(for: event.startDate)
@@ -84,7 +85,7 @@ final class MeetingListViewModel: ObservableObject {
 
         let sections: [MeetingSection] = grouped.map { date, events in
             // A date is "past" if it's before today OR it's today but all events ended more than 5 minutes ago
-            let isPast = date < calendar.startOfDay(for: now) || (date == calendar.startOfDay(for: now) && events.allSatisfy { $0.endDate < fiveMinutesFromNow })
+            let isPast = date < calendar.startOfDay(for: now) || (date == calendar.startOfDay(for: now) && events.allSatisfy { $0.endDate < fiveMinutesAgo })
             let title = dayTitle(for: date, calendar: calendar)
             let sortedEvents = events.sorted { $0.startDate < $1.startDate }
             return MeetingSection(id: UUID().uuidString, date: date, title: title, isPast: isPast, meetings: sortedEvents)
@@ -132,6 +133,14 @@ final class MeetingListViewModel: ObservableObject {
         }
         try? data.write(to: url, options: .atomic)
     }
+}
+
+private func showClipboardAlert() {
+    let alert = NSAlert()
+    alert.messageText = "Unable to open the meeting link."
+    alert.informativeText = "The URL has been copied to your clipboard so you can paste it into your browser."
+    alert.alertStyle = .informational
+    alert.runModal()
 }
 
 struct MeetingSection: Identifiable {

@@ -14,6 +14,8 @@ struct PreferencesView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             calendarsTab
                 .tabItem { Label("Calendars", systemImage: "calendar") }
+            notificationsTab
+                .tabItem { Label("Notifications", systemImage: "bell") }
             advancedTab
                 .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
             aboutTab
@@ -28,12 +30,17 @@ struct PreferencesView: View {
         }
     }
 
+    private var calendarAuthorizationStatus: EKAuthorizationStatus {
+        calendarService.authorizationStatus
+    }
+
     private var generalTab: some View {
         Form {
             Toggle("Launch at login", isOn: $preferences.launchAtLogin)
             Toggle("Use 24-hour clock", isOn: $preferences.use24HourClock)
             Toggle("Show events without links", isOn: $preferences.showEventsWithoutLinks)
             Toggle("Show maybe events", isOn: $preferences.showMaybeEvents)
+            Toggle("Show countdown in menu bar", isOn: $preferences.countdownEnabled)
 
             Divider()
 
@@ -60,6 +67,18 @@ struct PreferencesView: View {
                 if isLoadingCalendars {
                     ProgressView()
                         .controlSize(.small)
+                }
+            }
+            if calendarAuthorizationStatus != .fullAccess && calendarAuthorizationStatus != .writeOnly && calendarAuthorizationStatus != .authorized {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Grant calendar access to show meetings.")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                    Button("Open Calendar Privacy Settings") {
+                        calendarService.openPrivacySettings()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
                 }
             }
             ScrollView {
@@ -104,10 +123,8 @@ struct PreferencesView: View {
         }
     }
 
-    private var advancedTab: some View {
+    private var notificationsTab: some View {
         Form {
-            Toggle("Show countdown in menu bar", isOn: $preferences.countdownEnabled)
-
             HStack {
                 Text("Notify minutes before:")
                 Spacer()
@@ -116,7 +133,25 @@ struct PreferencesView: View {
                 Text("\(preferences.notificationMinutesBefore)")
                     .frame(minWidth: 20, alignment: .trailing)
             }
+            Text("Countdown appears in the menu bar and notifications fire before your next meeting.")
+                .font(.caption)
+                .foregroundColor(.secondary)
 
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Button("Request notification permission") {
+                    NotificationHelper.requestPermission()
+                }
+                Button("Send test notification") {
+                    NotificationHelper.sendTestNotification()
+                }
+            }
+        }
+    }
+
+    private var advancedTab: some View {
+        Form {
             Section(header: Text("Open rules")) {
                 VStack(alignment: .leading, spacing: 8) {
                     openRuleRow(title: "Open Zoom", platform: .zoom, selection: $preferences.zoomOpenBehavior)
