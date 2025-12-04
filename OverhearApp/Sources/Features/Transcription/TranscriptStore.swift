@@ -127,16 +127,8 @@ actor TranscriptStore {
             throw Error.notFound
         }
         
-        do {
-            let encryptedData = try Data(contentsOf: fileURL)
-            let data = try Self.decryptData(encryptedData, using: encryptionKey)
-            let transcript = try decoder.decode(StoredTranscript.self, from: data)
-            return transcript
-        } catch let Error.decryptionFailed(message) {
-            throw Error.decryptionFailed(message)
-        } catch {
-            throw Error.decodingFailed(error.localizedDescription)
-        }
+        let data = try Data(contentsOf: fileURL)
+        return try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
     }
     
     /// Get all stored transcripts (decrypted)
@@ -154,9 +146,8 @@ actor TranscriptStore {
         
         for fileURL in fileURLs {
             do {
-                let encryptedData = try Data(contentsOf: fileURL)
-                let data = try Self.decryptData(encryptedData, using: encryptionKey)
-                let transcript = try decoder.decode(StoredTranscript.self, from: data)
+                let data = try Data(contentsOf: fileURL)
+                let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
                 transcripts.append(transcript)
             } catch {
                 // Skip files that can't be decoded
@@ -194,9 +185,8 @@ actor TranscriptStore {
             }
             
             do {
-                let encryptedData = try Data(contentsOf: fileURL)
-                let data = try Self.decryptData(encryptedData, using: encryptionKey)
-                let transcript = try decoder.decode(StoredTranscript.self, from: data)
+                let data = try Data(contentsOf: fileURL)
+                let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
                 
                 if transcript.title.lowercased().contains(lowerQuery) ||
                    transcript.transcript.lowercased().contains(lowerQuery) {
@@ -217,6 +207,22 @@ actor TranscriptStore {
         
         // Sort results by date (most recent first)
         return results.sorted { $0.date > $1.date }
+    }
+    
+    /// Decrypts data if possible; falls back to plaintext decoding for legacy files.
+    private static func decryptOrDecode(data: Data, using key: SymmetricKey, decoder: JSONDecoder) throws -> StoredTranscript {
+        // Try encrypted path first
+        if let decrypted = try? decryptData(data, using: key),
+           let transcript = try? decoder.decode(StoredTranscript.self, from: decrypted) {
+            return transcript
+        }
+        
+        // Fallback to plaintext legacy JSON
+        if let transcript = try? decoder.decode(StoredTranscript.self, from: data) {
+            return transcript
+        }
+        
+        throw Error.decodingFailed("Unable to decode transcript data (encrypted or plaintext)")
     }
     
     /// Delete a transcript
