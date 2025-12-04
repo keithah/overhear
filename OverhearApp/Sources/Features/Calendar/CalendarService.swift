@@ -1,11 +1,15 @@
-import EventKit
+@preconcurrency import EventKit
 import Foundation
+import AppKit
+import os.log
 
 @MainActor
 final class CalendarService: ObservableObject {
     @Published private(set) var authorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
 
     private let eventStore = EKEventStore()
+    private static var didOpenPrivacySettings = false
+    nonisolated(unsafe) private static let logger = Logger(subsystem: "com.overhear.app", category: "CalendarService")
 
    func requestAccessIfNeeded() async -> Bool {
        let status = EKEventStore.authorizationStatus(for: .event)
@@ -30,10 +34,11 @@ final class CalendarService: ObservableObject {
        }
        
        // If denied or restricted, bail early
-       if status == .denied || status == .restricted {
+        if status == .denied || status == .restricted {
             log("Status denied/restricted; returning false")
-           return false
-       }
+            openCalendarPrivacySettingsIfNeeded()
+            return false
+        }
        
         // If status is notDetermined, ask for permission
         log("Requesting calendar access via EKEventStore")
@@ -68,10 +73,13 @@ final class CalendarService: ObservableObject {
             }
         }
        
-       authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         log("Authorization status after request: \(authorizationStatus.rawValue)")
-       return granted
-   }
+        if !granted {
+            openCalendarPrivacySettingsIfNeeded()
+        }
+        return granted
+    }
 
      func availableCalendars() -> [EKCalendar] {
          return eventStore.calendars(for: .event)
@@ -120,18 +128,19 @@ final class CalendarService: ObservableObject {
         return calendars.filter { allowedCalendarIDs.contains($0.calendarIdentifier) }
     }
 
-    nonisolated private func log(_ message: String) {
-        let line = "[CalendarService] \(Date()): \(message)\n"
-        let url = URL(fileURLWithPath: "/tmp/overhear.log")
-        guard let data = line.data(using: .utf8) else { return }
-        if FileManager.default.fileExists(atPath: url.path) {
-            if let handle = try? FileHandle(forWritingTo: url) {
-                defer { try? handle.close() }
-                _ = try? handle.seekToEnd()
-                try? handle.write(contentsOf: data)
-                return
-            }
+    @MainActor
+    private func openCalendarPrivacySettingsIfNeeded() {
+        guard !Self.didOpenPrivacySettings else { return }
+        Self.didOpenPrivacySettings = true
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
+            log("Opening System Settings for Calendars privacy")
+            NSWorkspace.shared.open(url)
+        } else {
+            log("Failed to construct System Settings URL")
         }
-        try? data.write(to: url, options: .atomic)
+    }
+
+    nonisolated private func log(_ message: String) {
+        Self.logger.info("\(message, privacy: .public)")
     }
 }
