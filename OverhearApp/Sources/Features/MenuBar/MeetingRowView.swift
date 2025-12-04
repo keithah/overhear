@@ -172,16 +172,47 @@ HStack(alignment: .center, spacing: 10) {
          }
      }
     
-    private func timeString(for meeting: Meeting) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
-        if use24HourClock {
-            formatter.dateFormat = "HH:mm"
-        } else {
-            formatter.dateFormat = "h:mm a"
-        }
-        return formatter.string(from: meeting.startDate)
-    }
+     private func timeString(for meeting: Meeting) -> String {
+         let formatter = DateFormatter()
+         formatter.dateStyle = .none
+         formatter.timeStyle = .short
+         if use24HourClock {
+             formatter.dateFormat = "HH:mm"
+         } else {
+             formatter.dateFormat = "h:mm a"
+         }
+         return formatter.string(from: meeting.startDate)
+     }
  }
+
+// MARK: - Platform Icon Helper
+
+func platformIcon(for platform: MeetingPlatform) -> some View {
+    Group {
+        switch platform {
+        case .zoom:
+            Image("ZoomIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+        case .meet:
+            Image("MeetIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+        case .teams:
+            Image("TeamsIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+        case .webex:
+            Image("WebexIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+        case .unknown:
+            Image(systemName: "link")
+        }
+    }
+}
 
