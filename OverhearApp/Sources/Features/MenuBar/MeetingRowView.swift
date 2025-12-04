@@ -48,21 +48,10 @@ struct MeetingRowView: View {
                         .frame(width: 14)
                 } else {
                     // Custom image asset (not colored)
-                    if let nsImage = NSImage(named: meeting.iconInfo.iconName) {
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 14, height: 14)
-                    } else {
-                        // Fallback to SF Symbol if image not found
-                        let iconColor = Color(red: meeting.iconInfo.color.redComponent,
-                                             green: meeting.iconInfo.color.greenComponent,
-                                             blue: meeting.iconInfo.color.blueComponent)
-                        Image(systemName: "video.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(iconColor)
-                            .frame(width: 14)
-                    }
+                    Image(meeting.iconInfo.iconName)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 14, height: 14)
                 }
                 
                 // Title and time
@@ -156,21 +145,10 @@ HStack(alignment: .center, spacing: 10) {
                           .frame(width: 16)
                    } else {
                        // Custom image asset (not colored)
-                       if let nsImage = NSImage(named: meeting.iconInfo.iconName) {
-                           Image(nsImage: nsImage)
-                               .resizable()
-                               .scaledToFit()
-                               .frame(width: 16, height: 16)
-                       } else {
-                           // Fallback to SF Symbol if image not found
-                           let iconColor = Color(red: meeting.iconInfo.color.redComponent,
-                                                green: meeting.iconInfo.color.greenComponent,
-                                                blue: meeting.iconInfo.color.blueComponent)
-                           Image(systemName: "video.fill")
-                               .font(.system(size: 12, weight: .semibold))
-                               .foregroundColor(iconColor)
-                               .frame(width: 16)
-                       }
+                       Image(meeting.iconInfo.iconName)
+                           .resizable()
+                           .scaledToFit()
+                           .frame(width: 16, height: 16)
                    }
                  
                  // Time (Meeter size: 13px)

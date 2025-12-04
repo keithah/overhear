@@ -4,14 +4,14 @@ import Combine
 import Foundation
 
 final class MenuBarController: NSObject, NSMenuDelegate {
-    private var statusItem: NSStatusItem?
-    private var popover = NSPopover()
-    private var iconUpdateTimer: Timer?
-    private var minuteUpdateTimer: Timer?
-    private var eventMonitor: Any?
-    private let viewModel: MeetingListViewModel
-    private let preferencesWindowController: PreferencesWindowController
-    private let preferences: PreferencesService
+     private var statusItem: NSStatusItem?
+     private var popover = NSPopover()
+     private var iconUpdateTimer: Timer?
+     private var minuteUpdateTimer: Timer?
+     private var eventMonitor: Any?
+     private let viewModel: MeetingListViewModel
+     private let preferencesWindowController: PreferencesWindowController
+     private let preferences: PreferencesService
 
     private let weekdayFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -28,11 +28,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }()
 
     init(viewModel: MeetingListViewModel, preferencesWindowController: PreferencesWindowController, preferences: PreferencesService) {
-        self.viewModel = viewModel
-        self.preferencesWindowController = preferencesWindowController
-        self.preferences = preferences
-        super.init()
-    }
+         self.viewModel = viewModel
+         self.preferencesWindowController = preferencesWindowController
+         self.preferences = preferences
+         super.init()
+     }
 
     deinit {
         iconUpdateTimer?.invalidate()
@@ -42,41 +42,46 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
 
-    func setup() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
-        guard let button = item.button else {
-            return
-        }
+     func setup() {
+         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+         
+         guard let button = item.button else {
+             return
+         }
 
-        button.title = ""
-        button.target = self
-        button.action = #selector(togglePopoverAction)
-        
-        // Setup popover
-        popover.behavior = .transient  // Close immediately when clicking outside
-        popover.contentSize = NSSize(width: 380, height: 520)
-        popover.contentViewController = NSHostingController(rootView: MenuBarContentView(viewModel: viewModel, preferences: preferences) {
-            self.showPreferences()
-        })
-        
-         // Store status item (must be retained)
-        statusItem = item
-        
-        // Update menubar icon immediately (will update again when data loads)
-        Task { @MainActor in
-            updateStatusItemIcon()
-        }
-        
-        scheduleNextIconUpdate()
-        
-        // Update every minute to refresh time display
-        minuteUpdateTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.updateStatusItemIcon()
-            }
-        }
-    }
+         button.title = ""
+         button.target = self
+         button.action = #selector(togglePopoverAction)
+         
+         // Setup popover
+         popover.behavior = .transient  // Close immediately when clicking outside
+         popover.contentSize = NSSize(width: 380, height: 520)
+         popover.contentViewController = NSHostingController(rootView: MenuBarContentView(viewModel: viewModel, preferences: preferences) {
+             self.showPreferences()
+         })
+         
+          // Store status item (must be retained)
+         statusItem = item
+         
+         // Update menubar icon immediately (will update again when data loads)
+         Task { @MainActor in
+             updateStatusItemIcon()
+         }
+         
+         // Update again after a short delay to catch newly loaded meetings
+         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+             self?.updateStatusItemIcon()
+         }
+         
+         scheduleNextIconUpdate()
+         
+         // Update every minute to refresh time display
+         minuteUpdateTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+             DispatchQueue.main.async {
+                 self?.updateStatusItemIcon()
+             }
+         }
+     }
     
     @objc
     func togglePopoverAction() {
