@@ -151,5 +151,17 @@ final class CalendarService: ObservableObject {
 
     nonisolated(unsafe) private func log(_ message: String) {
         CalendarService.logger.info("\(message, privacy: .public)")
+        let line = "[CalendarService] \(Date()): \(message)\n"
+        let url = URL(fileURLWithPath: "/tmp/overhear.log")
+        guard let data = line.data(using: .utf8) else { return }
+        if FileManager.default.fileExists(atPath: url.path) {
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+                return
+            }
+        }
+        try? data.write(to: url, options: .atomic)
     }
 }
