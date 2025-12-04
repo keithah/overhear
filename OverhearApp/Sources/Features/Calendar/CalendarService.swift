@@ -12,19 +12,34 @@ final class CalendarService: ObservableObject {
          authorizationStatus = status
          
          // If already have permission, return true
-         if status == .authorized || status == .fullAccess {
-             return true
+         if #available(macOS 14.0, *) {
+             if status == .fullAccess {
+                 return true
+             }
+             if status == .writeOnly {
+                 return false
+             }
+         } else {
+             if status == .authorized {
+                 return true
+             }
          }
          
-         // If denied or limited, return false
+         // If denied or restricted, bail early
          if status == .denied || status == .restricted {
              return false
          }
          
          // If status is notDetermined, ask for permission
          let granted = await withCheckedContinuation { continuation in
-             eventStore.requestAccess(to: .event) { granted, error in
-                 continuation.resume(returning: granted)
+             if #available(macOS 14.0, *) {
+                 eventStore.requestFullAccessToEvents { granted, _ in
+                     continuation.resume(returning: granted)
+                 }
+             } else {
+                 eventStore.requestAccess(to: .event) { granted, _ in
+                     continuation.resume(returning: granted)
+                 }
              }
          }
          
