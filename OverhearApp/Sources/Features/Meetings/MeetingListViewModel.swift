@@ -16,6 +16,7 @@ final class MeetingListViewModel: ObservableObject {
     private let calendarService: CalendarService
     private let preferences: PreferencesService
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingListViewModel")
+    private let fileLoggingEnabled = ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1"
     private var cancellables: Set<AnyCancellable> = []
 
     init(calendarService: CalendarService, preferences: PreferencesService) {
@@ -57,6 +58,20 @@ final class MeetingListViewModel: ObservableObject {
         apply(meetings: meetings)
         lastUpdated = Date()
         isLoading = false
+    }
+
+    func joinNextUpcoming() {
+        let now = Date()
+        let upcoming = upcomingSections
+            .flatMap { $0.meetings }
+            .filter { $0.startDate >= now }
+            .sorted { $0.startDate < $1.startDate }
+            .first
+        if let meeting = upcoming {
+            join(meeting: meeting)
+        } else {
+            log("No upcoming meeting to join via hotkey")
+        }
     }
 
     func join(meeting: Meeting) {
@@ -120,6 +135,7 @@ final class MeetingListViewModel: ObservableObject {
 
     private func log(_ message: String) {
         logger.info("\(message, privacy: .public)")
+        guard fileLoggingEnabled else { return }
         let line = "[MeetingListViewModel] \(Date()): \(message)\n"
         let url = URL(fileURLWithPath: "/tmp/overhear.log")
         guard let data = line.data(using: .utf8) else { return }

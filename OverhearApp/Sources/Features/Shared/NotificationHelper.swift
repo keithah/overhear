@@ -4,11 +4,17 @@ import UserNotifications
 enum NotificationHelper {
     static func requestPermission() {
         let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error {
-                print("Notification permission error: \(error.localizedDescription)")
-            } else {
-                print("Notification permissions granted: \(granted)")
+        center.getNotificationSettings { settings in
+            if settings.authorizationStatus == .notDetermined {
+                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    if let error {
+                        print("Notification permission error: \(error.localizedDescription)")
+                    } else {
+                        print("Notification permissions granted: \(granted)")
+                    }
+                }
+            } else if settings.authorizationStatus == .denied {
+                print("Notifications denied; open System Settings > Notifications to enable.")
             }
         }
     }

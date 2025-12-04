@@ -29,10 +29,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let controller = MenuBarController(viewModel: context.meetingViewModel, preferencesWindowController: context.preferencesWindowController, preferences: context.preferencesService)
         controller.setup()
+        context.menuBarController = controller
+
+        // Hotkeys (system-wide via global monitor)
+        context.hotkeyManager = HotkeyManager(
+            preferences: context.preferencesService,
+            toggleAction: { controller.togglePopoverAction() },
+            joinNextAction: { context.meetingViewModel.joinNextUpcoming() }
+        )
 
         // Keep strong reference to controller
         self.menuBarController = controller
-        context.menuBarController = controller
 
         // Keep windows hidden but present for proper event delivery to menubar
         DispatchQueue.main.async {
@@ -41,14 +48,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func requestNotificationPermissions() {
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error = error {
-                print("Notification permission error: \(error.localizedDescription)")
-            } else if granted {
-                print("Notification permissions granted")
-            } else {
-                print("Notification permissions denied")
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .notDetermined else { return }
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                if let error = error {
+                    print("Notification permission error: \(error.localizedDescription)")
+                } else if granted {
+                    print("Notification permissions granted")
+                } else {
+                    print("Notification permissions denied")
+                }
             }
         }
     }

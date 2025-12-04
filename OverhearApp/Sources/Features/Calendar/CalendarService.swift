@@ -3,13 +3,15 @@ import Foundation
 import AppKit
 import os.log
 
+private let calendarLogger = Logger(subsystem: "com.overhear.app", category: "CalendarService")
+private let calendarFileLoggingEnabled = ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1"
+
 @MainActor
 final class CalendarService: ObservableObject {
     @Published private(set) var authorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
 
     private let eventStore = EKEventStore()
     private static var didOpenPrivacySettings = false
-    private static let logger = Logger(subsystem: "com.overhear.app", category: "CalendarService")
 
    func requestAccessIfNeeded() async -> Bool {
        let status = EKEventStore.authorizationStatus(for: .event)
@@ -149,8 +151,9 @@ final class CalendarService: ObservableObject {
         }
     }
 
-    nonisolated(unsafe) private func log(_ message: String) {
-        CalendarService.logger.info("\(message, privacy: .public)")
+    nonisolated private func log(_ message: String) {
+        calendarLogger.info("\(message, privacy: .public)")
+        guard calendarFileLoggingEnabled else { return }
         let line = "[CalendarService] \(Date()): \(message)\n"
         let url = URL(fileURLWithPath: "/tmp/overhear.log")
         guard let data = line.data(using: .utf8) else { return }
