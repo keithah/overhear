@@ -118,41 +118,42 @@ struct PreferencesView: View {
             }
 
             Section(header: Text("Open rules")) {
-                openRulePicker(title: "Open Zoom", platform: .zoom, selection: $preferences.zoomOpenBehavior)
-                openRulePicker(title: "Open Microsoft Teams", platform: .teams, selection: $preferences.teamsOpenBehavior)
-                openRulePicker(title: "Open Webex", platform: .webex, selection: $preferences.webexOpenBehavior)
-                openRulePicker(title: "Open Google Meet", platform: .meet, selection: $preferences.meetOpenBehavior)
-                openRulePicker(title: "Other links", platform: .unknown, selection: $preferences.otherLinksOpenBehavior)
+                VStack(alignment: .leading, spacing: 8) {
+                    openRuleRow(title: "Open Zoom", platform: .zoom, selection: $preferences.zoomOpenBehavior)
+                    openRuleRow(title: "Open Microsoft Teams", platform: .teams, selection: $preferences.teamsOpenBehavior)
+                    openRuleRow(title: "Open Webex", platform: .webex, selection: $preferences.webexOpenBehavior)
+                    openRuleRow(title: "Open Google Meet", platform: .meet, selection: $preferences.meetOpenBehavior)
+                    openRuleRow(title: "Other links", platform: .unknown, selection: $preferences.otherLinksOpenBehavior)
+                }
             }
 
-            Section(header: Text("Hotkeys (coming soon)")) {
+            Section(header: Text("Hotkeys")) {
                 VStack(alignment: .leading, spacing: 8) {
                     LabeledContent("Menubar toggle") {
                         TextField("e.g. ^⌥M", text: $preferences.menubarToggleHotkey)
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 120)
+                            .frame(width: 140)
                     }
                     LabeledContent("Join next meeting") {
                         TextField("e.g. ^⌥J", text: $preferences.joinNextMeetingHotkey)
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 120)
+                            .frame(width: 140)
                     }
-                    Text("Hotkeys are stored for future releases; system-wide binding coming soon.")
+                    Text("Hotkeys are stored now; system-wide binding ships in an upcoming update.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
 
             Section(header: Text("Notifications")) {
-                Button("Request notification permission") {
-                    NotificationHelper.requestPermission()
+                VStack(alignment: .leading, spacing: 8) {
+                    Button("Request notification permission") {
+                        NotificationHelper.requestPermission()
+                    }
+                    Button("Send test notification") {
+                        NotificationHelper.sendTestNotification()
+                    }
                 }
-                .buttonStyle(.bordered)
-
-                Button("Send test notification") {
-                    NotificationHelper.sendTestNotification()
-                }
-                .buttonStyle(.bordered)
             }
         }
     }
@@ -175,6 +176,22 @@ struct PreferencesView: View {
             ForEach(OpenBehavior.available(for: platform), id: \.self) { behavior in
                 Text(behavior.displayName).tag(behavior)
             }
+        }
+    }
+
+    private func openRuleRow(title: String, platform: MeetingPlatform, selection: Binding<OpenBehavior>) -> some View {
+        HStack {
+            Text(title)
+                .frame(width: 170, alignment: .leading)
+            Spacer()
+            Picker("", selection: selection) {
+                ForEach(OpenBehavior.available(for: platform), id: \.self) { behavior in
+                    Text(behavior.displayName).tag(behavior)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 180)
         }
     }
 

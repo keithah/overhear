@@ -9,7 +9,7 @@ final class CalendarService: ObservableObject {
 
     private let eventStore = EKEventStore()
     private static var didOpenPrivacySettings = false
-    nonisolated(unsafe) private static let logger = Logger(subsystem: "com.overhear.app", category: "CalendarService")
+    private static let logger = Logger(subsystem: "com.overhear.app", category: "CalendarService")
 
    func requestAccessIfNeeded() async -> Bool {
        let status = EKEventStore.authorizationStatus(for: .event)
