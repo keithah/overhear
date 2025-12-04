@@ -230,10 +230,19 @@ final class TranscriptSearchViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
-    private let store = TranscriptStore()
+    private let store: TranscriptStore?
+    private let storeInitError: String?
     private var searchTask: Task<Void, Never>?
     
     init() {
+        do {
+            store = try TranscriptStore()
+            storeInitError = nil
+        } catch {
+            store = nil
+            storeInitError = error.localizedDescription
+            errorMessage = "Unable to access transcripts: \(error.localizedDescription)"
+        }
         $searchQuery
             .debounce(for: 0.3, scheduler: RunLoop.main)
             .sink { [weak self] _ in
@@ -247,6 +256,12 @@ final class TranscriptSearchViewModel: ObservableObject {
     func loadTranscripts() async {
         isLoading = true
         errorMessage = nil
+        guard let store else {
+            errorMessage = storeInitError ?? "Unable to access transcripts."
+            transcripts = []
+            isLoading = false
+            return
+        }
         do {
             let allTranscripts = try await store.allTranscripts()
             self.transcripts = allTranscripts
@@ -270,6 +285,11 @@ final class TranscriptSearchViewModel: ObservableObject {
     
     private func performSearch() {
         searchTask?.cancel()
+        guard let store else {
+            self.errorMessage = storeInitError ?? "Unable to access transcripts."
+            self.transcripts = []
+            return
+        }
         searchTask = Task {
             defer { isLoading = false }
             

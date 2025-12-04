@@ -95,10 +95,10 @@ final class MeetingRecordingManager: ObservableObject {
     }
     
     /// Stop the current recording
-    func stopRecording() {
-        captureService.stopCapture()
+    func stopRecording() async {
+        await captureService.stopCapture()
         
-        // If we are already transcribing, cancel it
+        // If we are already transcribing, cancel it so status resets cleanly
         if case .transcribing = status {
             transcriptionTask?.cancel()
         }

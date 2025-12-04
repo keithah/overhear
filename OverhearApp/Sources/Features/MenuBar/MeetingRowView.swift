@@ -38,11 +38,25 @@ struct MeetingRowView: View {
                 if meeting.holidayInfo.isHoliday {
                     Text(meeting.holidayEmoji)
                         .font(.system(size: 16))
-                } else {
+                } else if meeting.iconInfo.isSystemIcon {
                     Image(systemName: meeting.iconInfo.iconName)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(meeting.iconInfo.swiftUIColor)
                         .frame(width: 14)
+                } else {
+                    // Custom image asset
+                    if let image = loadImageFromAsset(meeting.iconInfo.iconName) {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 14, height: 14)
+                    } else {
+                        // Fallback
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(meeting.iconInfo.swiftUIColor)
+                            .frame(width: 14)
+                    }
                 }
                 
                 // Title and time
@@ -122,16 +136,30 @@ HStack(alignment: .center, spacing: 10) {
                       .frame(width: 4)
                   
                   // Icon (Meeter size: ~14px)
-                 if meeting.holidayInfo.isHoliday {
-                     Text(meeting.holidayEmoji)
-                         .font(.system(size: 16))
-                         .frame(width: 18)
-                  } else {
+                  if meeting.holidayInfo.isHoliday {
+                      Text(meeting.holidayEmoji)
+                          .font(.system(size: 16))
+                          .frame(width: 18)
+                  } else if meeting.iconInfo.isSystemIcon {
                       Image(systemName: meeting.iconInfo.iconName)
                           .font(.system(size: 12, weight: .semibold))
                           .foregroundColor(meeting.iconInfo.swiftUIColor)
                           .frame(width: 16)
-                  }
+                   } else {
+                       // Custom image asset
+                       if let image = loadImageFromAsset(meeting.iconInfo.iconName) {
+                           Image(nsImage: image)
+                               .resizable()
+                               .scaledToFit()
+                               .frame(width: 16, height: 16)
+                       } else {
+                           // Fallback
+                           Image(systemName: "video.fill")
+                               .font(.system(size: 12, weight: .semibold))
+                               .foregroundColor(meeting.iconInfo.swiftUIColor)
+                           .frame(width: 16)
+                       }
+                   }
                  
                  // Time (Meeter size: 13px)
                  if !meeting.isAllDay {
@@ -166,16 +194,63 @@ HStack(alignment: .center, spacing: 10) {
          }
      }
     
-    private func timeString(for meeting: Meeting) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
-        if use24HourClock {
-            formatter.dateFormat = "HH:mm"
-        } else {
-            formatter.dateFormat = "h:mm a"
-        }
-        return formatter.string(from: meeting.startDate)
-    }
+     private func timeString(for meeting: Meeting) -> String {
+         let formatter = DateFormatter()
+         formatter.dateStyle = .none
+         formatter.timeStyle = .short
+         if use24HourClock {
+             formatter.dateFormat = "HH:mm"
+         } else {
+             formatter.dateFormat = "h:mm a"
+         }
+         return formatter.string(from: meeting.startDate)
+     }
  }
 
+// MARK: - Platform Icon Helper
+
+func platformIcon(for platform: MeetingPlatform) -> some View {
+    Group {
+        switch platform {
+        case .zoom:
+            Image("ZoomIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+        case .meet:
+            Image("MeetIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+        case .teams:
+            Image("TeamsIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+        case .webex:
+            Image("WebexIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+        case .unknown:
+            Image(systemName: "link")
+        }
+    }
+}
+
+
+// MARK: - Image Loading Helper
+
+private func loadImageFromAsset(_ name: String) -> NSImage? {
+    // Try loading from main bundle's asset catalog
+    if let image = NSImage(named: name) {
+        return image
+    }
+    
+    // Try with NSImage.Name
+    if let image = NSImage(named: NSImage.Name(name)) {
+        return image
+    }
+    
+    return nil
+}

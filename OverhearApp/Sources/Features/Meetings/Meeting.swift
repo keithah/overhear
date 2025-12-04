@@ -3,8 +3,6 @@ import EventKit
 import AppKit
 import SwiftUI
 
-// MARK: - Core Meeting Model
-
 struct Meeting: Identifiable, Hashable {
     let id: String
     let title: String
@@ -139,30 +137,4 @@ private extension Meeting {
         }
         return nil
     }
-}
-
-// MARK: - Shared Types
-
-struct HolidayInfo {
-    let emoji: String
-    let isHoliday: Bool
-}
-
-struct PlatformIconInfo {
-    let iconName: String
-    let color: NSColor
-    let isSystemIcon: Bool
-    
-    /// Converts NSColor to SwiftUI Color
-    var swiftUIColor: Color {
-        Color(red: color.redComponent,
-              green: color.greenComponent,
-              blue: color.blueComponent)
-    }
-}
-
-enum GenericMeetingType {
-    case allDay
-    case phone
-    case generic
 }

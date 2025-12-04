@@ -10,16 +10,6 @@
 	0E7293B8D630456E9682C251 /* MeetingRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */; };
 	104FDF64364D0379F6D338CC /* MeetingListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E591C5A0CD919B0CBADE2347 /* MeetingListViewModel.swift */; };
 	0F7E66604E78C6557390EB28 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8F31D34C5A2AFDA7D17E0476 /* Assets.xcassets */; };
-	B1F0D0C1F1E2010000000011 /* Types.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000001 /* Types.swift */; };
-	B1F0D0C1F1E2010000000012 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000002 /* AudioCaptureService.swift */; };
-	B1F0D0C1F1E2010000000013 /* MeetingRecordingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000003 /* MeetingRecordingManager.swift */; };
-	B1F0D0C1F1E2010000000014 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000004 /* TranscriptionService.swift */; };
-	B1F0D0C1F1E2010000000015 /* HolidayDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000005 /* HolidayDetector.swift */; };
-	B1F0D0C1F1E2010000000016 /* PlatformIconProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000006 /* PlatformIconProvider.swift */; };
-	B1F0D0C1F1E2010000000017 /* SharedTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000007 /* SharedTypes.swift */; };
-	B1F0D0C1F1E2010000000018 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000008 /* TranscriptStore.swift */; };
-	B1F0D0C1F1E2010000000019 /* TranscriptSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000009 /* TranscriptSearchView.swift */; };
-	B1F0D0C1F1E201000000001A /* TranscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E201000000000A /* TranscriptionView.swift */; };
 	4C460327A9D08F6F394261F2 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9643B3F6CF09183E7E9EE4A /* MenuBarController.swift */; };
 	553ADF43BEB23110DAFF4EBC /* CalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C7FE5C6BFB9491A6568F7C /* CalendarService.swift */; };
 	672895B9E03830086B5E32E1 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0467AC2803809ABEE6368BF8 /* PreferencesService.swift */; };
@@ -30,22 +20,18 @@
 	EAF99761927E193EB588F6CA /* PreferencesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C268D5AFB48081C5B8477301 /* PreferencesWindowController.swift */; };
 	EDF853AFF500BEEA7B7EB51C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01606FEE32B43E2DE0C9D8E /* AppDelegate.swift */; };
 	016A546E4C2C7638A8013832 /* AppContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0753D3EBF878CDDA7278CF7 /* AppContext.swift */; };
+	PERM0001 /* PermissionsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = PERM0001REF /* PermissionsService.swift */; };
+	ICON0001 /* MenuBarIconProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = ICON0001REF /* MenuBarIconProvider.swift */; };
+	TYPE0001 /* Types.swift in Sources */ = {isa = PBXBuildFile; fileRef = TYPE0001REF /* Types.swift */; };
+	PLAT0001 /* MeetingPlatform.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLAT0001REF /* MeetingPlatform.swift */; };
+	HOLI0001 /* HolidayDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = HOLI0001REF /* HolidayDetector.swift */; };
+	ICON0002 /* PlatformIconProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = ICON0002REF /* PlatformIconProvider.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 	0467AC2803809ABEE6368BF8 /* PreferencesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesService.swift; sourceTree = "<group>"; };
 	05C7FE5C6BFB9491A6568F7C /* CalendarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarService.swift; sourceTree = "<group>"; };
 	1126CA13260065D9BC095422 /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
-	A1F0D0C1F1E2010000000001 /* Types.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Types.swift; sourceTree = "<group>"; };
-	A1F0D0C1F1E2010000000002 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
-	A1F0D0C1F1E2010000000003 /* MeetingRecordingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingManager.swift; sourceTree = "<group>"; };
-	A1F0D0C1F1E2010000000004 /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
-	A1F0D0C1F1E2010000000005 /* HolidayDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HolidayDetector.swift; sourceTree = "<group>"; };
-	A1F0D0C1F1E2010000000006 /* PlatformIconProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformIconProvider.swift; sourceTree = "<group>"; };
-	A1F0D0C1F1E2010000000007 /* SharedTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTypes.swift; sourceTree = "<group>"; };
-	A1F0D0C1F1E2010000000008 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
-	A1F0D0C1F1E2010000000009 /* TranscriptSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptSearchView.swift; sourceTree = "<group>"; };
-	A1F0D0C1F1E201000000000A /* TranscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionView.swift; sourceTree = "<group>"; };
 	8AF60D2CD395349366EFBB74 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 	8F31D34C5A2AFDA7D17E0476 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 	B0753D3EBF878CDDA7278CF7 /* AppContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContext.swift; sourceTree = "<group>"; };
@@ -58,6 +44,12 @@
 	E591C5A0CD919B0CBADE2347 /* MeetingListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingListViewModel.swift; sourceTree = "<group>"; };
 	E6760441C0977FD19F2B6838 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 	82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRowView.swift; sourceTree = "<group>"; };
+	PERM0001REF /* PermissionsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsService.swift; sourceTree = "<group>"; };
+	ICON0001REF /* MenuBarIconProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIconProvider.swift; sourceTree = "<group>"; };
+	TYPE0001REF /* Types.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Types.swift; sourceTree = "<group>"; };
+	PLAT0001REF /* MeetingPlatform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingPlatform.swift; sourceTree = "<group>"; };
+	HOLI0001REF /* HolidayDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HolidayDetector.swift; sourceTree = "<group>"; };
+	ICON0002REF /* PlatformIconProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformIconProvider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -95,7 +87,8 @@
 			C5563B52A06A54C980A22A14 /* OverhearApp.swift */,
 			C01606FEE32B43E2DE0C9D8E /* AppDelegate.swift */,
 			B0753D3EBF878CDDA7278CF7 /* AppContext.swift */,
-			A1F0D0C1F1E2010000000001 /* Types.swift */,
+			PERM0001REF /* PermissionsService.swift */,
+			TYPE0001REF /* Types.swift */,
 		);
 		path = App;
 		sourceTree = "<group>";
@@ -127,8 +120,9 @@
 		children = (
 			1126CA13260065D9BC095422 /* Meeting.swift */,
 			E591C5A0CD919B0CBADE2347 /* MeetingListViewModel.swift */,
-			A1F0D0C1F1E2010000000005 /* HolidayDetector.swift */,
-			A1F0D0C1F1E2010000000006 /* PlatformIconProvider.swift */,
+			PLAT0001REF /* MeetingPlatform.swift */,
+			HOLI0001REF /* HolidayDetector.swift */,
+			ICON0002REF /* PlatformIconProvider.swift */,
 		);
 		path = Meetings;
 		sourceTree = "<group>";
@@ -139,6 +133,7 @@
 			B9643B3F6CF09183E7E9EE4A /* MenuBarController.swift */,
 			D12220410D1DBBF18A9BA1D0 /* MenuBarContentView.swift */,
 			82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */,
+			ICON0001REF /* MenuBarIconProvider.swift */,
 		);
 		path = MenuBar;
 		sourceTree = "<group>";
@@ -156,9 +151,6 @@
 	B11DC2DCA910211818176E12 /* Audio */ = {
 		isa = PBXGroup;
 		children = (
-			A1F0D0C1F1E2010000000002 /* AudioCaptureService.swift */,
-			A1F0D0C1F1E2010000000003 /* MeetingRecordingManager.swift */,
-			A1F0D0C1F1E2010000000004 /* TranscriptionService.swift */,
 		);
 		path = Audio;
 		sourceTree = "<group>";
@@ -166,7 +158,6 @@
 	91D16B06DEA86C9B36D95D3E /* Shared */ = {
 		isa = PBXGroup;
 		children = (
-			A1F0D0C1F1E2010000000007 /* SharedTypes.swift */,
 		);
 		path = Shared;
 		sourceTree = "<group>";
@@ -174,9 +165,6 @@
 	1131C6A76F3E0B6371D1BE44 /* Transcription */ = {
 		isa = PBXGroup;
 		children = (
-			A1F0D0C1F1E2010000000008 /* TranscriptStore.swift */,
-			A1F0D0C1F1E2010000000009 /* TranscriptSearchView.swift */,
-			A1F0D0C1F1E201000000000A /* TranscriptionView.swift */,
 		);
 		path = Transcription;
 		sourceTree = "<group>";
@@ -274,20 +262,16 @@
 			0E7293B8D630456E9682C251 /* MeetingRowView.swift in Sources */,
 			C3BAC7E2A8CDBF78BAB8A332 /* Meeting.swift in Sources */,
 			104FDF64364D0379F6D338CC /* MeetingListViewModel.swift in Sources */,
-			B1F0D0C1F1E2010000000015 /* HolidayDetector.swift in Sources */,
-			B1F0D0C1F1E2010000000016 /* PlatformIconProvider.swift in Sources */,
-			B1F0D0C1F1E2010000000017 /* SharedTypes.swift in Sources */,
-			B1F0D0C1F1E2010000000012 /* AudioCaptureService.swift in Sources */,
-			B1F0D0C1F1E2010000000013 /* MeetingRecordingManager.swift in Sources */,
-			B1F0D0C1F1E2010000000014 /* TranscriptionService.swift in Sources */,
-			B1F0D0C1F1E2010000000018 /* TranscriptStore.swift in Sources */,
-			B1F0D0C1F1E2010000000019 /* TranscriptSearchView.swift in Sources */,
-			B1F0D0C1F1E201000000001A /* TranscriptionView.swift in Sources */,
 			553ADF43BEB23110DAFF4EBC /* CalendarService.swift in Sources */,
 			672895B9E03830086B5E32E1 /* PreferencesService.swift in Sources */,
 			7B4976A61FDC8DF74F991A16 /* PreferencesView.swift in Sources */,
 			EAF99761927E193EB588F6CA /* PreferencesWindowController.swift in Sources */,
-			B1F0D0C1F1E2010000000011 /* Types.swift in Sources */,
+			PERM0001 /* PermissionsService.swift in Sources */,
+			ICON0001 /* MenuBarIconProvider.swift in Sources */,
+			TYPE0001 /* Types.swift in Sources */,
+			PLAT0001 /* MeetingPlatform.swift in Sources */,
+			HOLI0001 /* HolidayDetector.swift in Sources */,
+			ICON0002 /* PlatformIconProvider.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};

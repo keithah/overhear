@@ -4,35 +4,35 @@ import SwiftUI
 // MARK: - Platform Icon Provider
 
 final class PlatformIconProvider {
-    /// Maps meeting platform to icon info
+     /// Maps meeting platform to icon info
     static func iconInfo(for platform: MeetingPlatform) -> PlatformIconInfo {
         switch platform {
         case .zoom:
             return PlatformIconInfo(
-                iconName: "video.circle.fill",  // Zoom - video icon in circle
+                iconName: "ZoomIcon",
                 color: NSColor(calibratedRed: 0.04, green: 0.36, blue: 1.0, alpha: 1.0),  // #0B5CFF Zoom Blue
-                isSystemIcon: true
+                isSystemIcon: false
             )
         
         case .meet:
             return PlatformIconInfo(
-                iconName: "person.2.fill",  // Google Meet - two people
+                iconName: "MeetIcon",
                 color: NSColor(calibratedRed: 0.0, green: 0.53, blue: 0.48, alpha: 1.0),  // #00897B Meet Green
-                isSystemIcon: true
+                isSystemIcon: false
             )
         
         case .teams:
             return PlatformIconInfo(
-                iconName: "person.3.fill",  // Teams - three people
+                iconName: "TeamsIcon",
                 color: NSColor(calibratedRed: 0.48, green: 0.41, blue: 0.93, alpha: 1.0),  // #7B68EE Teams Purple
-                isSystemIcon: true
+                isSystemIcon: false
             )
         
         case .webex:
             return PlatformIconInfo(
-                iconName: "person.2.circle.fill",  // Webex - two people in circle
+                iconName: "WebexIcon",
                 color: NSColor(calibratedRed: 0.0, green: 0.35, blue: 0.61, alpha: 1.0),  // #005A9C Webex Blue
-                isSystemIcon: true
+                isSystemIcon: false
             )
         
         case .unknown:
