@@ -38,7 +38,7 @@ struct MeetingRowView: View {
                 if meeting.holidayInfo.isHoliday {
                     Text(meeting.holidayEmoji)
                         .font(.system(size: 16))
-                } else {
+                } else if meeting.iconInfo.isSystemIcon {
                     let iconColor = Color(red: meeting.iconInfo.color.redComponent,
                                          green: meeting.iconInfo.color.greenComponent,
                                          blue: meeting.iconInfo.color.blueComponent)
@@ -46,6 +46,12 @@ struct MeetingRowView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(iconColor)
                         .frame(width: 14)
+                } else {
+                    // Custom image asset (not colored)
+                    Image(meeting.iconInfo.iconName)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 14, height: 14)
                 }
                 
                 // Title and time
@@ -125,19 +131,25 @@ HStack(alignment: .center, spacing: 10) {
                       .frame(width: 4)
                   
                   // Icon (Meeter size: ~14px)
-                 if meeting.holidayInfo.isHoliday {
-                     Text(meeting.holidayEmoji)
-                         .font(.system(size: 16))
-                         .frame(width: 18)
-                 } else {
-                     let iconColor = Color(red: meeting.iconInfo.color.redComponent,
-                                          green: meeting.iconInfo.color.greenComponent,
-                                          blue: meeting.iconInfo.color.blueComponent)
-                     Image(systemName: meeting.iconInfo.iconName)
-                         .font(.system(size: 12, weight: .semibold))
-                         .foregroundColor(iconColor)
-                         .frame(width: 16)
-                 }
+                  if meeting.holidayInfo.isHoliday {
+                      Text(meeting.holidayEmoji)
+                          .font(.system(size: 16))
+                          .frame(width: 18)
+                  } else if meeting.iconInfo.isSystemIcon {
+                      let iconColor = Color(red: meeting.iconInfo.color.redComponent,
+                                           green: meeting.iconInfo.color.greenComponent,
+                                           blue: meeting.iconInfo.color.blueComponent)
+                      Image(systemName: meeting.iconInfo.iconName)
+                          .font(.system(size: 12, weight: .semibold))
+                          .foregroundColor(iconColor)
+                          .frame(width: 16)
+                  } else {
+                      // Custom image asset (not colored)
+                      Image(meeting.iconInfo.iconName)
+                          .resizable()
+                          .scaledToFit()
+                          .frame(width: 16, height: 16)
+                  }
                  
                  // Time (Meeter size: 13px)
                  if !meeting.isAllDay {
