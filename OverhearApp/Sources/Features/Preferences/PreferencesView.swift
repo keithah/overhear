@@ -174,11 +174,17 @@ struct PreferencesView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     LabeledContent("Menubar toggle") {
                         TextField("e.g. ^⌥M", text: $preferences.menubarToggleHotkey)
+                            .onChange(of: preferences.menubarToggleHotkey) { _, newValue in
+                                preferences.menubarToggleHotkey = sanitizeHotkeyInput(newValue)
+                            }
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 140)
                     }
                     LabeledContent("Join next meeting") {
                         TextField("e.g. ^⌥J", text: $preferences.joinNextMeetingHotkey)
+                            .onChange(of: preferences.joinNextMeetingHotkey) { _, newValue in
+                                preferences.joinNextMeetingHotkey = sanitizeHotkeyInput(newValue)
+                            }
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 140)
                     }
@@ -190,17 +196,6 @@ struct PreferencesView: View {
                         Text("Hotkeys are active system-wide. Change them here anytime.")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                    }
-                }
-            }
-
-            Section(header: Text("Notifications")) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Button("Request notification permission") {
-                        NotificationHelper.requestPermission()
-                    }
-                    Button("Send test notification") {
-                        NotificationHelper.sendTestNotification()
                     }
                 }
             }
@@ -250,6 +245,16 @@ struct PreferencesView: View {
 
     private func isHotkeyValid(_ string: String) -> Bool {
         string.isEmpty || HotkeyBinding.isValid(string: string)
+    }
+
+    private func sanitizeHotkeyInput(_ value: String) -> String {
+        let allowedModifiers = "^⌃⌥⎇⌘⇧"
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        var result = trimmed.filter { allowedModifiers.contains($0) }
+        if let key = trimmed.first(where: { $0.isLetter || $0.isNumber }) {
+            result.append(Character(String(key).lowercased()))
+        }
+        return result
     }
 
     private func loadCalendars() async {

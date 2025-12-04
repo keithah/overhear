@@ -1,20 +1,26 @@
 import Foundation
 import UserNotifications
+import os.log
 
 enum NotificationHelper {
+    private static let logger = Logger(subsystem: "com.overhear.app", category: "Notifications")
+
     static func requestPermission() {
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { settings in
-            if settings.authorizationStatus == .notDetermined {
+            switch settings.authorizationStatus {
+            case .notDetermined:
                 center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     if let error {
-                        print("Notification permission error: \(error.localizedDescription)")
+                        logger.error("Notification permission error: \(error.localizedDescription, privacy: .public)")
                     } else {
-                        print("Notification permissions granted: \(granted)")
+                        logger.info("Notification permissions granted: \(granted, privacy: .public)")
                     }
                 }
-            } else if settings.authorizationStatus == .denied {
-                print("Notifications denied; open System Settings > Notifications to enable.")
+            case .denied:
+                logger.info("Notifications denied; open System Settings > Notifications to enable.")
+            default:
+                break
             }
         }
     }
@@ -24,10 +30,20 @@ enum NotificationHelper {
         center.getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
-                requestPermission()
-                scheduleTestNotification()
+                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    if let error {
+                        logger.error("Notification permission error during test: \(error.localizedDescription, privacy: .public)")
+                        return
+                    }
+                    
+                    if granted {
+                        scheduleTestNotification()
+                    } else {
+                        logger.info("Notifications denied during test prompt; cannot show test notification.")
+                    }
+                }
             case .denied:
-                print("Notifications denied; cannot show test notification.")
+                logger.info("Notifications denied; cannot show test notification.")
             default:
                 scheduleTestNotification()
             }
@@ -48,7 +64,7 @@ enum NotificationHelper {
         
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
-                print("Failed to schedule test notification: \(error.localizedDescription)")
+                logger.error("Failed to schedule test notification: \(error.localizedDescription, privacy: .public)")
             }
         }
     }

@@ -7,7 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Request notification permissions
-        requestNotificationPermissions()
+        NotificationHelper.requestPermission()
 
         let context = AppContext()
         self.context = context
@@ -44,21 +44,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Keep windows hidden but present for proper event delivery to menubar
         DispatchQueue.main.async {
             NSApp.windows.forEach { $0.orderOut(nil) }
-        }
-    }
-
-    private func requestNotificationPermissions() {
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            guard settings.authorizationStatus == .notDetermined else { return }
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-                if let error = error {
-                    print("Notification permission error: \(error.localizedDescription)")
-                } else if granted {
-                    print("Notification permissions granted")
-                } else {
-                    print("Notification permissions denied")
-                }
-            }
         }
     }
 }

@@ -2,6 +2,9 @@ import Foundation
 import EventKit
 import AppKit
 import SwiftUI
+import os.log
+
+private let meetingOpenLogger = Logger(subsystem: "com.overhear.app", category: "MeetingOpen")
 
 @MainActor
 enum MeetingPlatform: String, Codable, CaseIterable {
@@ -80,13 +83,17 @@ enum MeetingPlatform: String, Codable, CaseIterable {
                 configuration: configuration
             ) { _, error in
                 if let error {
-                    print("Failed to open URL \(urlToOpen) with \(bundleIdentifierToUse): \(error.localizedDescription)")
+                    meetingOpenLogger.error("Failed to open URL \(urlToOpen.absoluteString, privacy: .public) with \(bundleIdentifierToUse, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 }
             }
             return true
         }
         
-        return NSWorkspace.shared.open(urlToOpen)
+        let success = NSWorkspace.shared.open(urlToOpen)
+        if !success {
+            meetingOpenLogger.error("Failed to open URL \(urlToOpen.absoluteString, privacy: .public) using default method")
+        }
+        return success
     }
 
     private func convertToZoomMTG(_ url: URL) -> URL? {
