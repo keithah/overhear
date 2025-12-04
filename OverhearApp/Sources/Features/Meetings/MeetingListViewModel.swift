@@ -3,6 +3,7 @@ import EventKit
 import Foundation
 import AppKit
 import SwiftUI
+import os.log
 
 @MainActor
 final class MeetingListViewModel: ObservableObject {
@@ -14,6 +15,7 @@ final class MeetingListViewModel: ObservableObject {
 
     private let calendarService: CalendarService
     private let preferences: PreferencesService
+    private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingListViewModel")
     private var cancellables: Set<AnyCancellable> = []
 
     init(calendarService: CalendarService, preferences: PreferencesService) {
@@ -35,10 +37,12 @@ final class MeetingListViewModel: ObservableObject {
     func reload() async {
         isLoading = true
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        log("Reload start; auth status \(authorizationStatus.rawValue)")
 
         let authorized = await calendarService.requestAccessIfNeeded()
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         guard authorized else {
+            log("Reload aborted; not authorized")
             isLoading = false
             return
         }
@@ -49,6 +53,7 @@ final class MeetingListViewModel: ObservableObject {
                                                            includeEventsWithoutLinks: preferences.showEventsWithoutLinks,
                                                            includeMaybeEvents: preferences.showMaybeEvents,
                                                            allowedCalendarIDs: preferences.allowedCalendars)
+        log("Reload fetched \(meetings.count) meetings")
         apply(meetings: meetings)
         lastUpdated = Date()
         isLoading = false
@@ -110,6 +115,22 @@ final class MeetingListViewModel: ObservableObject {
                             showEventsWithoutLinks: preferences.showEventsWithoutLinks,
                             showMaybeEvents: preferences.showMaybeEvents,
                             allowedCalendars: preferences.selectedCalendarIDs)
+    }
+
+    private func log(_ message: String) {
+        logger.info("\(message, privacy: .public)")
+        let line = "[MeetingListViewModel] \(Date()): \(message)\n"
+        let url = URL(fileURLWithPath: "/tmp/overhear.log")
+        guard let data = line.data(using: .utf8) else { return }
+        if FileManager.default.fileExists(atPath: url.path) {
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+                return
+            }
+        }
+        try? data.write(to: url, options: .atomic)
     }
 }
 
