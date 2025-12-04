@@ -68,6 +68,10 @@ final class PreferencesService: ObservableObject {
         didSet { persist(webexOpenBehavior.rawValue, key: .webexOpenBehavior) }
     }
 
+    @Published var otherLinksOpenBehavior: OpenBehavior {
+        didSet { persist(otherLinksOpenBehavior.rawValue, key: .otherLinksOpenBehavior) }
+    }
+
     @Published var viewMode: ViewMode {
         didSet { persist(viewMode.rawValue, key: .viewMode) }
     }
@@ -98,10 +102,11 @@ final class PreferencesService: ObservableObject {
         self.countdownEnabled = defaults.object(forKey: PreferenceKey.countdownEnabled.rawValue) as? Bool ?? true
         self.notificationMinutesBefore = defaults.object(forKey: PreferenceKey.notificationMinutesBefore.rawValue) as? Int ?? 5
         self.selectedCalendarIDs = PreferencesService.loadCalendarIDs(defaults: defaults)
-        self.zoomOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .zoomOpenBehavior, default: .zoommtg)
-        self.meetOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .meetOpenBehavior, default: .browser)
-        self.teamsOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .teamsOpenBehavior, default: .browser)
-        self.webexOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .webexOpenBehavior, default: .browser)
+        self.zoomOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .zoomOpenBehavior, default: .nativeApp)
+        self.meetOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .meetOpenBehavior, default: .defaultBrowser)
+        self.teamsOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .teamsOpenBehavior, default: .defaultBrowser)
+        self.webexOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .webexOpenBehavior, default: .defaultBrowser)
+        self.otherLinksOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .otherLinksOpenBehavior, default: .defaultBrowser)
         self.viewMode = PreferencesService.loadViewMode(defaults: defaults)
         self.menubarDaysToShow = defaults.object(forKey: PreferenceKey.menubarDaysToShow.rawValue) as? Int ?? 3
         self.menubarToggleHotkey = defaults.string(forKey: PreferenceKey.menubarToggleHotkey.rawValue) ?? ""
@@ -143,7 +148,7 @@ final class PreferencesService: ObservableObject {
         case .meet: return meetOpenBehavior
         case .teams: return teamsOpenBehavior
         case .webex: return webexOpenBehavior
-        case .unknown: return .browser
+        case .unknown: return otherLinksOpenBehavior
         }
     }
 
@@ -206,6 +211,7 @@ private enum PreferenceKey: String {
     case meetOpenBehavior
     case teamsOpenBehavior
     case webexOpenBehavior
+    case otherLinksOpenBehavior
     case viewMode
     case menubarDaysToShow
     case menubarToggleHotkey

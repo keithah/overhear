@@ -14,6 +14,21 @@ enum NotificationHelper {
     }
     
     static func sendTestNotification() {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                requestPermission()
+                scheduleTestNotification()
+            case .denied:
+                print("Notifications denied; cannot show test notification.")
+            default:
+                scheduleTestNotification()
+            }
+        }
+    }
+    
+    private static func scheduleTestNotification() {
         let content = UNMutableNotificationContent()
         content.title = "Overhear notifications"
         content.body = "Notifications are enabled. You'll see reminders before meetings."

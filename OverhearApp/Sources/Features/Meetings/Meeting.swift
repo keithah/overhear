@@ -31,48 +31,61 @@ enum MeetingPlatform: String, Codable, CaseIterable {
     @MainActor
     func openURL(_ url: URL, openBehavior: OpenBehavior) -> Bool {
         let urlToOpen: URL
+        var bundleIdentifierToUse: String?
         
         switch self {
         case .zoom:
             switch openBehavior {
-            case .zoommtg, .app:
-                // Try to open with Zoom app using custom protocol
+            case .nativeApp:
                 urlToOpen = convertToZoomMTG(url) ?? url
-            case .browser:
-                // Open with browser
+            default:
                 urlToOpen = url
+                bundleIdentifierToUse = openBehavior.browserBundleIdentifier
             }
         case .meet:
             switch openBehavior {
-            case .app:
-                // Google Meet web app
+            case .nativeApp:
                 urlToOpen = url
-            case .browser, .zoommtg:
-                // Open with browser
+            default:
                 urlToOpen = url
+                bundleIdentifierToUse = openBehavior.browserBundleIdentifier
             }
         case .teams:
             switch openBehavior {
-            case .app:
-                // Microsoft Teams web app
+            case .nativeApp:
                 urlToOpen = url
-            case .browser, .zoommtg:
-                // Open with browser
+            default:
                 urlToOpen = url
+                bundleIdentifierToUse = openBehavior.browserBundleIdentifier
             }
         case .webex:
             switch openBehavior {
-            case .app:
-                // Webex web app
+            case .nativeApp:
                 urlToOpen = url
-            case .browser, .zoommtg:
-                // Open with browser
+            default:
                 urlToOpen = url
+                bundleIdentifierToUse = openBehavior.browserBundleIdentifier
             }
         case .unknown:
             urlToOpen = url
+            bundleIdentifierToUse = openBehavior.browserBundleIdentifier
         }
 
+        if let bundleIdentifierToUse,
+           let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifierToUse) {
+            let configuration = NSWorkspace.OpenConfiguration()
+            NSWorkspace.shared.open(
+                [urlToOpen],
+                withApplicationAt: appURL,
+                configuration: configuration
+            ) { _, error in
+                if let error {
+                    print("Failed to open URL \(urlToOpen) with \(bundleIdentifierToUse): \(error.localizedDescription)")
+                }
+            }
+            return true
+        }
+        
         return NSWorkspace.shared.open(urlToOpen)
     }
 
@@ -109,24 +122,60 @@ enum MeetingPlatform: String, Codable, CaseIterable {
     }
 }
 
+private extension OpenBehavior {
+    var browserBundleIdentifier: String? {
+        switch self {
+        case .defaultBrowser, .nativeApp:
+            return nil
+        case .chrome:
+            return "com.google.Chrome"
+        case .safari:
+            return "com.apple.Safari"
+        case .firefox:
+            return "org.mozilla.firefox"
+        case .edge:
+            return "com.microsoft.edgemac"
+        case .brave:
+            return "com.brave.browser"
+        case .vivaldi:
+            return "com.vivaldi.Vivaldi"
+        case .opera:
+            return "com.operasoftware.Opera"
+        }
+    }
+}
+
 enum OpenBehavior: String, Codable, CaseIterable {
-    case browser = "browser"
-    case app = "app"
-    case zoommtg = "zoommtg" // Only for Zoom
+    case defaultBrowser = "defaultBrowser"
+    case nativeApp = "nativeApp"
+    case chrome = "chrome"
+    case safari = "safari"
+    case firefox = "firefox"
+    case edge = "edge"
+    case brave = "brave"
+    case vivaldi = "vivaldi"
+    case opera = "opera"
 
     var displayName: String {
         switch self {
-        case .browser: return "Browser"
-        case .app: return "App"
-        case .zoommtg: return "Zoom App"
+        case .defaultBrowser: return "Default Browser"
+        case .nativeApp: return "Native App"
+        case .chrome: return "Chrome"
+        case .safari: return "Safari"
+        case .firefox: return "Firefox"
+        case .edge: return "Microsoft Edge"
+        case .brave: return "Brave"
+        case .vivaldi: return "Vivaldi"
+        case .opera: return "Opera"
         }
     }
 
     static func available(for platform: MeetingPlatform) -> [OpenBehavior] {
+        let browsers: [OpenBehavior] = [.defaultBrowser, .chrome, .firefox, .brave, .vivaldi, .edge, .opera, .safari]
         switch platform {
-        case .zoom: return [.browser, .app, .zoommtg]
-        case .meet, .teams, .webex: return [.browser, .app]
-        case .unknown: return [.browser]
+        case .zoom: return [.nativeApp] + browsers
+        case .meet, .teams, .webex: return [.nativeApp] + browsers
+        case .unknown: return browsers
         }
     }
 }

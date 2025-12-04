@@ -118,10 +118,11 @@ struct PreferencesView: View {
             }
 
             Section(header: Text("Open rules")) {
-                openRulePicker(title: "Zoom", selection: $preferences.zoomOpenBehavior)
-                openRulePicker(title: "Meet", selection: $preferences.meetOpenBehavior)
-                openRulePicker(title: "Teams", selection: $preferences.teamsOpenBehavior)
-                openRulePicker(title: "Webex", selection: $preferences.webexOpenBehavior)
+                openRulePicker(title: "Open Zoom", platform: .zoom, selection: $preferences.zoomOpenBehavior)
+                openRulePicker(title: "Open Microsoft Teams", platform: .teams, selection: $preferences.teamsOpenBehavior)
+                openRulePicker(title: "Open Webex", platform: .webex, selection: $preferences.webexOpenBehavior)
+                openRulePicker(title: "Open Google Meet", platform: .meet, selection: $preferences.meetOpenBehavior)
+                openRulePicker(title: "Other links", platform: .unknown, selection: $preferences.otherLinksOpenBehavior)
             }
 
             Section(header: Text("Hotkeys (coming soon)")) {
@@ -169,9 +170,9 @@ struct PreferencesView: View {
         .padding()
     }
 
-    private func openRulePicker(title: String, selection: Binding<OpenBehavior>) -> some View {
+    private func openRulePicker(title: String, platform: MeetingPlatform, selection: Binding<OpenBehavior>) -> some View {
         Picker(title, selection: selection) {
-            ForEach(OpenBehavior.allCases, id: \.self) { behavior in
+            ForEach(OpenBehavior.available(for: platform), id: \.self) { behavior in
                 Text(behavior.displayName).tag(behavior)
             }
         }
