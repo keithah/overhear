@@ -138,16 +138,23 @@ struct PreferencesView: View {
     private func loadCalendars() async {
         isLoadingCalendars = true
 
-        // Request calendar access if needed
-        let accessGranted = await calendarService.requestAccessIfNeeded()
+        // Check if we already have permission
+        let currentStatus = EKEventStore.authorizationStatus(for: .event)
+        let hasPermission = currentStatus == .authorized || currentStatus == .fullAccess
         
-        guard accessGranted else {
-            isLoadingCalendars = false
-            calendarsBySource = []
-            return
+        if !hasPermission {
+            // Request calendar access if needed
+            let accessGranted = await calendarService.requestAccessIfNeeded()
+            
+            guard accessGranted else {
+                isLoadingCalendars = false
+                calendarsBySource = []
+                return
+            }
         }
 
-        // Load calendars
+        // Load calendars - add a small delay to ensure EventStore is ready
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
         calendarsBySource = calendarService.calendarsBySource()
 
         // Initialize with all calendars on first run
