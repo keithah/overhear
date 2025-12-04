@@ -34,6 +34,14 @@ struct PreferencesView: View {
         calendarService.authorizationStatus
     }
 
+    private var hasCalendarAccess: Bool {
+        if #available(macOS 14.0, *) {
+            return calendarAuthorizationStatus == .fullAccess || calendarAuthorizationStatus == .writeOnly
+        } else {
+            return calendarAuthorizationStatus == .authorized
+        }
+    }
+
     private var generalTab: some View {
         Form {
             Toggle("Launch at login", isOn: $preferences.launchAtLogin)
@@ -69,7 +77,7 @@ struct PreferencesView: View {
                         .controlSize(.small)
                 }
             }
-            if calendarAuthorizationStatus != .fullAccess && calendarAuthorizationStatus != .writeOnly && calendarAuthorizationStatus != .authorized {
+            if !hasCalendarAccess {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Grant calendar access to show meetings.")
                         .font(.callout)
@@ -174,9 +182,15 @@ struct PreferencesView: View {
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 140)
                     }
-                    Text("Hotkeys are stored now; system-wide binding ships in an upcoming update.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    if !isHotkeyValid(preferences.menubarToggleHotkey) || !isHotkeyValid(preferences.joinNextMeetingHotkey) {
+                        Text("Use modifiers (^⌥⌘⇧) plus a letter/number, e.g., ^⌥M.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Hotkeys are active system-wide. Change them here anytime.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
 
@@ -199,8 +213,12 @@ struct PreferencesView: View {
                 .font(.title2.weight(.semibold))
             Text("Everything runs on-device with Apple Silicon optimization. For support, open an issue on GitHub.")
                 .font(.body)
-            Link("GitHub repository", destination: URL(string: "https://github.com/keithah/overhear")!)
-            Link("Open a support issue", destination: URL(string: "https://github.com/keithah/overhear/issues")!)
+            if let repoURL = URL(string: "https://github.com/keithah/overhear") {
+                Link("GitHub repository", destination: repoURL)
+            }
+            if let issuesURL = URL(string: "https://github.com/keithah/overhear/issues") {
+                Link("Open a support issue", destination: issuesURL)
+            }
             Spacer()
         }
         .padding()
@@ -228,6 +246,10 @@ struct PreferencesView: View {
             .pickerStyle(.menu)
             .frame(width: 180)
         }
+    }
+
+    private func isHotkeyValid(_ string: String) -> Bool {
+        string.isEmpty || HotkeyBinding.isValid(string: string)
     }
 
     private func loadCalendars() async {

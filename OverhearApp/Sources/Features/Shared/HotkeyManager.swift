@@ -1,5 +1,7 @@
 import AppKit
+import Combine
 
+@MainActor
 final class HotkeyManager {
     private var monitor: Any?
     private var bindings: [HotkeyBinding] = []
@@ -66,7 +68,7 @@ final class HotkeyManager {
     }
 }
 
-private struct HotkeyBinding {
+struct HotkeyBinding {
     let modifiers: NSEvent.ModifierFlags
     let key: String
     let action: () -> Void
@@ -98,5 +100,9 @@ private struct HotkeyBinding {
     func matches(flags: NSEvent.ModifierFlags, key otherKey: String?) -> Bool {
         guard let otherKey else { return false }
         return otherKey == key && flags == modifiers
+    }
+
+    static func isValid(string: String) -> Bool {
+        return HotkeyBinding(string: string, action: {}) != nil
     }
 }
