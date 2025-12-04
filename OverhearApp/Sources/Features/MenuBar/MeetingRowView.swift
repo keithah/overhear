@@ -39,12 +39,9 @@ struct MeetingRowView: View {
                     Text(meeting.holidayEmoji)
                         .font(.system(size: 16))
                 } else if meeting.iconInfo.isSystemIcon {
-                    let iconColor = Color(red: meeting.iconInfo.color.redComponent,
-                                         green: meeting.iconInfo.color.greenComponent,
-                                         blue: meeting.iconInfo.color.blueComponent)
                     Image(systemName: meeting.iconInfo.iconName)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(iconColor)
+                        .foregroundColor(meeting.iconInfo.swiftUIColor)
                         .frame(width: 14)
                 } else {
                     // Custom image asset
@@ -57,9 +54,7 @@ struct MeetingRowView: View {
                         // Fallback
                         Image(systemName: "video.fill")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(Color(red: meeting.iconInfo.color.redComponent,
-                                                   green: meeting.iconInfo.color.greenComponent,
-                                                   blue: meeting.iconInfo.color.blueComponent))
+                            .foregroundColor(meeting.iconInfo.swiftUIColor)
                             .frame(width: 14)
                     }
                 }
@@ -146,12 +141,9 @@ HStack(alignment: .center, spacing: 10) {
                           .font(.system(size: 16))
                           .frame(width: 18)
                   } else if meeting.iconInfo.isSystemIcon {
-                      let iconColor = Color(red: meeting.iconInfo.color.redComponent,
-                                           green: meeting.iconInfo.color.greenComponent,
-                                           blue: meeting.iconInfo.color.blueComponent)
                       Image(systemName: meeting.iconInfo.iconName)
                           .font(.system(size: 12, weight: .semibold))
-                          .foregroundColor(iconColor)
+                          .foregroundColor(meeting.iconInfo.swiftUIColor)
                           .frame(width: 16)
                    } else {
                        // Custom image asset
@@ -164,10 +156,8 @@ HStack(alignment: .center, spacing: 10) {
                            // Fallback
                            Image(systemName: "video.fill")
                                .font(.system(size: 12, weight: .semibold))
-                               .foregroundColor(Color(red: meeting.iconInfo.color.redComponent,
-                                                      green: meeting.iconInfo.color.greenComponent,
-                                                      blue: meeting.iconInfo.color.blueComponent))
-                               .frame(width: 16)
+                               .foregroundColor(meeting.iconInfo.swiftUIColor)
+                           .frame(width: 16)
                        }
                    }
                  

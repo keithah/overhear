@@ -4,6 +4,13 @@ import AppKit
 /// View for displaying live transcription during a meeting
 struct TranscriptionView: View {
     @ObservedObject var recordingManager: MeetingRecordingManager
+    @State private var exportError: String?
+    @State private var showExportError = false
+    
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        return formatter
+    }()
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -55,6 +62,11 @@ struct TranscriptionView: View {
         .padding(12)
         .background(Color(nsColor: .controlColor))
         .cornerRadius(8)
+        .alert("Export Failed", isPresented: $showExportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportError ?? "Unknown error")
+        }
     }
     
     @ViewBuilder
@@ -99,8 +111,7 @@ struct TranscriptionView: View {
     private func exportTranscript() {
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.plainText]
-        let formatter = ISO8601DateFormatter()
-        let dateString = formatter.string(from: Date())
+        let dateString = Self.iso8601Formatter.string(from: Date())
         savePanel.nameFieldStringValue = "transcript-\(dateString).txt"
         
         savePanel.begin { response in
@@ -108,7 +119,8 @@ struct TranscriptionView: View {
             do {
                 try recordingManager.transcript.write(to: url, atomically: true, encoding: String.Encoding.utf8)
             } catch {
-                print("Failed to export transcript: \(error)")
+                self.exportError = error.localizedDescription
+                self.showExportError = true
             }
         }
     }

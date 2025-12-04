@@ -30,6 +30,26 @@ struct TranscriptSearchView: View {
                 .background(Color(nsColor: .controlBackgroundColor))
                 .border(Color(nsColor: .separatorColor), width: 1)
                 
+                if let errorMessage = viewModel.errorMessage {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text(errorMessage)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button("Dismiss") {
+                            viewModel.clearError()
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 11, weight: .semibold))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .border(Color(nsColor: .separatorColor), width: 1)
+                }
+                
                 if viewModel.isLoading {
                     VStack {
                         Spacer()
@@ -130,6 +150,8 @@ struct TranscriptRow: View {
 struct TranscriptDetailView: View {
     let transcript: StoredTranscript
     @Environment(\.dismiss) var dismiss
+    @State private var exportError: String?
+    @State private var showExportError = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -187,6 +209,11 @@ struct TranscriptDetailView: View {
             .background(Color(nsColor: .controlBackgroundColor))
             .border(Color(nsColor: .separatorColor), width: 1)
         }
+        .alert("Export Failed", isPresented: $showExportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportError ?? "Unknown error")
+        }
     }
     
     private func copyTranscript() {
@@ -208,6 +235,8 @@ struct TranscriptDetailView: View {
                 try transcript.transcript.write(to: url, atomically: true, encoding: String.Encoding.utf8)
             } catch {
                 print("Failed to export transcript: \(error)")
+                self.exportError = error.localizedDescription
+                self.showExportError = true
             }
         }
     }
@@ -221,10 +250,19 @@ final class TranscriptSearchViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
-    private let store = TranscriptStore()
+    private let store: TranscriptStore?
+    private let storeInitError: String?
     private var searchTask: Task<Void, Never>?
     
     init() {
+        do {
+            store = try TranscriptStore()
+            storeInitError = nil
+        } catch {
+            store = nil
+            storeInitError = error.localizedDescription
+            errorMessage = "Unable to access transcripts: \(error.localizedDescription)"
+        }
         $searchQuery
             .debounce(for: 0.3, scheduler: RunLoop.main)
             .sink { [weak self] _ in
@@ -235,15 +273,25 @@ final class TranscriptSearchViewModel: ObservableObject {
     
     private var cancellables = Set<AnyCancellable>()
     
+    func clearError() {
+        errorMessage = nil
+    }
+    
     func loadTranscripts() async {
         isLoading = true
         errorMessage = nil
+        guard let store else {
+            errorMessage = storeInitError ?? "Unable to access transcripts."
+            transcripts = []
+            isLoading = false
+            return
+        }
         do {
             let allTranscripts = try await store.allTranscripts()
             self.transcripts = allTranscripts
         } catch {
-            self.errorMessage = "Failed to load transcripts: \(error.localizedDescription)"
-            print("Failed to load transcripts: \(error)")
+            handleError(error, context: "loading transcripts")
+            self.transcripts = []
         }
         isLoading = false
     }
@@ -254,26 +302,53 @@ final class TranscriptSearchViewModel: ObservableObject {
     
     private func performSearch() {
         searchTask?.cancel()
+        guard let store else {
+            self.errorMessage = storeInitError ?? "Unable to access transcripts."
+            self.transcripts = []
+            return
+        }
         searchTask = Task {
-            isLoading = true
-            errorMessage = nil
+            defer { isLoading = false }
             
             do {
+                guard !Task.isCancelled else { return }
+                
                 if searchQuery.isEmpty {
                     let allTranscripts = try await store.allTranscripts()
+                    guard !Task.isCancelled else { return }
                     self.transcripts = allTranscripts
                 } else {
                     let results = try await store.search(query: searchQuery)
+                    guard !Task.isCancelled else { return }
                     self.transcripts = results
                 }
-            } catch {
-                self.errorMessage = "Search failed: \(error.localizedDescription)"
-                print("Search failed: \(error)")
-                self.transcripts = []
-            }
-            
-            isLoading = false
+             } catch is CancellationError {
+                 // Expected - task was cancelled
+             } catch {
+                 let nsError = error as NSError
+                 if nsError.domain == NSURLErrorDomain {
+                     self.errorMessage = "Network error: Please check your internet connection and try again. (\(nsError.localizedDescription))"
+                 } else if nsError.domain == NSCocoaErrorDomain {
+                     self.errorMessage = "Data error: There was a problem processing the transcripts. (\(nsError.localizedDescription))"
+                 } else {
+                     self.errorMessage = "An unexpected error occurred during search. Please try again. (\(nsError.localizedDescription))"
+                 }
+                 print("Search failed: \(error)")
+                 self.transcripts = []
+             }
         }
+    }
+    
+    private func handleError(_ error: Error, context: String) {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            self.errorMessage = "Network error while \(context): \(nsError.localizedDescription)"
+        } else if nsError.domain == NSCocoaErrorDomain {
+            self.errorMessage = "Data error while \(context): \(nsError.localizedDescription)"
+        } else {
+            self.errorMessage = "Unable to complete \(context): \(error.localizedDescription)"
+        }
+        print("TranscriptSearch error (\(context)): \(error)")
     }
 }
 

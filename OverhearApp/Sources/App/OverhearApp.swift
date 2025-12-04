@@ -9,7 +9,7 @@ struct OverhearApp: App {
             if let context = appDelegate.context {
                 PreferencesView(preferences: context.preferencesService, calendarService: context.calendarService)
             } else {
-                EmptyView()
+                ProgressView("Loading Settings…")
             }
         }
         WindowGroup {

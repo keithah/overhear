@@ -43,30 +43,37 @@ final class MeetingRecordingManager: ObservableObject {
     private let recordingDirectory: URL
     
     private var captureStartTime: Date?
+    private var transcriptionTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
     
     init(
         meetingID: String,
         captureService: AudioCaptureService = AudioCaptureService(),
         transcriptionService: TranscriptionService = TranscriptionService()
-    ) {
+    ) throws {
         self.meetingID = meetingID
         self.captureService = captureService
         self.transcriptionService = transcriptionService
         
         // Create recording directory in app support
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw RecordingError.captureService(NSError(domain: "MeetingRecordingManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Application support directory not found"]))
+        }
         self.recordingDirectory = appSupport.appendingPathComponent("com.overhear.app/Recordings")
         
-        try? FileManager.default.createDirectory(at: recordingDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: recordingDirectory, withIntermediateDirectories: true)
     }
     
     /// Start recording the meeting
     /// - Parameter duration: Maximum recording duration in seconds (default 3600 = 1 hour)
     func startRecording(duration: TimeInterval = 3600) async {
-        guard case .idle = status else {
+        // Allow retrying if failed or starting new if completed/idle
+        switch status {
+        case .capturing, .transcribing:
             status = .failed(RecordingError.alreadyRecording)
             return
+        default:
+            break
         }
         
         status = .capturing
@@ -90,7 +97,11 @@ final class MeetingRecordingManager: ObservableObject {
     /// Stop the current recording
     func stopRecording() async {
         await captureService.stopCapture()
-        // Transcription will continue if in progress
+        
+        // If we are already transcribing, cancel it so status resets cleanly
+        if case .transcribing = status {
+            transcriptionTask?.cancel()
+        }
     }
     
     // MARK: - Private
@@ -98,12 +109,18 @@ final class MeetingRecordingManager: ObservableObject {
     private func startTranscription(audioURL: URL) async {
         status = .transcribing
         
-        do {
-            let text = try await transcriptionService.transcribe(audioURL: audioURL)
-            self.transcript = text
-            status = .completed
-        } catch {
-            status = .failed(RecordingError.transcriptionService(error))
+        let task = Task {
+            do {
+                let text = try await transcriptionService.transcribe(audioURL: audioURL)
+                self.transcript = text
+                status = .completed
+            } catch is CancellationError {
+                status = .idle // Reset status on cancellation
+            } catch {
+                status = .failed(RecordingError.transcriptionService(error))
+            }
         }
+        self.transcriptionTask = task
+        _ = await task.result
     }
 }

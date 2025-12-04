@@ -25,11 +25,16 @@ struct PreferencesView: View {
         }
         .padding()
         .frame(width: 520, height: 420)
-        .task {
-             // Wait a moment for main app to initialize permissions
-             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-             await loadCalendars()
-         }
+.task {
+              // Wait a moment for main app to initialize permissions
+              do {
+                  try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+              } catch {
+                  // Cancelled or error
+                  return
+              }
+              await loadCalendars()
+          }
     }
 
     private var generalTab: some View {
@@ -178,14 +183,10 @@ private struct SourceToggle: View {
                 
                 // Show mixed state indicator
                 if isMixedState {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 6, height: 6)
-                        .overlay(
-                            Text("!")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
-                        )
+                    Rectangle()
+                        .fill(Color.gray)
+                        .frame(width: 10, height: 2)
+                        .cornerRadius(1)
                 }
             }
         }

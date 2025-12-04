@@ -7,45 +7,34 @@ final class CalendarService: ObservableObject {
 
       private let eventStore = EKEventStore()
 
-     func requestAccessIfNeeded() async -> Bool {
-         let status = EKEventStore.authorizationStatus(for: .event)
-         authorizationStatus = status
-         
-         // If already have permission, return true
-         if #available(macOS 14.0, *) {
-             if status == .fullAccess {
-                 return true
-             }
-             if status == .writeOnly {
-                 return false
-             }
-         } else {
-             if status == .authorized {
-                 return true
-             }
-         }
-         
-         // If denied or restricted, bail early
-         if status == .denied || status == .restricted {
-             return false
-         }
-         
-         // If status is notDetermined, ask for permission
-         let granted = await withCheckedContinuation { continuation in
-             if #available(macOS 14.0, *) {
-                 eventStore.requestFullAccessToEvents { granted, _ in
-                     continuation.resume(returning: granted)
-                 }
-             } else {
-                 eventStore.requestAccess(to: .event) { granted, _ in
-                     continuation.resume(returning: granted)
-                 }
-             }
-         }
-         
-         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-         return granted
-     }
+    func requestAccessIfNeeded() async -> Bool {
+        let status = EKEventStore.authorizationStatus(for: .event)
+        authorizationStatus = status
+        
+        switch status {
+        case .authorized, .fullAccess:
+            return true
+        case .writeOnly, .denied, .restricted:
+            return false
+        case .notDetermined:
+            let granted = await withCheckedContinuation { continuation in
+                if #available(macOS 14.0, *) {
+                    eventStore.requestFullAccessToEvents { granted, _ in
+                        continuation.resume(returning: granted)
+                    }
+                } else {
+                    eventStore.requestAccess(to: .event) { granted, _ in
+                        continuation.resume(returning: granted)
+                    }
+                }
+            }
+            
+            authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+            return granted
+        @unknown default:
+            return false
+        }
+    }
 
      func availableCalendars() -> [EKCalendar] {
          return eventStore.calendars(for: .event)
