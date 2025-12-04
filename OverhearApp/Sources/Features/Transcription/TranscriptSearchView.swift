@@ -30,6 +30,26 @@ struct TranscriptSearchView: View {
                 .background(Color(nsColor: .controlBackgroundColor))
                 .border(Color(nsColor: .separatorColor), width: 1)
                 
+                if let errorMessage = viewModel.errorMessage {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text(errorMessage)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button("Dismiss") {
+                            viewModel.clearError()
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 11, weight: .semibold))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .border(Color(nsColor: .separatorColor), width: 1)
+                }
+                
                 if viewModel.isLoading {
                     VStack {
                         Spacer()
@@ -253,6 +273,10 @@ final class TranscriptSearchViewModel: ObservableObject {
     
     private var cancellables = Set<AnyCancellable>()
     
+    func clearError() {
+        errorMessage = nil
+    }
+    
     func loadTranscripts() async {
         isLoading = true
         errorMessage = nil
@@ -266,15 +290,8 @@ final class TranscriptSearchViewModel: ObservableObject {
             let allTranscripts = try await store.allTranscripts()
             self.transcripts = allTranscripts
         } catch {
-            let nsError = error as NSError
-            if nsError.domain == NSURLErrorDomain {
-                self.errorMessage = "Network error: Please check your internet connection and try again. (\(nsError.localizedDescription))"
-            } else if nsError.domain == NSCocoaErrorDomain {
-                self.errorMessage = "Data error: There was a problem loading the transcripts. Please try again. (\(nsError.localizedDescription))"
-            } else {
-                self.errorMessage = "Failed to load transcripts. Please check your permissions and try again. If the problem persists, contact support. (\(error.localizedDescription))"
-            }
-            print("Failed to load transcripts: \(error)")
+            handleError(error, context: "loading transcripts")
+            self.transcripts = []
         }
         isLoading = false
     }
@@ -320,6 +337,18 @@ final class TranscriptSearchViewModel: ObservableObject {
                  self.transcripts = []
              }
         }
+    }
+    
+    private func handleError(_ error: Error, context: String) {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            self.errorMessage = "Network error while \(context): \(nsError.localizedDescription)"
+        } else if nsError.domain == NSCocoaErrorDomain {
+            self.errorMessage = "Data error while \(context): \(nsError.localizedDescription)"
+        } else {
+            self.errorMessage = "Unable to complete \(context): \(error.localizedDescription)"
+        }
+        print("TranscriptSearch error (\(context)): \(error)")
     }
 }
 
