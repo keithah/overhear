@@ -135,23 +135,23 @@ struct PreferencesView: View {
         }
     }
 
-    private func loadCalendars() async {
-        isLoadingCalendars = true
-        let accessGranted = await calendarService.requestAccessIfNeeded()
-        guard accessGranted else {
-            isLoadingCalendars = false
-            calendarsBySource = []
-            return
-        }
-        
-        calendarsBySource = calendarService.calendarsBySource()
-        
-        // Initialize with all calendars on first run
-        let allCalendarIDs = calendarsBySource.flatMap { $0.calendars.map { $0.calendarIdentifier } }
-        preferences.initializeWithAllCalendars(allCalendarIDs)
-        
-        isLoadingCalendars = false
-    }
+     private func loadCalendars() async {
+         isLoadingCalendars = true
+         let accessGranted = await calendarService.requestAccessIfNeeded()
+         guard accessGranted else {
+             isLoadingCalendars = false
+             calendarsBySource = []
+             return
+         }
+         
+         calendarsBySource = calendarService.calendarsBySource()
+         
+         // Initialize with all calendars on first run
+         let allCalendarIDs = calendarsBySource.flatMap { $0.calendars.map { $0.calendarIdentifier } }
+         preferences.initializeWithAllCalendars(allCalendarIDs)
+         
+         isLoadingCalendars = false
+     }
 }
 
 /// Toggle for an entire source
