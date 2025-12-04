@@ -164,16 +164,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             .filter { !$0.isAllDay && $0.startDate > now }  // Exclude all-day events
             .min { $0.startDate < $1.startDate }
         
-        if let nextEvent = nextEvent {
-            let timeStr = getTimeUntilString(nextEvent.startDate)
-            button.title = "  \(nextEvent.title) \(timeStr)"  // Add space before title
-            // Match Meeter style: thin/light weight, system font
-            button.font = NSFont.systemFont(ofSize: 12, weight: .regular)
-            button.imagePosition = .imageLeft
-        } else {
-            button.title = ""
-            button.imagePosition = .imageOnly
-        }
+        if let nextEvent = nextEvent, preferences.countdownEnabled {
+             let timeStr = getTimeUntilString(nextEvent.startDate)
+             button.title = "  \(nextEvent.title) \(timeStr)"  // Add space before title
+             // Match Meeter style: thin/light weight, system font
+             button.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+             button.imagePosition = .imageLeft
+         } else {
+             button.title = ""
+             button.imagePosition = .imageOnly
+         }
     }
     
     private func getTimeUntilString(_ date: Date) -> String {
