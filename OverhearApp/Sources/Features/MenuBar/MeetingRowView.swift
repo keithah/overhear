@@ -47,11 +47,21 @@ struct MeetingRowView: View {
                         .foregroundColor(iconColor)
                         .frame(width: 14)
                 } else {
-                    // Custom image asset - direct SwiftUI Image
-                    Image(meeting.iconInfo.iconName)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 14, height: 14)
+                    // Custom image asset
+                    if let image = loadImageFromAsset(meeting.iconInfo.iconName) {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 14, height: 14)
+                    } else {
+                        // Fallback
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color(red: meeting.iconInfo.color.redComponent,
+                                                   green: meeting.iconInfo.color.greenComponent,
+                                                   blue: meeting.iconInfo.color.blueComponent))
+                            .frame(width: 14)
+                    }
                 }
                 
                 // Title and time
@@ -144,11 +154,21 @@ HStack(alignment: .center, spacing: 10) {
                           .foregroundColor(iconColor)
                           .frame(width: 16)
                    } else {
-                       // Custom image asset - direct SwiftUI Image
-                       Image(meeting.iconInfo.iconName)
-                           .resizable()
-                           .scaledToFit()
-                           .frame(width: 16, height: 16)
+                       // Custom image asset
+                       if let image = loadImageFromAsset(meeting.iconInfo.iconName) {
+                           Image(nsImage: image)
+                               .resizable()
+                               .scaledToFit()
+                               .frame(width: 16, height: 16)
+                       } else {
+                           // Fallback
+                           Image(systemName: "video.fill")
+                               .font(.system(size: 12, weight: .semibold))
+                               .foregroundColor(Color(red: meeting.iconInfo.color.redComponent,
+                                                      green: meeting.iconInfo.color.greenComponent,
+                                                      blue: meeting.iconInfo.color.blueComponent))
+                               .frame(width: 16)
+                       }
                    }
                  
                  // Time (Meeter size: 13px)
@@ -228,3 +248,19 @@ func platformIcon(for platform: MeetingPlatform) -> some View {
     }
 }
 
+
+// MARK: - Image Loading Helper
+
+private func loadImageFromAsset(_ name: String) -> NSImage? {
+    // Try loading from main bundle's asset catalog
+    if let image = NSImage(named: name) {
+        return image
+    }
+    
+    // Try with NSImage.Name
+    if let image = NSImage(named: NSImage.Name(name)) {
+        return image
+    }
+    
+    return nil
+}
