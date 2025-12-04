@@ -6,17 +6,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var menuBarController: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
-
         // Request notification permissions
         requestNotificationPermissions()
 
         let context = AppContext()
         self.context = context
 
-        // Request calendar permissions and load initial meetings
+        // Request calendar permissions with proper app focus
         Task {
+            // Temporarily use .regular policy to show permission dialog
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            
             _ = await context.calendarService.requestAccessIfNeeded()
+            
+            // Switch back to .accessory after permission is handled
+            NSApp.setActivationPolicy(.accessory)
+            
             // Trigger initial reload after permission is granted
             await context.meetingViewModel.reload()
         }

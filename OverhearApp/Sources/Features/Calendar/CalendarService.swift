@@ -1,66 +1,89 @@
 import EventKit
 import Foundation
 
+private func logToFile(_ message: String) {
+    let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+    let documentsDirectory = paths[0]
+    let logFile = documentsDirectory.appendingPathComponent("overhear_calendar.log")
+    
+    let timestamp = ISO8601DateFormatter().string(from: Date())
+    let logMessage = "[\(timestamp)] \(message)\n"
+    
+    if FileManager.default.fileExists(atPath: logFile.path) {
+        if let handle = FileHandle(forWritingAtPath: logFile.path) {
+            handle.seekToEndOfFile()
+            handle.write(logMessage.data(using: .utf8) ?? Data())
+            try? handle.close()
+        }
+    } else {
+        try? logMessage.write(to: logFile, atomically: true, encoding: .utf8)
+    }
+    
+    print(message)
+}
+
 @MainActor
 final class CalendarService: ObservableObject {
       @Published private(set) var authorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
 
       private let eventStore = EKEventStore()
       private static let defaults = UserDefaults(suiteName: "com.overhear.app") ?? .standard
-      private var hasAskedForPermission = false
+      private static let permissionAskedKey = "CalendarPermissionAsked"
 
       func requestAccessIfNeeded() async -> Bool {
         let status = EKEventStore.authorizationStatus(for: .event)
+        logToFile("[CalendarService] requestAccessIfNeeded - status: \(status.rawValue)")
         authorizationStatus = status
         
         // If already have permission, return true
         if status == .authorized || status == .fullAccess {
+            logToFile("[CalendarService] Already have permission, returning true")
             return true
         }
         
         // If denied or limited, return false
         if status == .denied || status == .restricted {
-            return false
-        }
-        
-        // If we already asked in this session, don't ask again
-        if hasAskedForPermission {
+            logToFile("[CalendarService] Permission denied/restricted, returning false")
             return false
         }
         
         // If status is notDetermined, ask for permission
-        hasAskedForPermission = true
+        logToFile("[CalendarService] Status is notDetermined, requesting permission")
         let granted = await withCheckedContinuation { continuation in
-            if #available(macOS 14.0, *) {
-                eventStore.requestFullAccessToEvents { granted, error in
-                    continuation.resume(returning: granted)
-                }
-            } else {
-                eventStore.requestAccess(to: .event) { granted, error in
-                    continuation.resume(returning: granted)
-                }
+            logToFile("[CalendarService] Inside withCheckedContinuation")
+            eventStore.requestAccess(to: .event) { granted, error in
+                logToFile("[CalendarService] requestAccess callback - granted: \(granted), error: \(error?.localizedDescription ?? "none")")
+                continuation.resume(returning: granted)
             }
         }
         
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        logToFile("[CalendarService] After request, new status: \(authorizationStatus.rawValue), granted: \(granted)")
         return granted
     }
 
     func availableCalendars() -> [EKCalendar] {
-        eventStore.calendars(for: .event)
+        let cals = eventStore.calendars(for: .event)
+        logToFile("[CalendarService] availableCalendars returned \(cals.count) calendars")
+        return cals
     }
     
     func calendarsBySource() -> [(source: EKSource, calendars: [EKCalendar])] {
         let calendars = availableCalendars()
+        logToFile("[CalendarService] calendarsBySource: got \(calendars.count) calendars")
         let grouped = Dictionary(grouping: calendars) { $0.source }
+        logToFile("[CalendarService] grouped into \(grouped.count) sources")
         let result = grouped
             .compactMap { source, cals -> (source: EKSource, calendars: [EKCalendar])? in
                 guard let source = source else {
+                    logToFile("[CalendarService] Skipping nil source")
                     return nil
                 }
+                logToFile("[CalendarService] Source: \(source.title) with \(cals.count) calendars")
                 return (source: source, calendars: cals.sorted { $0.title < $1.title })
             }
             .sorted { $0.source.title < $1.source.title }
+        logToFile("[CalendarService] returning \(result.count) sources")
         return result
     }
     
