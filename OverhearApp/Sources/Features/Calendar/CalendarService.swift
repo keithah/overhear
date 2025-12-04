@@ -36,7 +36,7 @@ final class CalendarService: ObservableObject {
        // If denied or restricted, bail early
         if status == .denied || status == .restricted {
             log("Status denied/restricted; returning false")
-            openCalendarPrivacySettingsIfNeeded()
+            openCalendarPrivacySettingsIfNeeded(force: true)
             return false
         }
        
@@ -76,8 +76,9 @@ final class CalendarService: ObservableObject {
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         log("Authorization status after request: \(authorizationStatus.rawValue)")
         if !granted {
-            openCalendarPrivacySettingsIfNeeded()
+            openCalendarPrivacySettingsIfNeeded(force: true)
         }
+        log("requestAccessIfNeeded returning \(granted)")
         return granted
     }
 
@@ -117,9 +118,13 @@ final class CalendarService: ObservableObject {
         }
 
         let calendars = filteredCalendars(allowedCalendarIDs: allowedCalendarIDs)
+        log("Fetching events from \(calendars.count) calendars, range \(startDate) - \(endDate)")
         let predicate = eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: calendars)
         let events = eventStore.events(matching: predicate)
-        return events.compactMap { Meeting(event: $0, includeEventsWithoutLinks: includeEventsWithoutLinks, includeMaybe: includeMaybeEvents) }
+        log("Fetched \(events.count) raw events")
+        let meetings = events.compactMap { Meeting(event: $0, includeEventsWithoutLinks: includeEventsWithoutLinks, includeMaybe: includeMaybeEvents) }
+        log("Converted to \(meetings.count) meetings (include links=\(includeEventsWithoutLinks), include maybe=\(includeMaybeEvents))")
+        return meetings
     }
 
     private func filteredCalendars(allowedCalendarIDs: Set<String>) -> [EKCalendar] {
@@ -129,8 +134,12 @@ final class CalendarService: ObservableObject {
     }
 
     @MainActor
-    private func openCalendarPrivacySettingsIfNeeded() {
-        guard !Self.didOpenPrivacySettings else { return }
+    func openPrivacySettings() {
+        openCalendarPrivacySettingsIfNeeded(force: true)
+    }
+
+    private func openCalendarPrivacySettingsIfNeeded(force: Bool = false) {
+        guard force || !Self.didOpenPrivacySettings else { return }
         Self.didOpenPrivacySettings = true
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
             log("Opening System Settings for Calendars privacy")
@@ -140,7 +149,7 @@ final class CalendarService: ObservableObject {
         }
     }
 
-    nonisolated private func log(_ message: String) {
-        Self.logger.info("\(message, privacy: .public)")
+    nonisolated(unsafe) private func log(_ message: String) {
+        CalendarService.logger.info("\(message, privacy: .public)")
     }
 }
