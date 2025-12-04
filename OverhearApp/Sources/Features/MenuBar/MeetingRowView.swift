@@ -47,7 +47,7 @@ struct MeetingRowView: View {
                         .foregroundColor(iconColor)
                         .frame(width: 14)
                 } else {
-                    // Custom image asset (not colored)
+                    // Custom image asset - direct SwiftUI Image
                     Image(meeting.iconInfo.iconName)
                         .resizable()
                         .scaledToFit()
@@ -144,7 +144,7 @@ HStack(alignment: .center, spacing: 10) {
                           .foregroundColor(iconColor)
                           .frame(width: 16)
                    } else {
-                       // Custom image asset (not colored)
+                       // Custom image asset - direct SwiftUI Image
                        Image(meeting.iconInfo.iconName)
                            .resizable()
                            .scaledToFit()

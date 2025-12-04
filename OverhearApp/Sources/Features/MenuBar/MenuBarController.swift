@@ -68,8 +68,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
              updateStatusItemIcon()
          }
          
-         // Update again after a short delay to catch newly loaded meetings
-         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+         // Update again after delays to catch newly loaded meetings
+         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+             self?.updateStatusItemIcon()
+         }
+         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+             self?.updateStatusItemIcon()
+         }
+         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
              self?.updateStatusItemIcon()
          }
          
@@ -150,36 +156,40 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         preferencesWindowController.show()
     }
 
-    @MainActor private func updateStatusItemIcon() {
-        guard let button = statusItem?.button else {
-            return
-        }
-
-        let icon = makeMenuBarIcon()
-        icon.isTemplate = false
-        button.image = icon
-        button.imagePosition = .imageLeft
-        
-        // Get next non-all-day event
-        let allMeetings = (viewModel.pastSections + viewModel.upcomingSections)
-            .flatMap { $0.meetings }
-        
-        let now = Date()
-        let nextEvent = allMeetings
-            .filter { !$0.isAllDay && $0.startDate > now }  // Exclude all-day events
-            .min { $0.startDate < $1.startDate }
-        
-        if let nextEvent = nextEvent, preferences.countdownEnabled {
-             let timeStr = getTimeUntilString(nextEvent.startDate)
-             button.title = "  \(nextEvent.title) \(timeStr)"  // Add space before title
-             // Match Meeter style: thin/light weight, system font
-             button.font = NSFont.systemFont(ofSize: 12, weight: .regular)
-             button.imagePosition = .imageLeft
-         } else {
-             button.title = ""
-             button.imagePosition = .imageOnly
+     @MainActor private func updateStatusItemIcon() {
+         guard let button = statusItem?.button else {
+             return
          }
-    }
+
+         let icon = makeMenuBarIcon()
+         icon.isTemplate = false
+         button.image = icon
+         button.imagePosition = .imageLeft
+         
+         // Get next non-all-day event
+         let allMeetings = (viewModel.pastSections + viewModel.upcomingSections)
+             .flatMap { $0.meetings }
+         
+         let now = Date()
+         let nextEvent = allMeetings
+             .filter { !$0.isAllDay && $0.startDate > now }  // Exclude all-day events
+             .min { $0.startDate < $1.startDate }
+         
+         print("[MenuBar] updateStatusItemIcon: found \(allMeetings.count) total meetings, next event: \(nextEvent?.title ?? "none"), countdown enabled: \(preferences.countdownEnabled)")
+         
+         if let nextEvent = nextEvent, preferences.countdownEnabled {
+              let timeStr = getTimeUntilString(nextEvent.startDate)
+              button.title = "  \(nextEvent.title) \(timeStr)"  // Add space before title
+              // Match Meeter style: thin/light weight, system font
+              button.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+              button.imagePosition = .imageLeft
+              print("[MenuBar] Set button title: \(button.title)")
+          } else {
+              button.title = ""
+              button.imagePosition = .imageOnly
+              print("[MenuBar] Cleared button title")
+          }
+     }
     
     private func getTimeUntilString(_ date: Date) -> String {
         let now = Date()
