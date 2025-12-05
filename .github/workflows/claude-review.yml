@@ -1,0 +1,16 @@
+name: Claude Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Claude review
+        run: echo "Claude review workflow triggered."

@@ -1,7 +1,57 @@
 import Foundation
 
+// MARK: - Transcription Engines
+
+protocol TranscriptionEngine {
+    func transcribe(audioURL: URL) async throws -> String
+}
+
+protocol DiarizationEngine {
+    func diarize(audioURL: URL) async throws -> String
+}
+
+enum TranscriptionEngineFactory {
+    static func makeEngine() -> TranscriptionEngine {
+        // Feature flag for future FluidAudio integration
+        let useFluid = ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] == "1"
+        if useFluid {
+            return FluidAudioTranscriptionEngine(fallback: TranscriptionService())
+        }
+        return TranscriptionService()
+    }
+}
+
+/// Placeholder for FluidAudio-backed transcription. Currently falls back with a clear error
+/// so we can wire FluidAudio later without changing call sites.
+struct FluidAudioTranscriptionEngine: TranscriptionEngine {
+    enum FluidError: LocalizedError {
+        case notAvailable
+        var errorDescription: String? {
+            "FluidAudio transcription not yet available in this build."
+        }
+        var recoverySuggestion: String? {
+            "Falling back to the built-in Whisper transcription engine."
+        }
+    }
+    
+    private let fallback: TranscriptionEngine
+    
+    init(fallback: TranscriptionEngine) {
+        self.fallback = fallback
+    }
+    
+    func transcribe(audioURL: URL) async throws -> String {
+        do {
+            throw FluidError.notAvailable
+        } catch {
+            // Gracefully fall back so users still get a transcript.
+            return try await fallback.transcribe(audioURL: audioURL)
+        }
+    }
+}
+
 /// Manages transcription of audio files using whisper.cpp
-actor TranscriptionService {
+actor TranscriptionService: TranscriptionEngine {
     enum Error: LocalizedError {
         case whisperBinaryNotFound(String)
         case modelNotFound(String)

@@ -3,6 +3,7 @@ import EventKit
 import Foundation
 import AppKit
 import SwiftUI
+import UserNotifications
 import os.log
 
 @MainActor
@@ -16,14 +17,17 @@ final class MeetingListViewModel: ObservableObject {
     private let calendarService: CalendarService
     private let preferences: PreferencesService
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingListViewModel")
-    private let fileLoggingEnabled = ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1"
-    private let permissions: PermissionsService
+    private var fileLoggingEnabled: Bool {
+        if ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1" {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
+    }
     private var cancellables: Set<AnyCancellable> = []
 
-    init(calendarService: CalendarService, preferences: PreferencesService, permissions: PermissionsService) {
+    init(calendarService: CalendarService, preferences: PreferencesService) {
         self.calendarService = calendarService
         self.preferences = preferences
-        self.permissions = permissions
 
         preferences.$daysAhead
             .combineLatest(preferences.$daysBack, preferences.$showEventsWithoutLinks, preferences.$showMaybeEvents)
@@ -40,15 +44,16 @@ final class MeetingListViewModel: ObservableObject {
     func reload() async {
         isLoading = true
         
-        // Request calendar access through centralized permissions service
-        let authorized = await permissions.requestCalendarAccessIfNeeded()
-        authorizationStatus = permissions.calendarAuthorizationStatus
+        // Request calendar access through calendar service (includes activation/logging)
+        let authorized = await calendarService.requestAccessIfNeeded()
+        authorizationStatus = calendarService.authorizationStatus
         
         log("Reload start; auth status \(authorizationStatus.rawValue)")
 
-        guard authorized else {
+        if !authorized {
             log("Reload aborted; not authorized")
             isLoading = false
+            meetings = []
             return
         }
 
@@ -167,11 +172,22 @@ final class MeetingListViewModel: ObservableObject {
 }
 
 private func showClipboardNotification(url: URL) {
-    // Non-blocking user feedback when fallback is used
-    let notification = NSUserNotification()
-    notification.title = "Meeting link copied"
-    notification.informativeText = "We couldn't open the link. It's been copied to your clipboard: \(url.host ?? url.absoluteString)"
-    NSUserNotificationCenter.default.deliver(notification)
+    let center = UNUserNotificationCenter.current()
+    center.getNotificationSettings { settings in
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+            return
+        }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Meeting link copied"
+        content.body = "We couldn't open the link. It's been copied to your clipboard."
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        )
+        center.add(request, withCompletionHandler: nil)
+    }
 }
 
 struct MeetingSection: Identifiable {

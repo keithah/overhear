@@ -1,5 +1,7 @@
 import EventKit
 import SwiftUI
+import UserNotifications
+import AppKit
 
 struct PreferencesView: View {
     @ObservedObject var preferences: PreferencesService
@@ -7,6 +9,7 @@ struct PreferencesView: View {
 
     @State private var calendarsBySource: [(source: EKSource, calendars: [EKCalendar])] = []
     @State private var isLoadingCalendars = false
+    @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
 
     var body: some View {
         TabView {
@@ -47,6 +50,18 @@ struct PreferencesView: View {
         }
     }
 
+    private var calendarStatusText: String {
+        switch calendarAuthorizationStatus {
+        case .fullAccess: return "Allowed"
+        case .writeOnly: return "Write-only"
+        case .authorized: return "Allowed"
+        case .notDetermined: return "Not determined"
+        case .restricted: return "Restricted"
+        case .denied: return "Denied"
+        @unknown default: return "Unknown"
+        }
+    }
+
     private var generalTab: some View {
         Form {
             Toggle("Launch at login", isOn: $preferences.launchAtLogin)
@@ -77,6 +92,10 @@ struct PreferencesView: View {
             HStack {
                 Text("Calendars")
                     .font(.headline)
+                Spacer()
+                Text("Status: \(calendarStatusText)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
                 if isLoadingCalendars {
                     ProgressView()
                         .controlSize(.small)
@@ -91,6 +110,24 @@ struct PreferencesView: View {
                         calendarService.openPrivacySettings()
                     }
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    Button("Retry permission") {
+                        Task { @MainActor in
+                            _ = await calendarService.requestAccessIfNeeded()
+                            await loadCalendars()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    Button("Bring app forward and request") {
+                        Task { @MainActor in
+                            NSApp.setActivationPolicy(.regular)
+                            NSApp.activate(ignoringOtherApps: true)
+                            _ = await calendarService.requestAccessIfNeeded()
+                            await loadCalendars()
+                        }
+                    }
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
             }
@@ -138,70 +175,88 @@ struct PreferencesView: View {
 
     private var notificationsTab: some View {
         Form {
-            HStack {
-                Text("Notify minutes before:")
-                Spacer()
-                Stepper("", value: $preferences.notificationMinutesBefore, in: 0...30)
-                    .labelsHidden()
-                Text("\(preferences.notificationMinutesBefore)")
-                    .frame(minWidth: 20, alignment: .trailing)
-            }
-            Text("Countdown appears in the menu bar and notifications fire before your next meeting.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Button("Request notification permission") {
-                    NotificationHelper.requestPermission()
+            Section(header: Text("Meeting reminders")) {
+                HStack {
+                    Text("Notify minutes before")
+                    Spacer()
+                    Stepper("", value: $preferences.notificationMinutesBefore, in: 0...30)
+                        .labelsHidden()
+                    Text("\(preferences.notificationMinutesBefore)")
+                        .frame(minWidth: 20, alignment: .trailing)
                 }
-                Button("Send test notification") {
-                    NotificationHelper.sendTestNotification()
-                }
+                Text("Notifications fire before your next meeting; countdown appears in the menu bar if enabled.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
+
+            Section(header: Text("Permissions")) {
+                HStack {
+                    Text("Status")
+                    Spacer()
+                    Text(statusText)
+                        .foregroundColor(.secondary)
+                }
+                HStack(spacing: 12) {
+                    Button("Request permission") {
+                        NotificationHelper.requestPermission()
+                    }
+                    Button("Send test notification") {
+                        NotificationHelper.sendTestNotification()
+                    }
+                    Button("Open System Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
+                .controlSize(.small)
+            }
+            .onAppear { refreshNotificationStatus() }
         }
     }
 
     private var advancedTab: some View {
         Form {
             Section(header: Text("Open rules")) {
-                VStack(alignment: .leading, spacing: 8) {
-                    openRuleRow(title: "Open Zoom", platform: .zoom, selection: $preferences.zoomOpenBehavior)
-                    openRuleRow(title: "Open Microsoft Teams", platform: .teams, selection: $preferences.teamsOpenBehavior)
-                    openRuleRow(title: "Open Webex", platform: .webex, selection: $preferences.webexOpenBehavior)
-                    openRuleRow(title: "Open Google Meet", platform: .meet, selection: $preferences.meetOpenBehavior)
-                    openRuleRow(title: "Other links", platform: .unknown, selection: $preferences.otherLinksOpenBehavior)
-                }
+                Text("Choose where meeting links open by default. Native App uses the installed client; browsers fall back to the system default if not found.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 4)
+                openRuleRow(title: "Open Zoom", platform: .zoom, selection: $preferences.zoomOpenBehavior)
+                openRuleRow(title: "Open Microsoft Teams", platform: .teams, selection: $preferences.teamsOpenBehavior)
+                openRuleRow(title: "Open Webex", platform: .webex, selection: $preferences.webexOpenBehavior)
+                openRuleRow(title: "Open Google Meet", platform: .meet, selection: $preferences.meetOpenBehavior)
+                openRuleRow(title: "Other links", platform: .unknown, selection: $preferences.otherLinksOpenBehavior)
             }
 
             Section(header: Text("Hotkeys")) {
-                VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("Menubar toggle") {
-                        TextField("e.g. ^⌥M", text: $preferences.menubarToggleHotkey)
-                            .onChange(of: preferences.menubarToggleHotkey) { _, newValue in
-                                preferences.menubarToggleHotkey = sanitizeHotkeyInput(newValue)
-                            }
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 140)
-                    }
-                    LabeledContent("Join next meeting") {
-                        TextField("e.g. ^⌥J", text: $preferences.joinNextMeetingHotkey)
-                            .onChange(of: preferences.joinNextMeetingHotkey) { _, newValue in
-                                preferences.joinNextMeetingHotkey = sanitizeHotkeyInput(newValue)
-                            }
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 140)
-                    }
-                    if !isHotkeyValid(preferences.menubarToggleHotkey) || !isHotkeyValid(preferences.joinNextMeetingHotkey) {
-                        Text("Use modifiers (^⌥⌘⇧) plus a letter/number, e.g., ^⌥M.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text("Hotkeys are active system-wide. Change them here anytime.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                Text("Hotkeys are system-wide; accessibility permission will be requested when you set one.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                LabeledContent("Menubar toggle") {
+                    TextField("e.g. ^⌥M", text: $preferences.menubarToggleHotkey)
+                        .onChange(of: preferences.menubarToggleHotkey) { _, newValue in
+                            preferences.menubarToggleHotkey = sanitizeHotkeyInput(newValue)
+                        }
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 140)
+                }
+                LabeledContent("Join next meeting") {
+                    TextField("e.g. ^⌥J", text: $preferences.joinNextMeetingHotkey)
+                        .onChange(of: preferences.joinNextMeetingHotkey) { _, newValue in
+                            preferences.joinNextMeetingHotkey = sanitizeHotkeyInput(newValue)
+                        }
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 140)
+                }
+                if !isHotkeyValid(preferences.menubarToggleHotkey) || !isHotkeyValid(preferences.joinNextMeetingHotkey) {
+                    Text("Use modifiers (^⌥⌘⇧) plus a letter/number, e.g., ^⌥M.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Hotkeys are active system-wide. Change them here anytime.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
         }
@@ -278,6 +333,25 @@ struct PreferencesView: View {
         preferences.initializeWithAllCalendars(allCalendarIDs)
 
         isLoadingCalendars = false
+    }
+    
+    private var statusText: String {
+        switch notificationStatus {
+        case .authorized: return "Allowed"
+        case .denied: return "Denied"
+        case .provisional: return "Provisional"
+        case .ephemeral: return "Ephemeral"
+        case .notDetermined: return "Not determined"
+        @unknown default: return "Unknown"
+        }
+    }
+    
+    private func refreshNotificationStatus() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            Task { @MainActor in
+                self.notificationStatus = settings.authorizationStatus
+            }
+        }
     }
 }
 

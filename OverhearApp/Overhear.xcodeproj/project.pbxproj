@@ -57,6 +57,7 @@
 	A1F0D0C1F1E201000000000C /* MenuBarIconProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIconProvider.swift; sourceTree = "<group>"; };
 	A1F0D0C1F1E201000000000D /* PermissionsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsService.swift; sourceTree = "<group>"; };
 	8AF60D2CD395349366EFBB74 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+	9B8CFC582D8E4C5F9F6D5E5A /* Overhear.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Overhear.entitlements; sourceTree = "<group>"; };
 	8F31D34C5A2AFDA7D17E0476 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 	B0753D3EBF878CDDA7278CF7 /* AppContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContext.swift; sourceTree = "<group>"; };
 	B450443A64541675999965EF /* Overhear.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Overhear.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -201,6 +202,7 @@
 		children = (
 			8F31D34C5A2AFDA7D17E0476 /* Assets.xcassets */,
 			8AF60D2CD395349366EFBB74 /* Info.plist */,
+			9B8CFC582D8E4C5F9F6D5E5A /* Overhear.entitlements */,
 		);
 		path = Resources;
 		sourceTree = "<group>";
@@ -318,11 +320,12 @@
 		isa = XCBuildConfiguration;
 		buildSettings = {
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-			CODE_SIGN_IDENTITY = "-";
+			CODE_SIGN_ENTITLEMENTS = Resources/Overhear.entitlements;
+			CODE_SIGN_IDENTITY = "Developer ID Application";
 			CODE_SIGN_STYLE = Manual;
 			COMBINE_HIDPI_IMAGES = YES;
 			CURRENT_PROJECT_VERSION = 1;
-			DEVELOPMENT_TEAM = "";
+			DEVELOPMENT_TEAM = 6R7S5GA944;
 			ENABLE_HARDENED_RUNTIME = YES;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Resources/Info.plist;
@@ -342,11 +345,12 @@
 		isa = XCBuildConfiguration;
 		buildSettings = {
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-			CODE_SIGN_IDENTITY = "-";
+			CODE_SIGN_ENTITLEMENTS = Resources/Overhear.entitlements;
+			CODE_SIGN_IDENTITY = "Developer ID Application";
 			CODE_SIGN_STYLE = Manual;
 			COMBINE_HIDPI_IMAGES = YES;
 			CURRENT_PROJECT_VERSION = 1;
-			DEVELOPMENT_TEAM = "";
+			DEVELOPMENT_TEAM = 6R7S5GA944;
 			ENABLE_HARDENED_RUNTIME = YES;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Resources/Info.plist;

@@ -119,6 +119,31 @@ struct TranscriptSearchView: View {
         .onAppear {
             Task { await viewModel.loadTranscripts() }
         }
+        .overlay(alignment: .bottom) {
+            if viewModel.isStorageDisabled {
+                storageDisabledBanner
+            }
+        }
+    }
+    
+    private var storageDisabledBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.slash")
+                .foregroundColor(.secondary)
+            Text("Transcript storage is disabled for this run. Set OVERHEAR_DISABLE_TRANSCRIPT_STORAGE=0 (default) to enable saving.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.thinMaterial)
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color(nsColor: .separatorColor)),
+            alignment: .top
+        )
     }
 }
 
@@ -249,6 +274,7 @@ final class TranscriptSearchViewModel: ObservableObject {
     @Published var transcripts: [StoredTranscript] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var isStorageDisabled = false
     
     private let store: TranscriptStore?
     private let storeInitError: String?
@@ -261,7 +287,12 @@ final class TranscriptSearchViewModel: ObservableObject {
         } catch {
             store = nil
             storeInitError = error.localizedDescription
-            errorMessage = "Unable to access transcripts: \(error.localizedDescription)"
+            if let transcriptError = error as? TranscriptStore.Error, case .storageDisabled = transcriptError {
+                isStorageDisabled = true
+                errorMessage = "Transcript storage is disabled for this run."
+            } else {
+                errorMessage = "Unable to access transcripts: \(error.localizedDescription)"
+            }
         }
         $searchQuery
             .debounce(for: 0.3, scheduler: RunLoop.main)
