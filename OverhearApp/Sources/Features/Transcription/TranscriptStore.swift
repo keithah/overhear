@@ -27,6 +27,7 @@ struct StoredTranscript: Codable, Identifiable {
 /// Manages storage and retrieval of transcripts
 actor TranscriptStore {
     enum Error: LocalizedError {
+        case storageDisabled
         case storageDirectoryNotFound
         case encodingFailed(String)
         case decodingFailed(String)
@@ -38,6 +39,8 @@ actor TranscriptStore {
         
         var errorDescription: String? {
             switch self {
+            case .storageDisabled:
+                return "Transcript storage is disabled by configuration"
             case .storageDirectoryNotFound:
                 return "Transcript storage directory not found"
             case .encodingFailed(let message):
@@ -62,8 +65,16 @@ actor TranscriptStore {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let encryptionKey: SymmetricKey
+    private let persistenceEnabled: Bool
+    private static let storageEnabled: Bool = {
+        ProcessInfo.processInfo.environment["OVERHEAR_DISABLE_TRANSCRIPT_STORAGE"] != "1"
+    }()
     
     init(storageDirectory: URL? = nil) throws {
+        guard Self.storageEnabled else {
+            throw Error.storageDisabled
+        }
+        self.persistenceEnabled = true
         if let provided = storageDirectory {
             self.storageDirectory = provided
         } else {
@@ -106,6 +117,7 @@ actor TranscriptStore {
     
     /// Save a transcript (encrypted)
     func save(_ transcript: StoredTranscript) async throws {
+        guard persistenceEnabled else { throw Error.storageDisabled }
         let fileURL = storageDirectory.appendingPathComponent("\(transcript.id).json")
         
         do {
@@ -121,6 +133,7 @@ actor TranscriptStore {
     
     /// Retrieve a transcript by ID (decrypted)
     func retrieve(id: String) async throws -> StoredTranscript {
+        guard persistenceEnabled else { throw Error.storageDisabled }
         let fileURL = storageDirectory.appendingPathComponent("\(id).json")
         
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
@@ -133,6 +146,7 @@ actor TranscriptStore {
     
     /// Get all stored transcripts (decrypted)
     func allTranscripts() async throws -> [StoredTranscript] {
+        guard persistenceEnabled else { return [] }
         guard FileManager.default.fileExists(atPath: storageDirectory.path) else {
             return []
         }
@@ -161,6 +175,7 @@ actor TranscriptStore {
     /// Search transcripts by text content, with optional pagination
     /// For large transcript collections, this uses streaming search to avoid loading all transcripts into memory
     func search(query: String, limit: Int = 50, offset: Int = 0) async throws -> [StoredTranscript] {
+        guard persistenceEnabled else { return [] }
         guard FileManager.default.fileExists(atPath: storageDirectory.path) else {
             return []
         }
@@ -227,6 +242,7 @@ actor TranscriptStore {
     
     /// Delete a transcript
     func delete(id: String) async throws {
+        guard persistenceEnabled else { throw Error.storageDisabled }
         let fileURL = storageDirectory.appendingPathComponent("\(id).json")
         
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
@@ -252,7 +268,7 @@ actor TranscriptStore {
         let keyTag = "com.overhear.app.transcripts.key"
         
         // Try to retrieve existing key from Keychain
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: keyTag,
             kSecReturnData as String: true
@@ -263,10 +279,10 @@ actor TranscriptStore {
         
         // Key already exists in Keychain
         if status == errSecSuccess, let data = result as? Data {
-            do {
+            if data.count == 32 {
                 return SymmetricKey(data: data)
-            } catch {
-                // Key data is corrupted, delete and create new one
+            } else {
+                // Corrupted key size - delete and recreate
                 let deleteQuery: [String: Any] = [
                     kSecClass as String: kSecClassGenericPassword,
                     kSecAttrAccount as String: keyTag
