@@ -17,7 +17,7 @@ final class AppContext: ObservableObject {
         self.permissionsService = permissions
         self.preferencesService = preferences
         self.calendarService = calendar
-        self.meetingViewModel = MeetingListViewModel(calendarService: calendar, preferences: preferences, permissions: permissions)
+        self.meetingViewModel = MeetingListViewModel(calendarService: calendar, preferences: preferences)
         self.preferencesWindowController = PreferencesWindowController(preferences: preferences, calendarService: calendar)
     }
 }

@@ -4,7 +4,6 @@ import AppKit
 import os.log
 
 private let calendarLogger = Logger(subsystem: "com.overhear.app", category: "CalendarService")
-private let calendarFileLoggingEnabled = ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1"
 
 @MainActor
 final class CalendarService: ObservableObject {
@@ -12,11 +11,23 @@ final class CalendarService: ObservableObject {
 
     private let eventStore = EKEventStore()
     private static var didOpenPrivacySettings = false
+    private var didShowPermissionAlert = false
+    private var accessRequestTask: Task<Bool, Never>?
 
     func requestAccessIfNeeded() async -> Bool {
         let status = EKEventStore.authorizationStatus(for: .event)
         authorizationStatus = status
         log("Authorization status on entry: \(status.rawValue)")
+
+        let previousPolicy = NSApp.activationPolicy()
+        let shouldPromoteForPrompt = status == .notDetermined && previousPolicy == .accessory
+        if shouldPromoteForPrompt {
+            log("Promoting activation policy to regular to present permissions dialog")
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            // Give macOS a moment to surface the dialog
+            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
+        }
         
         // If already have permission, return true
         if #available(macOS 14.0, *) {
@@ -37,49 +48,24 @@ final class CalendarService: ObservableObject {
         if status == .denied || status == .restricted {
             log("Status denied/restricted; returning false")
             openCalendarPrivacySettingsIfNeeded(force: true)
+            await presentOneTimePermissionReminder()
             return false
         }
         
-        // If status is notDetermined, ask for permission
-        log("Requesting calendar access via EKEventStore")
-        let store = eventStore
-        let granted = await withCheckedContinuation { continuation in
-            if #available(macOS 14.0, *) {
-                store.requestFullAccessToEvents { granted, _ in
-                    self.log("requestFullAccessToEvents completion granted=\(granted)")
-                    if granted || EKEventStore.authorizationStatus(for: .event) != .notDetermined {
-                        continuation.resume(returning: granted)
-                        return
-                    }
-                    self.log("Full access still not determined; trying write-only access")
-                    store.requestWriteOnlyAccessToEvents { writeGranted, _ in
-                        self.log("requestWriteOnlyAccessToEvents completion granted=\(writeGranted)")
-                        if writeGranted || EKEventStore.authorizationStatus(for: .event) != .notDetermined {
-                            continuation.resume(returning: writeGranted)
-                            return
-                        }
-                        self.log("Write-only still not determined; falling back to legacy requestAccess")
-                        store.requestAccess(to: .event) { legacyGranted, _ in
-                            self.log("legacy requestAccess completion granted=\(legacyGranted)")
-                            continuation.resume(returning: legacyGranted)
-                        }
-                    }
-                }
-            } else {
-                store.requestAccess(to: .event) { granted, _ in
-                    self.log("requestAccess(to:) completion granted=\(granted)")
-                    continuation.resume(returning: granted)
-                }
-            }
+        // Serialize concurrent prompts to avoid multiple overlapping dialogs.
+        if let inFlight = accessRequestTask {
+            log("Returning in-flight access request")
+            return await inFlight.value
         }
         
-        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-        log("Authorization status after request: \(authorizationStatus.rawValue)")
-        if !granted {
-            openCalendarPrivacySettingsIfNeeded(force: true)
+        let task = Task { @MainActor () -> Bool in
+            let granted = await performAccessRequestFlow(status: status, promotedPolicy: shouldPromoteForPrompt, previousPolicy: previousPolicy)
+            accessRequestTask = nil
+            return granted
         }
-        log("requestAccessIfNeeded returning \(granted)")
-        return granted
+        accessRequestTask = task
+        let result = await task.value
+        return result
     }
 
      func availableCalendars() -> [EKCalendar] {
@@ -151,7 +137,7 @@ final class CalendarService: ObservableObject {
 
     nonisolated private func log(_ message: String) {
         calendarLogger.info("\(message, privacy: .public)")
-        guard calendarFileLoggingEnabled else { return }
+        guard isFileLoggingEnabled else { return }
         let line = "[CalendarService] \(Date()): \(message)\n"
         let url = URL(fileURLWithPath: "/tmp/overhear.log")
         guard let data = line.data(using: .utf8) else { return }
@@ -164,5 +150,86 @@ final class CalendarService: ObservableObject {
             }
         }
         try? data.write(to: url, options: .atomic)
+    }
+
+    nonisolated private var isFileLoggingEnabled: Bool {
+        if ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1" {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
+    }
+
+    @MainActor
+    private func presentOneTimePermissionReminder() async {
+        guard !didShowPermissionAlert else { return }
+        didShowPermissionAlert = true
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Calendar access is required"
+        alert.informativeText = "Overhear needs calendar permission to list and join your meetings. Please allow access in the dialog or open System Settings > Privacy & Security > Calendars."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Not now")
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            openCalendarPrivacySettingsIfNeeded(force: true)
+        }
+    }
+
+    @MainActor
+    private func performAccessRequestFlow(status: EKAuthorizationStatus, promotedPolicy: Bool, previousPolicy: NSApplication.ActivationPolicy) async -> Bool {
+        log("Requesting calendar access via EKEventStore")
+        let store = eventStore
+
+        // First use the legacy API because it is the most reliable at surfacing the system prompt on macOS 15+ when launched via Finder/Spotlight.
+        let legacyGranted = await withCheckedContinuation { continuation in
+            store.requestAccess(to: .event) { granted, _ in
+                self.log("requestAccess(to:) completion granted=\(granted)")
+                continuation.resume(returning: granted)
+            }
+        }
+
+        var granted = legacyGranted
+
+        // On macOS 14+ attempt to upgrade to full access if the system only granted write-only.
+        if #available(macOS 14.0, *) {
+            let postLegacyStatus = EKEventStore.authorizationStatus(for: .event)
+            if postLegacyStatus == .writeOnly || postLegacyStatus == .notDetermined {
+                log("Legacy request resulted in status \(postLegacyStatus.rawValue); attempting full access API")
+                let fullAccessGranted = await withCheckedContinuation { continuation in
+                    store.requestFullAccessToEvents { fullGranted, _ in
+                        self.log("requestFullAccessToEvents completion granted=\(fullGranted)")
+                        continuation.resume(returning: fullGranted)
+                    }
+                }
+                granted = granted || fullAccessGranted
+            }
+
+            let postFullStatus = EKEventStore.authorizationStatus(for: .event)
+            if postFullStatus == .notDetermined {
+                log("Full access still not determined; trying write-only access")
+                let writeGranted = await withCheckedContinuation { continuation in
+                    store.requestWriteOnlyAccessToEvents { writeGranted, _ in
+                        self.log("requestWriteOnlyAccessToEvents completion granted=\(writeGranted)")
+                        continuation.resume(returning: writeGranted)
+                    }
+                }
+                granted = granted || writeGranted
+            }
+        }
+        
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        log("Authorization status after request: \(authorizationStatus.rawValue)")
+        if !granted {
+            openCalendarPrivacySettingsIfNeeded(force: true)
+            await presentOneTimePermissionReminder()
+        }
+        if promotedPolicy {
+            log("Restoring activation policy to accessory after permission attempt")
+            NSApp.setActivationPolicy(previousPolicy)
+        }
+        log("requestAccessIfNeeded returning \(granted)")
+        return granted
     }
 }

@@ -50,6 +50,18 @@ struct PreferencesView: View {
         }
     }
 
+    private var calendarStatusText: String {
+        switch calendarAuthorizationStatus {
+        case .fullAccess: return "Allowed"
+        case .writeOnly: return "Write-only"
+        case .authorized: return "Allowed"
+        case .notDetermined: return "Not determined"
+        case .restricted: return "Restricted"
+        case .denied: return "Denied"
+        @unknown default: return "Unknown"
+        }
+    }
+
     private var generalTab: some View {
         Form {
             Toggle("Launch at login", isOn: $preferences.launchAtLogin)
@@ -80,6 +92,10 @@ struct PreferencesView: View {
             HStack {
                 Text("Calendars")
                     .font(.headline)
+                Spacer()
+                Text("Status: \(calendarStatusText)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
                 if isLoadingCalendars {
                     ProgressView()
                         .controlSize(.small)
@@ -94,6 +110,24 @@ struct PreferencesView: View {
                         calendarService.openPrivacySettings()
                     }
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    Button("Retry permission") {
+                        Task { @MainActor in
+                            _ = await calendarService.requestAccessIfNeeded()
+                            await loadCalendars()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    Button("Bring app forward and request") {
+                        Task { @MainActor in
+                            NSApp.setActivationPolicy(.regular)
+                            NSApp.activate(ignoringOtherApps: true)
+                            _ = await calendarService.requestAccessIfNeeded()
+                            await loadCalendars()
+                        }
+                    }
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
             }

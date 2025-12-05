@@ -8,7 +8,6 @@ final class PermissionsService: ObservableObject {
     @Published private(set) var calendarAuthorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
     
     private let eventStore = EKEventStore()
-    private var hasAskedForCalendarPermission = false
     
     /// Request calendar access if needed
     /// - Returns: `true` if calendar access is granted, `false` otherwise
@@ -26,13 +25,7 @@ final class PermissionsService: ObservableObject {
             return false
         }
         
-        // If we already asked in this session, don't ask again
-        if hasAskedForCalendarPermission {
-            return false
-        }
-        
         // If status is notDetermined, ask for permission
-        hasAskedForCalendarPermission = true
         let granted = await withCheckedContinuation { continuation in
             if #available(macOS 14.0, *) {
                 eventStore.requestFullAccessToEvents { granted, error in

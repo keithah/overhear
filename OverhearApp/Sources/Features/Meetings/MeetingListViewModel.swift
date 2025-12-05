@@ -17,14 +17,17 @@ final class MeetingListViewModel: ObservableObject {
     private let calendarService: CalendarService
     private let preferences: PreferencesService
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingListViewModel")
-    private let fileLoggingEnabled = ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1"
-    private let permissions: PermissionsService
+    private var fileLoggingEnabled: Bool {
+        if ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1" {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
+    }
     private var cancellables: Set<AnyCancellable> = []
 
-    init(calendarService: CalendarService, preferences: PreferencesService, permissions: PermissionsService) {
+    init(calendarService: CalendarService, preferences: PreferencesService) {
         self.calendarService = calendarService
         self.preferences = preferences
-        self.permissions = permissions
 
         preferences.$daysAhead
             .combineLatest(preferences.$daysBack, preferences.$showEventsWithoutLinks, preferences.$showMaybeEvents)
@@ -41,16 +44,24 @@ final class MeetingListViewModel: ObservableObject {
     func reload() async {
         isLoading = true
         
-        // Request calendar access through centralized permissions service
-        let authorized = await permissions.requestCalendarAccessIfNeeded()
-        authorizationStatus = permissions.calendarAuthorizationStatus
+        // Request calendar access through calendar service (includes activation/logging)
+        let authorized = await calendarService.requestAccessIfNeeded()
+        authorizationStatus = calendarService.authorizationStatus
         
         log("Reload start; auth status \(authorizationStatus.rawValue)")
 
-        guard authorized else {
-            log("Reload aborted; not authorized")
+        if !authorized {
+            log("Reload aborted; not authorized — scheduling retry")
             isLoading = false
-            return
+            // Retry once after a short delay; if still unauthorized, stop
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s
+            let retryAuthorized = await calendarService.requestAccessIfNeeded()
+            authorizationStatus = calendarService.authorizationStatus
+            guard retryAuthorized else {
+                log("Retry still unauthorized; giving up")
+                return
+            }
+            // proceed if retry succeeded
         }
 
         let preferences = preferencesSnapshot()

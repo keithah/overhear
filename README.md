@@ -10,6 +10,12 @@ Overhear is a macOS menu bar app that makes your meetings effortless.
 
 All processing is **local-first** and privacy-conscious.
 
+## Screenshots
+
+![Upcoming meetings menu](docs/screenshots/meeting-list.png)
+
+![Open rules and shortcuts](docs/screenshots/link-rules.png)
+
 ## Roadmap
 
 ### MVP — Meeter Clone
