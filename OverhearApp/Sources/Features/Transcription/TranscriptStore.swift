@@ -283,6 +283,7 @@ actor TranscriptStore {
                 return SymmetricKey(data: data)
             } else {
                 // Corrupted key size - delete and recreate
+                print("Warning: Encryption key has invalid size (\(data.count) bytes). Previously encrypted transcripts may become unrecoverable.")
                 let deleteQuery: [String: Any] = [
                     kSecClass as String: kSecClassGenericPassword,
                     kSecAttrAccount as String: keyTag

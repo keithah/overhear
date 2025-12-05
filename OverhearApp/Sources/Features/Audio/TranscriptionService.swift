@@ -15,7 +15,7 @@ enum TranscriptionEngineFactory {
         // Feature flag for future FluidAudio integration
         let useFluid = ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] == "1"
         if useFluid {
-            return FluidAudioTranscriptionEngine()
+            return FluidAudioTranscriptionEngine(fallback: TranscriptionService())
         }
         return TranscriptionService()
     }
@@ -29,10 +29,24 @@ struct FluidAudioTranscriptionEngine: TranscriptionEngine {
         var errorDescription: String? {
             "FluidAudio transcription not yet available in this build."
         }
+        var recoverySuggestion: String? {
+            "Falling back to the built-in Whisper transcription engine."
+        }
+    }
+    
+    private let fallback: TranscriptionEngine
+    
+    init(fallback: TranscriptionEngine) {
+        self.fallback = fallback
     }
     
     func transcribe(audioURL: URL) async throws -> String {
-        throw FluidError.notAvailable
+        do {
+            throw FluidError.notAvailable
+        } catch {
+            // Gracefully fall back so users still get a transcript.
+            return try await fallback.transcribe(audioURL: audioURL)
+        }
     }
 }
 

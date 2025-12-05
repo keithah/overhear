@@ -51,17 +51,10 @@ final class MeetingListViewModel: ObservableObject {
         log("Reload start; auth status \(authorizationStatus.rawValue)")
 
         if !authorized {
-            log("Reload aborted; not authorized — scheduling retry")
+            log("Reload aborted; not authorized")
             isLoading = false
-            // Retry once after a short delay; if still unauthorized, stop
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s
-            let retryAuthorized = await calendarService.requestAccessIfNeeded()
-            authorizationStatus = calendarService.authorizationStatus
-            guard retryAuthorized else {
-                log("Retry still unauthorized; giving up")
-                return
-            }
-            // proceed if retry succeeded
+            meetings = []
+            return
         }
 
         let preferences = preferencesSnapshot()

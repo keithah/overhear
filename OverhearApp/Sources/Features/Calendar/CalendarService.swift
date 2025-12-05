@@ -19,17 +19,7 @@ final class CalendarService: ObservableObject {
         authorizationStatus = status
         log("Authorization status on entry: \(status.rawValue)")
 
-        let previousPolicy = NSApp.activationPolicy()
-        let shouldPromoteForPrompt = status == .notDetermined && previousPolicy == .accessory
-        if shouldPromoteForPrompt {
-            log("Promoting activation policy to regular to present permissions dialog")
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
-            // Give macOS a moment to surface the dialog
-            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
-        }
-        
-        // If already have permission, return true
+        // Early returns when already decided; only promote activation policy if we must prompt.
         if #available(macOS 14.0, *) {
             if status == .fullAccess {
                 log("Already fullAccess; returning true")
@@ -42,6 +32,16 @@ final class CalendarService: ObservableObject {
         } else if status == .authorized {
             log("Already authorized (pre-14); returning true")
             return true
+        }
+
+        let previousPolicy = NSApp.activationPolicy()
+        let shouldPromoteForPrompt = status == .notDetermined && previousPolicy == .accessory
+        if shouldPromoteForPrompt {
+            log("Promoting activation policy to regular to present permissions dialog")
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            // Give macOS a moment to surface the dialog
+            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
         }
         
         // If denied or restricted, bail early

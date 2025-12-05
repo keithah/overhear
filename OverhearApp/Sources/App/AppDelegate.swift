@@ -62,11 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if granted {
             await context.meetingViewModel.reload()
         } else {
-            // Retry once after a short delay in case the system dialog was delayed
-            try? await Task.sleep(nanoseconds: UInt64(retryDelay * 1_000_000_000))
-            let secondAttempt = await context.calendarService.requestAccessIfNeeded()
-            if secondAttempt {
-                await context.meetingViewModel.reload()
+            // Only retry if the system still reports notDetermined (dialog might be delayed).
+            if status == .notDetermined {
+                try? await Task.sleep(nanoseconds: UInt64(retryDelay * 1_000_000_000))
+                let secondAttempt = await context.calendarService.requestAccessIfNeeded()
+                if secondAttempt {
+                    await context.meetingViewModel.reload()
+                }
             }
         }
     }
@@ -79,9 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defaults.set(true, forKey: "overhear.enableFileLogs")
         }
 
-        // Default to enabled if unset so release builds can capture diagnostics when launched outside the shell.
+        // Default to disabled unless explicitly opted-in.
         if defaults.object(forKey: "overhear.enableFileLogs") == nil {
-            defaults.set(true, forKey: "overhear.enableFileLogs")
+            defaults.set(false, forKey: "overhear.enableFileLogs")
         }
     }
 }

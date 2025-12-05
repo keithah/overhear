@@ -15,4 +15,6 @@ jobs:
     - name: Xcode build
       working-directory: OverhearApp
       run: |
-        xcodebuild -scheme Overhear -configuration Debug
+        xcodebuild -scheme Overhear -configuration Debug \
+          CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
+          CODE_SIGN_STYLE=Automatic
