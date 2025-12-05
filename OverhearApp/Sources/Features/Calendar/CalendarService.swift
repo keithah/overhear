@@ -13,35 +13,33 @@ final class CalendarService: ObservableObject {
     private let eventStore = EKEventStore()
     private static var didOpenPrivacySettings = false
 
-   func requestAccessIfNeeded() async -> Bool {
-       let status = EKEventStore.authorizationStatus(for: .event)
-       authorizationStatus = status
+    func requestAccessIfNeeded() async -> Bool {
+        let status = EKEventStore.authorizationStatus(for: .event)
+        authorizationStatus = status
         log("Authorization status on entry: \(status.rawValue)")
-       
-       // If already have permission, return true
-       if #available(macOS 14.0, *) {
-           if status == .fullAccess {
+        
+        // If already have permission, return true
+        if #available(macOS 14.0, *) {
+            if status == .fullAccess {
                 log("Already fullAccess; returning true")
-               return true
-           }
-           if status == .writeOnly {
+                return true
+            }
+            if status == .writeOnly {
                 log("Write-only access; returning false")
-               return false
-           }
-       } else {
-           if status == .authorized {
-                log("Already authorized (pre-14); returning true")
-               return true
-           }
-       }
-       
-       // If denied or restricted, bail early
+                return false
+            }
+        } else if status == .authorized {
+            log("Already authorized (pre-14); returning true")
+            return true
+        }
+        
+        // If denied or restricted, bail early
         if status == .denied || status == .restricted {
             log("Status denied/restricted; returning false")
             openCalendarPrivacySettingsIfNeeded(force: true)
             return false
         }
-       
+        
         // If status is notDetermined, ask for permission
         log("Requesting calendar access via EKEventStore")
         let store = eventStore
@@ -74,7 +72,7 @@ final class CalendarService: ObservableObject {
                 }
             }
         }
-       
+        
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         log("Authorization status after request: \(authorizationStatus.rawValue)")
         if !granted {

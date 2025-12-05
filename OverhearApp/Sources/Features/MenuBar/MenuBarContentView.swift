@@ -1,14 +1,16 @@
 import SwiftUI
 import AppKit
 
+extension NSNotification.Name {
+    static let scrollToToday = NSNotification.Name("ScrollToToday")
+}
+
 struct MenuBarContentView: View {
      @ObservedObject var viewModel: MeetingListViewModel
      @ObservedObject var preferences: PreferencesService
      var openPreferences: () -> Void
     
-     @State private var lastScrollTime: Date = Date()
-     @State private var canScrollToPast: Bool = true
-     @State private var lastScrollOffset: CGFloat = 0
+     
      
      
      
@@ -19,10 +21,17 @@ struct MenuBarContentView: View {
              ScrollViewReader { proxy in
                  ScrollView(.vertical) {
                      VStack(alignment: .leading, spacing: 0) {
-                         if viewModel.isLoading {
-                             HStack { Spacer(); ProgressView().scaleEffect(0.7); Spacer() }
-                                 .frame(height: 32)
-                         } else if allMeetings.isEmpty {
+if viewModel.isLoading {
+                              HStack { 
+                                  Spacer()
+                                  VStack(spacing: 8) {
+                                      ProgressView()
+                                      Text("Loading meetings...").font(.system(size: 11))
+                                  }
+                                  Spacer() 
+                              }
+                              .frame(height: 32)
+                          } else if allMeetings.isEmpty {
                              Text("No meetings")
                                  .font(.system(size: 11))
                                  .foregroundColor(.secondary)
@@ -62,7 +71,7 @@ struct MenuBarContentView: View {
                            proxy.scrollTo(dateIdentifier(todayDate), anchor: .top)
                        }
                    }
-                   .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ScrollToToday"))) { _ in
+                   .onReceive(NotificationCenter.default.publisher(for: .scrollToToday)) { _ in
                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                            withAnimation {
                                proxy.scrollTo(dateIdentifier(todayDate), anchor: .top)
@@ -143,21 +152,29 @@ private var groupedMeetings: [(date: Date, meetings: [Meeting])] {
         return date < today
     }
     
-    private func dateIdentifier(_ date: Date) -> String {
+private let dateIdentifierFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        return formatter
+    }()
+    
+    private let formattedDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, d MMMM"
+        return formatter
+    }()
+    
+    private func dateIdentifier(_ date: Date) -> String {
+        return dateIdentifierFormatter.string(from: date)
     }
     
     private func formattedDate(_ date: Date) -> String {
-         let formatter = DateFormatter()
-         formatter.dateFormat = "EEEE, d MMMM"
-         return formatter.string(from: date)
-     }
+        return formattedDateFormatter.string(from: date)
+    }
     
     private func scrollToToday() {
         // Scroll to today's position
-        NotificationCenter.default.post(name: NSNotification.Name("ScrollToToday"), object: nil)
+        NotificationCenter.default.post(name: .scrollToToday, object: nil)
     }
     
     private func calculateHeight() -> CGFloat {

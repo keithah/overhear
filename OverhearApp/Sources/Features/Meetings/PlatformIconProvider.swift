@@ -1,11 +1,7 @@
 import AppKit
 import SwiftUI
 
-struct PlatformIconInfo {
-    let iconName: String
-    let color: NSColor
-    let isSystemIcon: Bool  // true if SF Symbol, false if custom image asset
-}
+// MARK: - Platform Icon Provider
 
 final class PlatformIconProvider {
      /// Maps meeting platform to icon info
@@ -73,10 +69,4 @@ final class PlatformIconProvider {
             )
         }
     }
-}
-
-enum GenericMeetingType {
-    case allDay
-    case phone
-    case generic
 }
