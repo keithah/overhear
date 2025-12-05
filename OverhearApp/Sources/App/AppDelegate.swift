@@ -9,6 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         bootstrapFileLoggingFlag()
 
+        // Default to accessory menubar mode; CalendarService will temporarily promote if needed.
+        NSApp.setActivationPolicy(.accessory)
+
         // Request notification permissions
         NotificationHelper.requestPermission()
 
@@ -42,27 +45,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func requestCalendarAccessWithActivation(context: AppContext, retryDelay: TimeInterval) async {
-        // Temporarily use .regular policy to show permission dialog
-        let previousPolicy = NSApp.activationPolicy()
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-
         let granted = await context.calendarService.requestAccessIfNeeded()
-
-        // Switch back to .accessory only once we actually have permission; otherwise stay regular so macOS can still surface the prompt.
-        let status = context.calendarService.authorizationStatus
-        if #available(macOS 14.0, *) {
-            if status == .fullAccess {
-                NSApp.setActivationPolicy(.accessory)
-            }
-        } else if status == .authorized {
-            NSApp.setActivationPolicy(.accessory)
-        }
 
         if granted {
             await context.meetingViewModel.reload()
         } else {
             // Only retry if the system still reports notDetermined (dialog might be delayed).
+            let status = context.calendarService.authorizationStatus
             if status == .notDetermined {
                 try? await Task.sleep(nanoseconds: UInt64(retryDelay * 1_000_000_000))
                 let secondAttempt = await context.calendarService.requestAccessIfNeeded()
