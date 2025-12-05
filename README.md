@@ -43,3 +43,8 @@ All processing is **local-first** and privacy-conscious.
 - Confluence
 - Slack
 
+## Developer toggles
+
+- `OVERHEAR_USE_FLUIDAUDIO=1` — opt into the FluidAudio transcription engine (stubbed; defaults to Whisper pipeline).
+- `OVERHEAR_DISABLE_TRANSCRIPT_STORAGE=1` — run without writing transcripts to disk (search UI shows a banner).
+- `OVERHEAR_FILE_LOGS=1` — append diagnostic logs to `/tmp/overhear.log` for meeting fetch/open flows.
