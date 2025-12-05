@@ -3,6 +3,7 @@ import EventKit
 import Foundation
 import AppKit
 import SwiftUI
+import UserNotifications
 import os.log
 
 @MainActor
@@ -167,11 +168,22 @@ final class MeetingListViewModel: ObservableObject {
 }
 
 private func showClipboardNotification(url: URL) {
-    // Non-blocking user feedback when fallback is used
-    let notification = NSUserNotification()
-    notification.title = "Meeting link copied"
-    notification.informativeText = "We couldn't open the link. It's been copied to your clipboard: \(url.host ?? url.absoluteString)"
-    NSUserNotificationCenter.default.deliver(notification)
+    let center = UNUserNotificationCenter.current()
+    center.getNotificationSettings { settings in
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+            return
+        }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Meeting link copied"
+        content.body = "We couldn't open the link. It's been copied to your clipboard."
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        )
+        center.add(request, withCompletionHandler: nil)
+    }
 }
 
 struct MeetingSection: Identifiable {

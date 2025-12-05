@@ -39,7 +39,7 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var audioFileURL: URL?
     
     private let captureService: AudioCaptureService
-    private let transcriptionService: TranscriptionService
+    private let transcriptionEngine: TranscriptionEngine
     private let recordingDirectory: URL
     
     private var captureStartTime: Date?
@@ -49,11 +49,11 @@ final class MeetingRecordingManager: ObservableObject {
     init(
         meetingID: String,
         captureService: AudioCaptureService = AudioCaptureService(),
-        transcriptionService: TranscriptionService = TranscriptionService()
+        transcriptionEngine: TranscriptionEngine = TranscriptionEngineFactory.makeEngine()
     ) throws {
         self.meetingID = meetingID
         self.captureService = captureService
-        self.transcriptionService = transcriptionService
+        self.transcriptionEngine = transcriptionEngine
         
         // Create recording directory in app support
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
@@ -111,7 +111,7 @@ final class MeetingRecordingManager: ObservableObject {
         
         let task = Task {
             do {
-                let text = try await transcriptionService.transcribe(audioURL: audioURL)
+                let text = try await transcriptionEngine.transcribe(audioURL: audioURL)
                 self.transcript = text
                 status = .completed
             } catch is CancellationError {

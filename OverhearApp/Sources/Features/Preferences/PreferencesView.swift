@@ -1,5 +1,7 @@
 import EventKit
 import SwiftUI
+import UserNotifications
+import AppKit
 
 struct PreferencesView: View {
     @ObservedObject var preferences: PreferencesService
@@ -7,6 +9,7 @@ struct PreferencesView: View {
 
     @State private var calendarsBySource: [(source: EKSource, calendars: [EKCalendar])] = []
     @State private var isLoadingCalendars = false
+    @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
 
     var body: some View {
         TabView {
@@ -153,13 +156,24 @@ struct PreferencesView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Status:")
+                    Text(statusText)
+                        .foregroundColor(.secondary)
+                }
                 Button("Request notification permission") {
                     NotificationHelper.requestPermission()
                 }
                 Button("Send test notification") {
                     NotificationHelper.sendTestNotification()
                 }
+                Button("Open Notification Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
             }
+            .onAppear { refreshNotificationStatus() }
         }
     }
 
@@ -278,6 +292,25 @@ struct PreferencesView: View {
         preferences.initializeWithAllCalendars(allCalendarIDs)
 
         isLoadingCalendars = false
+    }
+    
+    private var statusText: String {
+        switch notificationStatus {
+        case .authorized: return "Allowed"
+        case .denied: return "Denied"
+        case .provisional: return "Provisional"
+        case .ephemeral: return "Ephemeral"
+        case .notDetermined: return "Not determined"
+        @unknown default: return "Unknown"
+        }
+    }
+    
+    private func refreshNotificationStatus() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            Task { @MainActor in
+                self.notificationStatus = settings.authorizationStatus
+            }
+        }
     }
 }
 
