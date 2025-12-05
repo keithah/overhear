@@ -8,6 +8,7 @@ final class AppContext: ObservableObject {
     let meetingViewModel: MeetingListViewModel
     let preferencesWindowController: PreferencesWindowController
     var menuBarController: MenuBarController?
+    var hotkeyManager: HotkeyManager?
 
     init() {
         let permissions = PermissionsService()

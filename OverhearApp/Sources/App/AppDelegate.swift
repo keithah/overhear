@@ -7,7 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Request notification permissions
-        requestNotificationPermissions()
+        NotificationHelper.requestPermission()
 
         let context = AppContext()
         self.context = context
@@ -29,27 +29,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let controller = MenuBarController(viewModel: context.meetingViewModel, preferencesWindowController: context.preferencesWindowController, preferences: context.preferencesService)
         controller.setup()
+        context.menuBarController = controller
+
+        // Hotkeys (system-wide via global monitor)
+        context.hotkeyManager = HotkeyManager(
+            preferences: context.preferencesService,
+            toggleAction: { controller.togglePopoverAction() },
+            joinNextAction: { context.meetingViewModel.joinNextUpcoming() }
+        )
 
         // Keep strong reference to controller
         self.menuBarController = controller
-        context.menuBarController = controller
 
         // Keep windows hidden but present for proper event delivery to menubar
         DispatchQueue.main.async {
             NSApp.windows.forEach { $0.orderOut(nil) }
-        }
-    }
-
-    private func requestNotificationPermissions() {
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error = error {
-                print("Notification permission error: \(error.localizedDescription)")
-            } else if granted {
-                print("Notification permissions granted")
-            } else {
-                print("Notification permissions denied")
-            }
         }
     }
 }

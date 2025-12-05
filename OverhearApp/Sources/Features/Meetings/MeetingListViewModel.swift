@@ -3,6 +3,7 @@ import EventKit
 import Foundation
 import AppKit
 import SwiftUI
+import os.log
 
 @MainActor
 final class MeetingListViewModel: ObservableObject {
@@ -14,6 +15,8 @@ final class MeetingListViewModel: ObservableObject {
 
     private let calendarService: CalendarService
     private let preferences: PreferencesService
+    private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingListViewModel")
+    private let fileLoggingEnabled = ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1"
     private let permissions: PermissionsService
     private var cancellables: Set<AnyCancellable> = []
 
@@ -41,7 +44,10 @@ final class MeetingListViewModel: ObservableObject {
         let authorized = await permissions.requestCalendarAccessIfNeeded()
         authorizationStatus = permissions.calendarAuthorizationStatus
         
+        log("Reload start; auth status \(authorizationStatus.rawValue)")
+
         guard authorized else {
+            log("Reload aborted; not authorized")
             isLoading = false
             return
         }
@@ -52,9 +58,24 @@ final class MeetingListViewModel: ObservableObject {
                                                            includeEventsWithoutLinks: preferences.showEventsWithoutLinks,
                                                            includeMaybeEvents: preferences.showMaybeEvents,
                                                            allowedCalendarIDs: preferences.allowedCalendars)
+        log("Reload fetched \(meetings.count) meetings")
         apply(meetings: meetings)
         lastUpdated = Date()
         isLoading = false
+    }
+
+    func joinNextUpcoming() {
+        let now = Date()
+        let upcoming = upcomingSections
+            .flatMap { $0.meetings }
+            .filter { $0.startDate >= now }
+            .sorted { $0.startDate < $1.startDate }
+            .first
+        if let meeting = upcoming {
+            join(meeting: meeting)
+        } else {
+            log("No upcoming meeting to join via hotkey")
+        }
     }
 
     func join(meeting: Meeting) {
@@ -64,12 +85,7 @@ final class MeetingListViewModel: ObservableObject {
             // Copy to clipboard as fallback
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url.absoluteString, forType: .string)
-            
-            // Show user feedback
-            let alert = NSAlert()
-            alert.messageText = "Failed to open link. URL copied to clipboard."
-            alert.alertStyle = .informational
-            alert.runModal()
+            showClipboardNotification(url: url)
         }
     }
 
@@ -131,6 +147,31 @@ final class MeetingListViewModel: ObservableObject {
                             showMaybeEvents: preferences.showMaybeEvents,
                             allowedCalendars: preferences.selectedCalendarIDs)
     }
+
+    private func log(_ message: String) {
+        logger.info("\(message, privacy: .public)")
+        guard fileLoggingEnabled else { return }
+        let line = "[MeetingListViewModel] \(Date()): \(message)\n"
+        let url = URL(fileURLWithPath: "/tmp/overhear.log")
+        guard let data = line.data(using: .utf8) else { return }
+        if FileManager.default.fileExists(atPath: url.path) {
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+                return
+            }
+        }
+        try? data.write(to: url, options: .atomic)
+    }
+}
+
+private func showClipboardNotification(url: URL) {
+    // Non-blocking user feedback when fallback is used
+    let notification = NSUserNotification()
+    notification.title = "Meeting link copied"
+    notification.informativeText = "We couldn't open the link. It's been copied to your clipboard: \(url.host ?? url.absoluteString)"
+    NSUserNotificationCenter.default.deliver(notification)
 }
 
 struct MeetingSection: Identifiable {

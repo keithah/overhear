@@ -8,20 +8,18 @@ struct PreferencesView: View {
     @State private var calendarsBySource: [(source: EKSource, calendars: [EKCalendar])] = []
     @State private var isLoadingCalendars = false
 
-    private var authorizationStatus: EKAuthorizationStatus {
-        EKEventStore.authorizationStatus(for: .event)
-    }
-
-
-
     var body: some View {
         TabView {
             generalTab
                 .tabItem { Label("General", systemImage: "gearshape") }
             calendarsTab
                 .tabItem { Label("Calendars", systemImage: "calendar") }
+            notificationsTab
+                .tabItem { Label("Notifications", systemImage: "bell") }
             advancedTab
                 .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
+            aboutTab
+                .tabItem { Label("About", systemImage: "info.circle") }
         }
         .padding()
         .frame(width: 520, height: 420)
@@ -37,29 +35,42 @@ struct PreferencesView: View {
           }
     }
 
+    private var calendarAuthorizationStatus: EKAuthorizationStatus {
+        calendarService.authorizationStatus
+    }
+
+    private var hasCalendarAccess: Bool {
+        if #available(macOS 14.0, *) {
+            return calendarAuthorizationStatus == .fullAccess || calendarAuthorizationStatus == .writeOnly
+        } else {
+            return calendarAuthorizationStatus == .authorized
+        }
+    }
+
     private var generalTab: some View {
-         Form {
-             Toggle("Launch at login", isOn: $preferences.launchAtLogin)
-             Toggle("Use 24-hour clock", isOn: $preferences.use24HourClock)
-             Toggle("Show events without links", isOn: $preferences.showEventsWithoutLinks)
-             Toggle("Show maybe events", isOn: $preferences.showMaybeEvents)
-             
-             Divider()
-             
-             Picker("View mode", selection: $preferences.viewMode) {
-                 ForEach(ViewMode.allCases, id: \.self) { mode in
-                     Text(mode.displayName).tag(mode)
-                 }
-             }
-             
-             Stepper("Days to show: \(preferences.menubarDaysToShow)", value: $preferences.menubarDaysToShow, in: 1...7)
-             
-              Divider()
-              
-              Stepper("Days ahead: \(preferences.daysAhead)", value: $preferences.daysAhead, in: 1...30)
-              Stepper("Days back: \(preferences.daysBack)", value: $preferences.daysBack, in: 1...30)
-         }
-     }
+        Form {
+            Toggle("Launch at login", isOn: $preferences.launchAtLogin)
+            Toggle("Use 24-hour clock", isOn: $preferences.use24HourClock)
+            Toggle("Show events without links", isOn: $preferences.showEventsWithoutLinks)
+            Toggle("Show maybe events", isOn: $preferences.showMaybeEvents)
+            Toggle("Show countdown in menu bar", isOn: $preferences.countdownEnabled)
+
+            Divider()
+
+            Picker("View mode", selection: $preferences.viewMode) {
+                ForEach(ViewMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+
+            Stepper("Days to show: \(preferences.menubarDaysToShow)", value: $preferences.menubarDaysToShow, in: 1...7)
+
+            Divider()
+
+            Stepper("Days ahead: \(preferences.daysAhead)", value: $preferences.daysAhead, in: 1...30)
+            Stepper("Days back: \(preferences.daysBack)", value: $preferences.daysBack, in: 1...30)
+        }
+    }
 
     private var calendarsTab: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -69,6 +80,18 @@ struct PreferencesView: View {
                 if isLoadingCalendars {
                     ProgressView()
                         .controlSize(.small)
+                }
+            }
+            if !hasCalendarAccess {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Grant calendar access to show meetings.")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                    Button("Open Calendar Privacy Settings") {
+                        calendarService.openPrivacySettings()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
                 }
             }
             ScrollView {
@@ -81,8 +104,7 @@ struct PreferencesView: View {
                                 calendars: sourceGroup.calendars,
                                 preferences: preferences
                             )
-                            
-                            // Calendars in this source
+
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(sourceGroup.calendars, id: \.calendarIdentifier) { calendar in
                                     CalendarToggle(
@@ -95,29 +117,27 @@ struct PreferencesView: View {
                         }
                         .padding(.bottom, 4)
                     }
-                    
-                     if calendarsBySource.isEmpty {
-                         VStack(alignment: .leading, spacing: 4) {
-                             Text("Calendar preferences unavailable.")
-                                 .font(.callout)
-                                 .foregroundColor(.secondary)
-                             Text("Due to macOS security restrictions, calendar selection must be configured through the main menu bar interface. The app is working correctly - you should see events in the menu bar.")
-                                 .font(.caption)
-                                 .foregroundColor(.secondary)
-                                 .multilineTextAlignment(.leading)
-                         }
-                         .padding(.vertical, 8)
-                     }
+
+                    if calendarsBySource.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Calendar preferences unavailable.")
+                                .font(.callout)
+                                .foregroundColor(.secondary)
+                            Text("Due to macOS security restrictions, calendar selection must be configured through the main menu bar interface. The app is working correctly - you should see events in the menu bar.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .padding(.vertical, 8)
+                    }
                 }
                 .padding(.vertical, 8)
             }
         }
     }
 
-    private var advancedTab: some View {
+    private var notificationsTab: some View {
         Form {
-            Toggle("Show countdown in menu bar", isOn: $preferences.countdownEnabled)
-
             HStack {
                 Text("Notify minutes before:")
                 Spacer()
@@ -126,37 +146,139 @@ struct PreferencesView: View {
                 Text("\(preferences.notificationMinutesBefore)")
                     .frame(minWidth: 20, alignment: .trailing)
             }
+            Text("Countdown appears in the menu bar and notifications fire before your next meeting.")
+                .font(.caption)
+                .foregroundColor(.secondary)
 
-            Section(header: Text("Open rules (coming soon)")) {
-                Text("Configure how Overhear opens Zoom, Meet, Teams, and Webex links.")
-                    .font(.callout)
-                    .foregroundColor(.secondary)
-            }
-            Section(header: Text("Hotkeys (coming soon)")) {
-                Text("Set shortcuts to open Overhear or join your next meeting.")
-                    .font(.callout)
-                    .foregroundColor(.secondary)
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Button("Request notification permission") {
+                    NotificationHelper.requestPermission()
+                }
+                Button("Send test notification") {
+                    NotificationHelper.sendTestNotification()
+                }
             }
         }
     }
 
-     private func loadCalendars() async {
-         isLoadingCalendars = true
-         let accessGranted = await calendarService.requestAccessIfNeeded()
-         guard accessGranted else {
-             isLoadingCalendars = false
-             calendarsBySource = []
-             return
-         }
-         
-         calendarsBySource = calendarService.calendarsBySource()
-         
-         // Initialize with all calendars on first run
-         let allCalendarIDs = calendarsBySource.flatMap { $0.calendars.map { $0.calendarIdentifier } }
-         preferences.initializeWithAllCalendars(allCalendarIDs)
-         
-         isLoadingCalendars = false
-     }
+    private var advancedTab: some View {
+        Form {
+            Section(header: Text("Open rules")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    openRuleRow(title: "Open Zoom", platform: .zoom, selection: $preferences.zoomOpenBehavior)
+                    openRuleRow(title: "Open Microsoft Teams", platform: .teams, selection: $preferences.teamsOpenBehavior)
+                    openRuleRow(title: "Open Webex", platform: .webex, selection: $preferences.webexOpenBehavior)
+                    openRuleRow(title: "Open Google Meet", platform: .meet, selection: $preferences.meetOpenBehavior)
+                    openRuleRow(title: "Other links", platform: .unknown, selection: $preferences.otherLinksOpenBehavior)
+                }
+            }
+
+            Section(header: Text("Hotkeys")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    LabeledContent("Menubar toggle") {
+                        TextField("e.g. ^⌥M", text: $preferences.menubarToggleHotkey)
+                            .onChange(of: preferences.menubarToggleHotkey) { _, newValue in
+                                preferences.menubarToggleHotkey = sanitizeHotkeyInput(newValue)
+                            }
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 140)
+                    }
+                    LabeledContent("Join next meeting") {
+                        TextField("e.g. ^⌥J", text: $preferences.joinNextMeetingHotkey)
+                            .onChange(of: preferences.joinNextMeetingHotkey) { _, newValue in
+                                preferences.joinNextMeetingHotkey = sanitizeHotkeyInput(newValue)
+                            }
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 140)
+                    }
+                    if !isHotkeyValid(preferences.menubarToggleHotkey) || !isHotkeyValid(preferences.joinNextMeetingHotkey) {
+                        Text("Use modifiers (^⌥⌘⇧) plus a letter/number, e.g., ^⌥M.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Hotkeys are active system-wide. Change them here anytime.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var aboutTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Overhear")
+                .font(.title2.weight(.semibold))
+            Text("Everything runs on-device with Apple Silicon optimization. For support, open an issue on GitHub.")
+                .font(.body)
+            if let repoURL = URL(string: "https://github.com/keithah/overhear") {
+                Link("GitHub repository", destination: repoURL)
+            }
+            if let issuesURL = URL(string: "https://github.com/keithah/overhear/issues") {
+                Link("Open a support issue", destination: issuesURL)
+            }
+            Spacer()
+        }
+        .padding()
+    }
+
+    private func openRulePicker(title: String, platform: MeetingPlatform, selection: Binding<OpenBehavior>) -> some View {
+        Picker(title, selection: selection) {
+            ForEach(OpenBehavior.available(for: platform), id: \.self) { behavior in
+                Text(behavior.displayName).tag(behavior)
+            }
+        }
+    }
+
+    private func openRuleRow(title: String, platform: MeetingPlatform, selection: Binding<OpenBehavior>) -> some View {
+        HStack {
+            Text(title)
+                .frame(width: 170, alignment: .leading)
+            Spacer()
+            Picker("", selection: selection) {
+                ForEach(OpenBehavior.available(for: platform), id: \.self) { behavior in
+                    Text(behavior.displayName).tag(behavior)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 180)
+        }
+    }
+
+    private func isHotkeyValid(_ string: String) -> Bool {
+        string.isEmpty || HotkeyBinding.isValid(string: string)
+    }
+
+    private func sanitizeHotkeyInput(_ value: String) -> String {
+        let allowedModifiers = "^⌃⌥⎇⌘⇧"
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        var result = trimmed.filter { allowedModifiers.contains($0) }
+        if let key = trimmed.first(where: { $0.isLetter || $0.isNumber }) {
+            result.append(Character(String(key).lowercased()))
+        }
+        return result
+    }
+
+    private func loadCalendars() async {
+        isLoadingCalendars = true
+        let accessGranted = await calendarService.requestAccessIfNeeded()
+        guard accessGranted else {
+            isLoadingCalendars = false
+            calendarsBySource = []
+            return
+        }
+
+        calendarsBySource = calendarService.calendarsBySource()
+
+        // Initialize with all calendars on first run
+        let allCalendarIDs = calendarsBySource.flatMap { $0.calendars.map { $0.calendarIdentifier } }
+        preferences.initializeWithAllCalendars(allCalendarIDs)
+
+        isLoadingCalendars = false
+    }
 }
 
 /// Toggle for an entire source
@@ -164,7 +286,7 @@ private struct SourceToggle: View {
     let source: EKSource
     let calendars: [EKCalendar]
     @ObservedObject var preferences: PreferencesService
-    
+
     var body: some View {
         Toggle(isOn: Binding(
             get: {
@@ -180,7 +302,7 @@ private struct SourceToggle: View {
             HStack(spacing: 4) {
                 Text(source.title)
                     .font(.system(size: 13, weight: .semibold))
-                
+
                 // Show mixed state indicator
                 if isMixedState {
                     Rectangle()
@@ -191,7 +313,7 @@ private struct SourceToggle: View {
             }
         }
     }
-    
+
     private var isMixedState: Bool {
         let selectedCount = calendars.filter { preferences.selectedCalendarIDs.contains($0.calendarIdentifier) }.count
         return selectedCount > 0 && selectedCount < calendars.count
@@ -202,7 +324,7 @@ private struct SourceToggle: View {
 private struct CalendarToggle: View {
     let calendar: EKCalendar
     @ObservedObject var preferences: PreferencesService
-    
+
     var body: some View {
         Toggle(isOn: Binding(
             get: {

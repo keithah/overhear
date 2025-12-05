@@ -55,17 +55,21 @@ final class PreferencesService: ObservableObject {
     @Published var zoomOpenBehavior: OpenBehavior {
         didSet { persist(zoomOpenBehavior.rawValue, key: .zoomOpenBehavior) }
     }
-    
+
     @Published var meetOpenBehavior: OpenBehavior {
         didSet { persist(meetOpenBehavior.rawValue, key: .meetOpenBehavior) }
     }
-    
+
     @Published var teamsOpenBehavior: OpenBehavior {
         didSet { persist(teamsOpenBehavior.rawValue, key: .teamsOpenBehavior) }
     }
-    
+
     @Published var webexOpenBehavior: OpenBehavior {
         didSet { persist(webexOpenBehavior.rawValue, key: .webexOpenBehavior) }
+    }
+
+    @Published var otherLinksOpenBehavior: OpenBehavior {
+        didSet { persist(otherLinksOpenBehavior.rawValue, key: .otherLinksOpenBehavior) }
     }
 
     @Published var viewMode: ViewMode {
@@ -74,6 +78,14 @@ final class PreferencesService: ObservableObject {
 
     @Published var menubarDaysToShow: Int {
         didSet { persist(menubarDaysToShow, key: .menubarDaysToShow) }
+    }
+
+    @Published var menubarToggleHotkey: String {
+        didSet { persist(menubarToggleHotkey, key: .menubarToggleHotkey) }
+    }
+
+    @Published var joinNextMeetingHotkey: String {
+        didSet { persist(joinNextMeetingHotkey, key: .joinNextMeetingHotkey) }
     }
 
     private let defaults: UserDefaults
@@ -85,21 +97,24 @@ final class PreferencesService: ObservableObject {
         self.use24HourClock = defaults.object(forKey: PreferenceKey.use24HourClock.rawValue) as? Bool ?? false
         self.showEventsWithoutLinks = defaults.object(forKey: PreferenceKey.showEventsWithoutLinks.rawValue) as? Bool ?? true
         self.showMaybeEvents = defaults.object(forKey: PreferenceKey.showMaybeEvents.rawValue) as? Bool ?? true
-         self.daysAhead = defaults.object(forKey: PreferenceKey.daysAhead.rawValue) as? Int ?? 15
-         self.daysBack = defaults.object(forKey: PreferenceKey.daysBack.rawValue) as? Int ?? 14
+        self.daysAhead = defaults.object(forKey: PreferenceKey.daysAhead.rawValue) as? Int ?? 15
+        self.daysBack = defaults.object(forKey: PreferenceKey.daysBack.rawValue) as? Int ?? 14
         self.countdownEnabled = defaults.object(forKey: PreferenceKey.countdownEnabled.rawValue) as? Bool ?? true
         self.notificationMinutesBefore = defaults.object(forKey: PreferenceKey.notificationMinutesBefore.rawValue) as? Int ?? 5
         self.selectedCalendarIDs = PreferencesService.loadCalendarIDs(defaults: defaults)
-         self.zoomOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .zoomOpenBehavior, default: .zoommtg)
-         self.meetOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .meetOpenBehavior, default: .browser)
-         self.teamsOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .teamsOpenBehavior, default: .browser)
-         self.webexOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .webexOpenBehavior, default: .browser)
-         self.viewMode = PreferencesService.loadViewMode(defaults: defaults)
-         self.menubarDaysToShow = defaults.object(forKey: PreferenceKey.menubarDaysToShow.rawValue) as? Int ?? 3
+        self.zoomOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .zoomOpenBehavior, default: .nativeApp)
+        self.meetOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .meetOpenBehavior, default: .defaultBrowser)
+        self.teamsOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .teamsOpenBehavior, default: .defaultBrowser)
+        self.webexOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .webexOpenBehavior, default: .defaultBrowser)
+        self.otherLinksOpenBehavior = PreferencesService.loadOpenBehavior(defaults: defaults, key: .otherLinksOpenBehavior, default: .defaultBrowser)
+        self.viewMode = PreferencesService.loadViewMode(defaults: defaults)
+        self.menubarDaysToShow = defaults.object(forKey: PreferenceKey.menubarDaysToShow.rawValue) as? Int ?? 3
+        self.menubarToggleHotkey = defaults.string(forKey: PreferenceKey.menubarToggleHotkey.rawValue) ?? ""
+        self.joinNextMeetingHotkey = defaults.string(forKey: PreferenceKey.joinNextMeetingHotkey.rawValue) ?? ""
 
-         updateLaunchAtLogin(launchAtLogin)
+        updateLaunchAtLogin(launchAtLogin)
     }
-    
+
     /// Initialize selected calendars with all available calendars on first run
     func initializeWithAllCalendars(_ calendarIDs: [String]) {
         if selectedCalendarIDs.isEmpty {
@@ -133,7 +148,7 @@ final class PreferencesService: ObservableObject {
         case .meet: return meetOpenBehavior
         case .teams: return teamsOpenBehavior
         case .webex: return webexOpenBehavior
-        case .unknown: return .browser
+        case .unknown: return otherLinksOpenBehavior
         }
     }
 
@@ -166,21 +181,21 @@ final class PreferencesService: ObservableObject {
     }
 
     private static func loadOpenBehavior(defaults: UserDefaults, key: PreferenceKey, default defaultValue: OpenBehavior) -> OpenBehavior {
-         guard let rawValue = defaults.string(forKey: key.rawValue),
-               let behavior = OpenBehavior(rawValue: rawValue) else {
-             return defaultValue
-         }
-         return behavior
-     }
+        guard let rawValue = defaults.string(forKey: key.rawValue),
+              let behavior = OpenBehavior(rawValue: rawValue) else {
+            return defaultValue
+        }
+        return behavior
+    }
 
     private static func loadViewMode(defaults: UserDefaults) -> ViewMode {
-         guard let rawValue = defaults.string(forKey: PreferenceKey.viewMode.rawValue),
-               let mode = ViewMode(rawValue: rawValue) else {
-             return .compact
-         }
-         return mode
-     }
- }
+        guard let rawValue = defaults.string(forKey: PreferenceKey.viewMode.rawValue),
+              let mode = ViewMode(rawValue: rawValue) else {
+            return .minimalist
+        }
+        return mode
+    }
+}
 
 private enum PreferenceKey: String {
     case launchAtLogin
@@ -194,8 +209,11 @@ private enum PreferenceKey: String {
     case selectedCalendars
     case zoomOpenBehavior
     case meetOpenBehavior
-     case teamsOpenBehavior
-     case webexOpenBehavior
-     case viewMode
-     case menubarDaysToShow
- }
+    case teamsOpenBehavior
+    case webexOpenBehavior
+    case otherLinksOpenBehavior
+    case viewMode
+    case menubarDaysToShow
+    case menubarToggleHotkey
+    case joinNextMeetingHotkey
+}

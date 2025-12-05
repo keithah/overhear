@@ -93,6 +93,9 @@ private extension Meeting {
             if let text, let url = detectSpecificURL(in: text, containing: meetingURLs) {
                 return url
             }
+            if let text, let url = detectKnownScheme(in: text) {
+                return url
+            }
         }
         
         // Fallback to any URL
@@ -134,6 +137,19 @@ private extension Meeting {
         let match = detector.firstMatch(in: text, options: [], range: range)
         if let match, let url = match.url {
             return url
+        }
+        return nil
+    }
+    
+    static func detectKnownScheme(in text: String) -> URL? {
+        let knownPrefixes = ["zoommtg://", "msteams://", "microsoft-teams://", "webex://", "webexteams://", "meet://"]
+        let tokens = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline || $0 == "|" })
+        for token in tokens {
+            for prefix in knownPrefixes {
+                if token.lowercased().hasPrefix(prefix) {
+                    return URL(string: String(token))
+                }
+            }
         }
         return nil
     }
