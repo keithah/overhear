@@ -66,12 +66,9 @@ actor TranscriptStore {
     private let decoder = JSONDecoder()
     private let encryptionKey: SymmetricKey
     private let persistenceEnabled: Bool
-    private static let storageEnabled: Bool = {
-        ProcessInfo.processInfo.environment["OVERHEAR_DISABLE_TRANSCRIPT_STORAGE"] != "1"
-    }()
     
     init(storageDirectory: URL? = nil) throws {
-        guard Self.storageEnabled else {
+        guard Self.isStorageEnabled else {
             throw Error.storageDisabled
         }
         self.persistenceEnabled = true
@@ -84,26 +81,14 @@ actor TranscriptStore {
             self.storageDirectory = appSupport.appendingPathComponent("com.overhear.app/Transcripts")
         }
         
-        // Ensure storage directory exists with proper error handling
+        // Ensure storage directory exists (create if missing)
         do {
-            let attributes = try FileManager.default.attributesOfItem(atPath: self.storageDirectory.path)
-            // Directory exists, verify it's actually a directory
-            guard attributes[.type] as? FileAttributeType == .typeDirectory else {
-                throw Error.storageDirectoryNotFound
-            }
-        } catch CocoaError.fileNoSuchFile {
-            // Directory doesn't exist, create it
-            do {
-                try FileManager.default.createDirectory(
-                    at: self.storageDirectory,
-                    withIntermediateDirectories: true,
-                    attributes: nil
-                )
-            } catch {
-                throw Error.storageDirectoryNotFound
-            }
+            try FileManager.default.createDirectory(
+                at: self.storageDirectory,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
         } catch {
-            // Other file system errors
             throw Error.storageDirectoryNotFound
         }
         
@@ -113,6 +98,10 @@ actor TranscriptStore {
         } catch {
             throw Error.keyManagementFailed(error.localizedDescription)
         }
+    }
+
+    private static var isStorageEnabled: Bool {
+        ProcessInfo.processInfo.environment["OVERHEAR_DISABLE_TRANSCRIPT_STORAGE"] != "1"
     }
     
     /// Save a transcript (encrypted)

@@ -12,10 +12,15 @@ let package = Package(
             name: "Overhear",
             dependencies: [],
             path: ".",
-            exclude: ["Overhear.xcodeproj", "Resources/Info.plist"],
+            exclude: ["Overhear.xcodeproj", "Resources/Info.plist", "Tests"],
             resources: [
                 .process("Resources")
             ]
+        ),
+        .testTarget(
+            name: "OverhearTests",
+            dependencies: ["Overhear"],
+            path: "Tests/OverhearTests"
         )
     ]
 )

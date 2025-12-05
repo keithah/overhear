@@ -108,10 +108,11 @@ final class MeetingRecordingManager: ObservableObject {
     
     private func startTranscription(audioURL: URL) async {
         status = .transcribing
+        let engine = transcriptionEngine
         
         let task = Task {
             do {
-                let text = try await transcriptionEngine.transcribe(audioURL: audioURL)
+                let text = try await engine.transcribe(audioURL: audioURL)
                 self.transcript = text
                 status = .completed
             } catch is CancellationError {

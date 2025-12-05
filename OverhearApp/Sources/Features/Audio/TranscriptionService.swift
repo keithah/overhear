@@ -14,8 +14,8 @@ enum TranscriptionEngineFactory {
     static func makeEngine() -> TranscriptionEngine {
         // Feature flag for future FluidAudio integration
         let useFluid = ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] == "1"
-        if useFluid {
-            return FluidAudioTranscriptionEngine(fallback: TranscriptionService())
+        if useFluid, let fluid = FluidAudioAdapter.makeClient() {
+            return FluidAudioTranscriptionEngine(fluid: fluid, fallback: TranscriptionService())
         }
         return TranscriptionService()
     }
@@ -34,19 +34,20 @@ struct FluidAudioTranscriptionEngine: TranscriptionEngine {
         }
     }
     
+    private let fluid: FluidAudioClient?
     private let fallback: TranscriptionEngine
     
-    init(fallback: TranscriptionEngine) {
+    init(fluid: FluidAudioClient?, fallback: TranscriptionEngine) {
+        self.fluid = fluid
         self.fallback = fallback
     }
     
     func transcribe(audioURL: URL) async throws -> String {
-        do {
-            throw FluidError.notAvailable
-        } catch {
-            // Gracefully fall back so users still get a transcript.
-            return try await fallback.transcribe(audioURL: audioURL)
+        if let fluid {
+            return try await fluid.transcribe(url: audioURL)
         }
+        // Gracefully fall back so users still get a transcript.
+        return try await fallback.transcribe(audioURL: audioURL)
     }
 }
 
@@ -176,7 +177,7 @@ actor TranscriptionService: TranscriptionEngine {
     }
     
     /// Helper method to handle whisper process completion
-    private func handleWhisperCompletion(
+    nonisolated private func handleWhisperCompletion(
         process: Process,
         errorPipe: Pipe,
         outputPrefix: String,

@@ -3,7 +3,7 @@ import EventKit
 import Foundation
 import AppKit
 import SwiftUI
-import UserNotifications
+@preconcurrency import UserNotifications
 import os.log
 
 @MainActor
@@ -53,18 +53,19 @@ final class MeetingListViewModel: ObservableObject {
         if !authorized {
             log("Reload aborted; not authorized")
             isLoading = false
-            meetings = []
+            upcomingSections = []
+            pastSections = []
             return
         }
 
         let preferences = preferencesSnapshot()
-        let meetings = await calendarService.fetchMeetings(daysAhead: preferences.daysAhead,
-                                                           daysBack: preferences.daysBack,
-                                                           includeEventsWithoutLinks: preferences.showEventsWithoutLinks,
-                                                           includeMaybeEvents: preferences.showMaybeEvents,
-                                                           allowedCalendarIDs: preferences.allowedCalendars)
-        log("Reload fetched \(meetings.count) meetings")
-        apply(meetings: meetings)
+        let fetchedMeetings = await calendarService.fetchMeetings(daysAhead: preferences.daysAhead,
+                                                                  daysBack: preferences.daysBack,
+                                                                  includeEventsWithoutLinks: preferences.showEventsWithoutLinks,
+                                                                  includeMaybeEvents: preferences.showMaybeEvents,
+                                                                  allowedCalendarIDs: preferences.allowedCalendars)
+        log("Reload fetched \(fetchedMeetings.count) meetings")
+        apply(meetings: fetchedMeetings)
         lastUpdated = Date()
         isLoading = false
     }
