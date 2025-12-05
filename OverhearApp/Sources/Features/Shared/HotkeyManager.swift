@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import ApplicationServices
 
 @MainActor
 final class HotkeyManager {
@@ -8,6 +9,7 @@ final class HotkeyManager {
     private let preferences: PreferencesService
     private let toggleAction: () -> Void
     private let joinNextAction: () -> Void
+    private static var didPromptForAccessibility = false
 
     init(preferences: PreferencesService,
          toggleAction: @escaping () -> Void,
@@ -54,6 +56,8 @@ final class HotkeyManager {
 
         guard !bindings.isEmpty else { return }
 
+        ensureAccessibilityPermissionIfNeeded()
+
         monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return }
             let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
@@ -65,6 +69,15 @@ final class HotkeyManager {
                 }
             }
         }
+    }
+
+    private func ensureAccessibilityPermissionIfNeeded() {
+        guard !Self.didPromptForAccessibility else { return }
+        // AXIsProcessTrustedWithOptions shows a one-time system prompt when requested.
+        if AXIsProcessTrusted() { return }
+        let options: CFDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+        Self.didPromptForAccessibility = true
     }
 }
 

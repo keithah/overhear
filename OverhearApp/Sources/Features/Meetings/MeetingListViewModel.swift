@@ -81,7 +81,7 @@ final class MeetingListViewModel: ObservableObject {
             // Copy to clipboard as fallback
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url.absoluteString, forType: .string)
-            showClipboardAlert()
+            showClipboardNotification(url: url)
         }
     }
 
@@ -151,12 +151,12 @@ final class MeetingListViewModel: ObservableObject {
     }
 }
 
-private func showClipboardAlert() {
-    let alert = NSAlert()
-    alert.messageText = "Unable to open the meeting link."
-    alert.informativeText = "The URL has been copied to your clipboard so you can paste it into your browser."
-    alert.alertStyle = .informational
-    alert.runModal()
+private func showClipboardNotification(url: URL) {
+    // Non-blocking user feedback when fallback is used
+    let notification = NSUserNotification()
+    notification.title = "Meeting link copied"
+    notification.informativeText = "We couldn't open the link. It's been copied to your clipboard: \(url.host ?? url.absoluteString)"
+    NSUserNotificationCenter.default.deliver(notification)
 }
 
 struct MeetingSection: Identifiable {

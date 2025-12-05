@@ -15,7 +15,23 @@ enum MeetingPlatform: String, Codable, CaseIterable {
     case unknown
 
     nonisolated static func detect(from url: URL?) -> MeetingPlatform {
-        guard let host = url?.host?.lowercased() else { return .unknown }
+        guard let url else { return .unknown }
+        let scheme = url.scheme?.lowercased() ?? ""
+        // Handle custom schemes first (these have no host)
+        if scheme.contains("zoommtg") || scheme == "zoom" {
+            return .zoom
+        }
+        if scheme.contains("msteams") || scheme.contains("microsoft-teams") {
+            return .teams
+        }
+        if scheme.contains("webex") {
+            return .webex
+        }
+        if scheme.contains("meet") {
+            return .meet
+        }
+        
+        guard let host = url.host?.lowercased() else { return .unknown }
         if host.contains("zoom.us") || host.contains("zoom.com") {
             return .zoom
         }
@@ -41,6 +57,7 @@ enum MeetingPlatform: String, Codable, CaseIterable {
             switch openBehavior {
             case .nativeApp:
                 urlToOpen = convertToZoomMTG(url) ?? url
+                bundleIdentifierToUse = "us.zoom.xos"
             default:
                 urlToOpen = url
                 bundleIdentifierToUse = openBehavior.browserBundleIdentifier
@@ -49,6 +66,7 @@ enum MeetingPlatform: String, Codable, CaseIterable {
             switch openBehavior {
             case .nativeApp:
                 urlToOpen = url
+                // Google Meet has no reliable native macOS client; fall back to default browser
             default:
                 urlToOpen = url
                 bundleIdentifierToUse = openBehavior.browserBundleIdentifier
@@ -57,6 +75,7 @@ enum MeetingPlatform: String, Codable, CaseIterable {
             switch openBehavior {
             case .nativeApp:
                 urlToOpen = url
+                bundleIdentifierToUse = "com.microsoft.teams"
             default:
                 urlToOpen = url
                 bundleIdentifierToUse = openBehavior.browserBundleIdentifier
@@ -65,6 +84,7 @@ enum MeetingPlatform: String, Codable, CaseIterable {
             switch openBehavior {
             case .nativeApp:
                 urlToOpen = url
+                bundleIdentifierToUse = "com.cisco.webexmeetings"
             default:
                 urlToOpen = url
                 bundleIdentifierToUse = openBehavior.browserBundleIdentifier
@@ -83,7 +103,7 @@ enum MeetingPlatform: String, Codable, CaseIterable {
                 configuration: configuration
             ) { _, error in
                 if let error {
-                    meetingOpenLogger.error("Failed to open URL \(urlToOpen.absoluteString, privacy: .public) with \(bundleIdentifierToUse, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    meetingOpenLogger.error("Failed to open URL \(urlToOpen.absoluteString, privacy: .private(mask: .hash)) with \(bundleIdentifierToUse, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .public)")
                 }
             }
             return true
@@ -91,7 +111,7 @@ enum MeetingPlatform: String, Codable, CaseIterable {
         
         let success = NSWorkspace.shared.open(urlToOpen)
         if !success {
-            meetingOpenLogger.error("Failed to open URL \(urlToOpen.absoluteString, privacy: .public) using default method")
+            meetingOpenLogger.error("Failed to open URL \(urlToOpen.absoluteString, privacy: .private(mask: .hash)) using default method")
         }
         return success
     }
@@ -275,6 +295,9 @@ private extension Meeting {
             if let text, let url = detectSpecificURL(in: text, containing: meetingURLs) {
                 return url
             }
+            if let text, let url = detectKnownScheme(in: text) {
+                return url
+            }
         }
         
         // Fallback to any URL
@@ -316,6 +339,19 @@ private extension Meeting {
         let match = detector.firstMatch(in: text, options: [], range: range)
         if let match, let url = match.url {
             return url
+        }
+        return nil
+    }
+    
+    static func detectKnownScheme(in text: String) -> URL? {
+        let knownPrefixes = ["zoommtg://", "msteams://", "microsoft-teams://", "webex://", "webexteams://", "meet://"]
+        let tokens = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline || $0 == "|" })
+        for token in tokens {
+            for prefix in knownPrefixes {
+                if token.lowercased().hasPrefix(prefix) {
+                    return URL(string: String(token))
+                }
+            }
         }
         return nil
     }
