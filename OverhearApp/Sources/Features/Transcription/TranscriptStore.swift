@@ -83,15 +83,20 @@ actor TranscriptStore {
             self.storageDirectory = appSupport.appendingPathComponent("com.overhear.app/Transcripts")
         }
         
-        // Ensure storage directory exists (create if missing)
-        do {
-            try FileManager.default.createDirectory(
-                at: self.storageDirectory,
-                withIntermediateDirectories: true,
-                attributes: nil
-            )
-        } catch {
-            throw Error.storageDirectoryNotFound
+        // Ensure storage directory exists (create if missing) and is not shadowed by a file
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: self.storageDirectory.path, isDirectory: &isDirectory) {
+            if !isDirectory.boolValue {
+                throw Error.storageDirectoryNotFound
+            }
+        } else {
+            do {
+                try FileManager.default.createDirectory(at: self.storageDirectory,
+                                                        withIntermediateDirectories: true,
+                                                        attributes: nil)
+            } catch {
+                throw Error.storageDirectoryNotFound
+            }
         }
         
         // Initialize encryption key from Keychain

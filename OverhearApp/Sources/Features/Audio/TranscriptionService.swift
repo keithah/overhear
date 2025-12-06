@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 // MARK: - Transcription Engines
 
@@ -36,6 +37,7 @@ struct FluidAudioTranscriptionEngine: TranscriptionEngine {
     
     private let fluid: FluidAudioClient?
     private let fallback: TranscriptionEngine
+    private let logger = Logger(subsystem: "com.overhear.app", category: "Transcription")
     
     init(fluid: FluidAudioClient?, fallback: TranscriptionEngine) {
         self.fluid = fluid
@@ -44,9 +46,11 @@ struct FluidAudioTranscriptionEngine: TranscriptionEngine {
     
     func transcribe(audioURL: URL) async throws -> String {
         if let fluid {
+            logger.debug("FluidAudio available; attempting Fluid transcription.")
             return try await fluid.transcribe(url: audioURL)
         }
         // Gracefully fall back so users still get a transcript.
+        logger.info("FluidAudio not available; falling back to Whisper transcription.")
         return try await fallback.transcribe(audioURL: audioURL)
     }
 }

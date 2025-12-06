@@ -11,6 +11,9 @@ jobs:
     runs-on: macos-latest
 
     steps:
+    - name: Select Xcode 16.2 (Swift 6.2)
+      run: sudo xcode-select -s /Applications/Xcode_16.2.app
+
     - uses: actions/checkout@v3
     - name: SwiftPM tests
       working-directory: OverhearApp

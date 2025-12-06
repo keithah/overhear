@@ -6,11 +6,13 @@ final class TranscriptStoreTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        setenv("OVERHEAR_DISABLE_TRANSCRIPT_STORAGE", "0", 1)
         tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }
 
     override func tearDown() {
+        unsetenv("OVERHEAR_DISABLE_TRANSCRIPT_STORAGE")
         try? FileManager.default.removeItem(at: tempDir)
         tempDir = nil
         super.tearDown()
