@@ -45,13 +45,23 @@ struct FluidAudioTranscriptionEngine: TranscriptionEngine {
     }
     
     func transcribe(audioURL: URL) async throws -> String {
-        if let fluid {
-            logger.debug("FluidAudio available; attempting Fluid transcription.")
-            return try await fluid.transcribe(url: audioURL)
+        guard let fluid else {
+            logger.info("FluidAudio not available; falling back to Whisper transcription.")
+            return try await fallback.transcribe(audioURL: audioURL)
         }
-        // Gracefully fall back so users still get a transcript.
-        logger.info("FluidAudio not available; falling back to Whisper transcription.")
-        return try await fallback.transcribe(audioURL: audioURL)
+
+        do {
+            logger.debug("FluidAudio available; attempting Fluid transcription.")
+            let transcript = try await fluid.transcribe(url: audioURL)
+            if transcript.isEmpty {
+                logger.warning("FluidAudio returned empty transcript; falling back to Whisper transcription.")
+                return try await fallback.transcribe(audioURL: audioURL)
+            }
+            return transcript
+        } catch {
+            logger.warning("FluidAudio transcription failed (\(error.localizedDescription)); falling back to Whisper transcription.")
+            return try await fallback.transcribe(audioURL: audioURL)
+        }
     }
 }
 
@@ -208,11 +218,7 @@ actor TranscriptionService: TranscriptionEngine {
     
     /// Helper method to safely read error pipe output
     private static func readErrorOutput(from errorPipe: Pipe) -> String {
-        do {
-            let errorData = try errorPipe.fileHandleForReading.readDataToEndOfFile()
-            return String(data: errorData, encoding: .utf8) ?? ""
-        } catch {
-            return "Failed to read error output: \(error.localizedDescription)"
-        }
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: errorData, encoding: .utf8) ?? ""
     }
 }

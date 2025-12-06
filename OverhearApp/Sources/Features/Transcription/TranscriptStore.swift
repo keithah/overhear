@@ -31,6 +31,7 @@ actor TranscriptStore {
     enum Error: LocalizedError {
         case storageDisabled
         case storageDirectoryNotFound
+        case storageDirectoryCreationFailed(String)
         case encodingFailed(String)
         case decodingFailed(String)
         case notFound
@@ -45,6 +46,8 @@ actor TranscriptStore {
                 return "Transcript storage is disabled by configuration"
             case .storageDirectoryNotFound:
                 return "Transcript storage directory not found"
+            case .storageDirectoryCreationFailed(let message):
+                return "Failed to create transcript storage directory: \(message)"
             case .encodingFailed(let message):
                 return "Failed to encode transcript: \(message)"
             case .decodingFailed(let message):
@@ -95,7 +98,7 @@ actor TranscriptStore {
                                                         withIntermediateDirectories: true,
                                                         attributes: nil)
             } catch {
-                throw Error.storageDirectoryNotFound
+                throw Error.storageDirectoryCreationFailed(error.localizedDescription)
             }
         }
         

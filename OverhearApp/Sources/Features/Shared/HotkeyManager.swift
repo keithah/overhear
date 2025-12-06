@@ -1,6 +1,12 @@
 import AppKit
 import Combine
-import ApplicationServices
+@preconcurrency import ApplicationServices
+
+@MainActor
+private let axTrustedCheckOptionPromptKey: CFString = {
+    kAXTrustedCheckOptionPrompt.takeUnretainedValue()
+}()
+
 @MainActor
 private final class MonitorBox {
     var token: Any?
@@ -69,11 +75,19 @@ final class HotkeyManager {
         }
     }
 
+    @MainActor
+    deinit {
+        if let token = monitorBox.token {
+            NSEvent.removeMonitor(token)
+            monitorBox.token = nil
+        }
+    }
+
     private func ensureAccessibilityPermissionIfNeeded() {
         guard !Self.didPromptForAccessibility else { return }
         // AXIsProcessTrustedWithOptions shows a one-time system prompt when requested.
         if AXIsProcessTrusted() { return }
-        let promptKey = "AXTrustedCheckOptionPrompt" as CFString
+        let promptKey = axTrustedCheckOptionPromptKey
         let options: CFDictionary = [promptKey: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
         Self.didPromptForAccessibility = true

@@ -20,13 +20,22 @@ final class TranscriptStoreTests: XCTestCase {
 
     func testSaveAndRetrieveTranscript() async throws {
         let store = try TranscriptStore(storageDirectory: tempDir)
-        let transcript = makeTranscript(id: "t1", date: Date())
+        let segments = [
+            SpeakerSegment(speaker: "Alex", start: 0, end: 60),
+            SpeakerSegment(speaker: "Jamie", start: 60, end: 120)
+        ]
+        let summary = MeetingSummary(summary: "Takeaways",
+                                     highlights: ["Hello world", "Wrap up"],
+                                     actionItems: [])
+        let transcript = makeTranscript(id: "t1", date: Date(), transcript: "hello", segments: segments, summary: summary)
 
         try await store.save(transcript)
         let retrieved = try await store.retrieve(id: "t1")
         XCTAssertEqual(retrieved.id, transcript.id)
         XCTAssertEqual(retrieved.title, transcript.title)
         XCTAssertEqual(retrieved.transcript, transcript.transcript)
+        XCTAssertEqual(retrieved.segments, segments)
+        XCTAssertEqual(retrieved.summary, summary)
     }
 
     func testAllTranscriptsSortedByDate() async throws {
@@ -57,7 +66,11 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertTrue(Set(["one", "three"]).contains(offsetResults.first!.id))
     }
 
-    private func makeTranscript(id: String, date: Date, transcript: String = "hello") -> StoredTranscript {
+    private func makeTranscript(id: String,
+                                date: Date,
+                                transcript: String = "hello",
+                                segments: [SpeakerSegment] = [],
+                                summary: MeetingSummary? = nil) -> StoredTranscript {
         StoredTranscript(
             id: id,
             meetingID: "meeting-\(id)",
@@ -66,8 +79,8 @@ final class TranscriptStoreTests: XCTestCase {
             transcript: transcript,
             duration: 300,
             audioFilePath: nil,
-            segments: [],
-            summary: nil
+            segments: segments,
+            summary: summary
         )
     }
 }

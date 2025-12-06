@@ -38,7 +38,7 @@ actor AVAudioCaptureService {
 
     func startCapture(duration: TimeInterval, outputURL: URL) async throws -> URL {
         guard !isRecording else { throw Error.alreadyRecording }
-        log("startCapture requested (duration: \(duration)s, output: \(outputURL.path))")
+        await log("startCapture requested (duration: \(duration)s, output: \(outputURL.path))")
         let format = engine.inputNode.outputFormat(forBus: 0)
         try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
@@ -47,15 +47,15 @@ actor AVAudioCaptureService {
             do {
                 try file.write(from: buffer)
             } catch {
-                self.log("Tap write failed: \(error.localizedDescription)")
-                Task {
-                    await self.finishRecording(error: Error.captureFailed(error.localizedDescription))
+                Task { @MainActor in
+                    await self.log("Tap write failed: \(error.localizedDescription)")
+                    await self.finalizeRecording(result: .failure(Error.captureFailed(error.localizedDescription)))
                 }
             }
         }
 
         try engine.start()
-        log("Audio engine started")
+        await log("Audio engine started")
         self.file = file
         self.outputURL = outputURL
         self.isRecording = true
@@ -63,24 +63,26 @@ actor AVAudioCaptureService {
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Swift.Error>) in
                 self.continuation = continuation
-                self.durationTask = Task { [duration] in
+                self.durationTask = Task { [weak self, duration, targetURL = outputURL] in
                     try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
-                    await self.finishRecording(success: true)
+                    guard let self else { return }
+                    await self.finalizeRecording(result: .success(targetURL))
                 }
             }
-        } onCancel: {
-            Task {
-                await self.finishRecording(error: Error.stoppedEarly)
+        } onCancel: { [weak self] in
+            Task { [weak self] in
+                guard let self else { return }
+                await self.finalizeRecording(result: .failure(Error.stoppedEarly))
             }
         }
     }
 
     func stopCapture() async {
-        log("stopCapture requested")
-        await finishRecording(error: Error.stoppedEarly)
+        await log("stopCapture requested")
+        await finalizeRecording(result: .failure(Error.stoppedEarly))
     }
 
-    private func finishRecording(success: Bool = false) async {
+    private func finalizeRecording(result: Result<URL, Swift.Error>) async {
         guard isRecording else { return }
         isRecording = false
         engine.inputNode.removeTap(onBus: 0)
@@ -88,30 +90,18 @@ actor AVAudioCaptureService {
         durationTask?.cancel()
         durationTask = nil
 
-        if success, let url = outputURL {
+        switch result {
+        case .success(let url):
             continuation?.resume(returning: url)
-            log("Recording completed successfully: \(url.path)")
-        } else {
-            continuation?.resume(throwing: Error.stoppedEarly)
-            log("Recording finished without success")
+            await log("Recording completed successfully: \(url.path)")
+        case .failure(let error):
+            continuation?.resume(throwing: error)
+            await log("Recording finished with error: \(error.localizedDescription)")
         }
         continuation = nil
     }
 
-    private func finishRecording(error: Swift.Error) async {
-        guard isRecording else { return }
-        isRecording = false
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        durationTask?.cancel()
-        durationTask = nil
-
-        continuation?.resume(throwing: error)
-        log("Recording finished with error: \(error.localizedDescription)")
-        continuation = nil
-    }
-
-    private func log(_ message: String) {
+    private func log(_ message: String) async {
         logger.info("\(message, privacy: .public)")
         guard isLoggingEnabled else { return }
         let line = "[AVAudioCaptureService] \(Date()): \(message)\n"

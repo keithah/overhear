@@ -131,7 +131,7 @@ final class MeetingRecordingManager: ObservableObject {
     private func startTranscription(audioURL: URL, metadata: MeetingRecordingMetadata, duration: TimeInterval) async {
         status = .transcribing
         
-        let task = Task { @MainActor in
+        let pipelineTask = Task { @MainActor in
             do {
                 let stored = try await pipeline.process(audioURL: audioURL, metadata: metadata, duration: duration)
                 self.transcript = stored.transcript
@@ -147,7 +147,7 @@ final class MeetingRecordingManager: ObservableObject {
                 status = .failed(RecordingError.transcriptionService(error))
             }
         }
-        self.transcriptionTask = task
-        _ = await task.result
+        self.transcriptionTask = pipelineTask
+        _ = await pipelineTask.result
     }
 }

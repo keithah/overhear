@@ -17,5 +17,6 @@ final class CalendarAccessHelperTests: XCTestCase {
         XCTAssertTrue(CalendarAccessHelper.shouldPrompt(status: .notDetermined))
         XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .authorized))
         XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .denied))
+        XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .restricted))
     }
 }
