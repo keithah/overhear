@@ -1,12 +1,13 @@
 import Foundation
+import os.log
 
 // MARK: - Transcription Engines
 
-protocol TranscriptionEngine {
+protocol TranscriptionEngine: Sendable {
     func transcribe(audioURL: URL) async throws -> String
 }
 
-protocol DiarizationEngine {
+protocol DiarizationEngine: Sendable {
     func diarize(audioURL: URL) async throws -> String
 }
 
@@ -14,8 +15,8 @@ enum TranscriptionEngineFactory {
     static func makeEngine() -> TranscriptionEngine {
         // Feature flag for future FluidAudio integration
         let useFluid = ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] == "1"
-        if useFluid {
-            return FluidAudioTranscriptionEngine(fallback: TranscriptionService())
+        if useFluid, let fluid = FluidAudioAdapter.makeClient() {
+            return FluidAudioTranscriptionEngine(fluid: fluid, fallback: TranscriptionService())
         }
         return TranscriptionService()
     }
@@ -34,17 +35,31 @@ struct FluidAudioTranscriptionEngine: TranscriptionEngine {
         }
     }
     
+    private let fluid: FluidAudioClient?
     private let fallback: TranscriptionEngine
+    private let logger = Logger(subsystem: "com.overhear.app", category: "Transcription")
     
-    init(fallback: TranscriptionEngine) {
+    init(fluid: FluidAudioClient?, fallback: TranscriptionEngine) {
+        self.fluid = fluid
         self.fallback = fallback
     }
     
     func transcribe(audioURL: URL) async throws -> String {
+        guard let fluid else {
+            logger.info("FluidAudio not available; falling back to Whisper transcription.")
+            return try await fallback.transcribe(audioURL: audioURL)
+        }
+
         do {
-            throw FluidError.notAvailable
+            logger.debug("FluidAudio available; attempting Fluid transcription.")
+            let transcript = try await fluid.transcribe(url: audioURL)
+            if transcript.isEmpty {
+                logger.warning("FluidAudio returned empty transcript; falling back to Whisper transcription.")
+                return try await fallback.transcribe(audioURL: audioURL)
+            }
+            return transcript
         } catch {
-            // Gracefully fall back so users still get a transcript.
+            logger.warning("FluidAudio transcription failed (\(error.localizedDescription)); falling back to Whisper transcription.")
             return try await fallback.transcribe(audioURL: audioURL)
         }
     }
@@ -176,7 +191,7 @@ actor TranscriptionService: TranscriptionEngine {
     }
     
     /// Helper method to handle whisper process completion
-    private func handleWhisperCompletion(
+    nonisolated private func handleWhisperCompletion(
         process: Process,
         errorPipe: Pipe,
         outputPrefix: String,
@@ -203,11 +218,7 @@ actor TranscriptionService: TranscriptionEngine {
     
     /// Helper method to safely read error pipe output
     private static func readErrorOutput(from errorPipe: Pipe) -> String {
-        do {
-            let errorData = try errorPipe.fileHandleForReading.readDataToEndOfFile()
-            return String(data: errorData, encoding: .utf8) ?? ""
-        } catch {
-            return "Failed to read error output: \(error.localizedDescription)"
-        }
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: errorData, encoding: .utf8) ?? ""
     }
 }

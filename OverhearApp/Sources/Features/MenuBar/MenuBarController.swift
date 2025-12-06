@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Combine
 import Foundation
+import os.log
 
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
@@ -15,6 +16,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
      private let preferencesWindowController: PreferencesWindowController
      private let preferences: PreferencesService
      private let iconProvider = MenuBarIconProvider()
+    private let logger = Logger(subsystem: "com.overhear.app", category: "MenuBar")
 
     private let weekdayFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -184,20 +186,20 @@ final class MenuBarController: NSObject, NSMenuDelegate {
              .filter { !$0.isAllDay && $0.startDate > now }  // Exclude all-day events
              .min { $0.startDate < $1.startDate }
          
-        print("[MenuBar] updateStatusItemIcon: found \(allMeetings.count) total meetings, next event: \(nextEvent?.title ?? "none"), countdown enabled: \(preferences.countdownEnabled)")
-        
-        if let nextEvent = nextEvent, preferences.countdownEnabled {
-             let timeStr = iconProvider.getTimeUntilString(nextEvent.startDate)
-             button.title = "  \(nextEvent.title) \(timeStr)"  // Add space before title
-             // Match Meeter style: thin/light weight, system font
-             button.font = NSFont.systemFont(ofSize: 12, weight: .regular)
-             button.imagePosition = .imageLeft
-             print("[MenuBar] Set button title: \(button.title)")
-         } else {
-             button.title = ""
-             button.imagePosition = .imageOnly
-             print("[MenuBar] Cleared button title")
-         }
+        logger.debug("[MenuBar] updateStatusItemIcon: found \(allMeetings.count) total meetings, next event: \(nextEvent?.title ?? "none"), countdown enabled: \(self.preferences.countdownEnabled)")
+
+        if let nextEvent = nextEvent, self.preferences.countdownEnabled {
+            let timeStr = iconProvider.getTimeUntilString(nextEvent.startDate)
+            button.title = "  \(nextEvent.title) \(timeStr)"  // Add space before title
+            // Match Meeter style: thin/light weight, system font
+            button.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+            button.imagePosition = .imageLeft
+            logger.debug("[MenuBar] Set button title: \(button.title)")
+        } else {
+            button.title = ""
+            button.imagePosition = .imageOnly
+            logger.debug("[MenuBar] Cleared button title")
+        }
     }
     
     @objc

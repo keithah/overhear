@@ -1,10 +1,20 @@
 import AppKit
 import Combine
-import ApplicationServices
+@preconcurrency import ApplicationServices
+
+@MainActor
+private let axTrustedCheckOptionPromptKey: CFString = {
+    kAXTrustedCheckOptionPrompt.takeUnretainedValue()
+}()
+
+@MainActor
+private final class MonitorBox {
+    var token: Any?
+}
 
 @MainActor
 final class HotkeyManager {
-    private var monitor: Any?
+    private let monitorBox = MonitorBox()
     private var bindings: [HotkeyBinding] = []
     private let preferences: PreferencesService
     private let toggleAction: () -> Void
@@ -32,17 +42,11 @@ final class HotkeyManager {
 
     private var cancellables: Set<AnyCancellable> = []
 
-    deinit {
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
-        }
-    }
-
     private func registerHotkeys() {
         // Tear down existing monitor
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
-            self.monitor = nil
+        if let token = monitorBox.token {
+            NSEvent.removeMonitor(token)
+            monitorBox.token = nil
         }
 
         var newBindings: [HotkeyBinding] = []
@@ -58,7 +62,7 @@ final class HotkeyManager {
 
         ensureAccessibilityPermissionIfNeeded()
 
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        monitorBox.token = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return }
             let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
             let key = event.charactersIgnoringModifiers?.lowercased()
@@ -71,11 +75,20 @@ final class HotkeyManager {
         }
     }
 
+    @MainActor
+    deinit {
+        if let token = monitorBox.token {
+            NSEvent.removeMonitor(token)
+            monitorBox.token = nil
+        }
+    }
+
     private func ensureAccessibilityPermissionIfNeeded() {
         guard !Self.didPromptForAccessibility else { return }
         // AXIsProcessTrustedWithOptions shows a one-time system prompt when requested.
         if AXIsProcessTrusted() { return }
-        let options: CFDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        let promptKey = axTrustedCheckOptionPromptKey
+        let options: CFDictionary = [promptKey: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
         Self.didPromptForAccessibility = true
     }

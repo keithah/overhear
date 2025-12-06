@@ -20,18 +20,13 @@ final class CalendarService: ObservableObject {
         log("Authorization status on entry: \(status.rawValue)")
 
         // Early returns when already decided; only promote activation policy if we must prompt.
-        if #available(macOS 14.0, *) {
-            if status == .fullAccess {
-                log("Already fullAccess; returning true")
-                return true
-            }
-            if status == .writeOnly {
-                log("Write-only access; returning false")
-                return false
-            }
-        } else if status == .authorized {
-            log("Already authorized (pre-14); returning true")
+        if CalendarAccessHelper.isAuthorized(status) {
+            log("Already authorized; returning true")
             return true
+        }
+        if CalendarAccessHelper.isWriteOnly(status) {
+            log("Write-only access; returning false")
+            return false
         }
 
         let previousPolicy = NSApp.activationPolicy()

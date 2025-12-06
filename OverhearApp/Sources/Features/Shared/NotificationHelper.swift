@@ -1,16 +1,15 @@
 import Foundation
-import UserNotifications
+@preconcurrency import UserNotifications
 import os.log
 
 enum NotificationHelper {
     private static let logger = Logger(subsystem: "com.overhear.app", category: "Notifications")
 
     static func requestPermission() {
-        let center = UNUserNotificationCenter.current()
-        center.getNotificationSettings { settings in
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
-                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     if let error {
                         logger.error("Notification permission error: \(error.localizedDescription, privacy: .public)")
                     } else {
@@ -26,11 +25,10 @@ enum NotificationHelper {
     }
     
     static func sendTestNotification() {
-        let center = UNUserNotificationCenter.current()
-        center.getNotificationSettings { settings in
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
-                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     if let error {
                         logger.error("Notification permission error during test: \(error.localizedDescription, privacy: .public)")
                         return

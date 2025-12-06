@@ -37,10 +37,14 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var status: Status = .idle
     @Published private(set) var transcript: String = ""
     @Published private(set) var audioFileURL: URL?
-    
-    private let captureService: AudioCaptureService
-    private let transcriptionEngine: TranscriptionEngine
+    @Published private(set) var speakerSegments: [SpeakerSegment] = []
+    @Published private(set) var summary: MeetingSummary?
+
+    private let captureService: AVAudioCaptureService
+    private let pipeline: MeetingRecordingPipeline
     private let recordingDirectory: URL
+    private let meetingTitle: String
+    private let meetingDate: Date
     
     private var captureStartTime: Date?
     private var transcriptionTask: Task<Void, Never>?
@@ -48,12 +52,18 @@ final class MeetingRecordingManager: ObservableObject {
     
     init(
         meetingID: String,
-        captureService: AudioCaptureService = AudioCaptureService(),
-        transcriptionEngine: TranscriptionEngine = TranscriptionEngineFactory.makeEngine()
+        meetingTitle: String? = nil,
+        meetingDate: Date = Date(),
+        captureService: AVAudioCaptureService = AVAudioCaptureService(),
+        transcriptStore: TranscriptStore? = nil,
+        transcriptionEngine: TranscriptionEngine = TranscriptionEngineFactory.makeEngine(),
+        diarizationService: DiarizationService = DiarizationService(),
+        summarizationService: SummarizationService = SummarizationService()
     ) throws {
         self.meetingID = meetingID
         self.captureService = captureService
-        self.transcriptionEngine = transcriptionEngine
+        self.meetingTitle = meetingTitle ?? meetingID
+        self.meetingDate = meetingDate
         
         // Create recording directory in app support
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
@@ -62,6 +72,13 @@ final class MeetingRecordingManager: ObservableObject {
         self.recordingDirectory = appSupport.appendingPathComponent("com.overhear.app/Recordings")
         
         try FileManager.default.createDirectory(at: recordingDirectory, withIntermediateDirectories: true)
+
+        self.pipeline = try MeetingRecordingPipeline(
+            transcriptionEngine: transcriptionEngine,
+            diarizationService: diarizationService,
+            summarizationService: summarizationService,
+            transcriptStore: transcriptStore
+        )
     }
     
     /// Start recording the meeting
@@ -85,10 +102,15 @@ final class MeetingRecordingManager: ObservableObject {
         
         do {
             let audioURL = try await captureService.startCapture(duration: duration, outputURL: outputURL)
-            self.audioFileURL = audioURL
             
-            // Start transcription
-            await startTranscription(audioURL: audioURL)
+            let metadata = MeetingRecordingMetadata(
+                meetingID: meetingID,
+                title: meetingTitle,
+                startDate: meetingDate
+            )
+
+            // Start transcription pipeline
+            await startTranscription(audioURL: audioURL, metadata: metadata, duration: duration)
         } catch {
             status = .failed(RecordingError.captureService(error))
         }
@@ -106,13 +128,18 @@ final class MeetingRecordingManager: ObservableObject {
     
     // MARK: - Private
     
-    private func startTranscription(audioURL: URL) async {
+    private func startTranscription(audioURL: URL, metadata: MeetingRecordingMetadata, duration: TimeInterval) async {
         status = .transcribing
         
-        let task = Task {
+        let pipelineTask = Task { @MainActor in
             do {
-                let text = try await transcriptionEngine.transcribe(audioURL: audioURL)
-                self.transcript = text
+                let stored = try await pipeline.process(audioURL: audioURL, metadata: metadata, duration: duration)
+                self.transcript = stored.transcript
+                self.speakerSegments = stored.segments
+                self.summary = stored.summary
+                if let path = stored.audioFilePath {
+                    self.audioFileURL = URL(fileURLWithPath: path)
+                }
                 status = .completed
             } catch is CancellationError {
                 status = .idle // Reset status on cancellation
@@ -120,7 +147,7 @@ final class MeetingRecordingManager: ObservableObject {
                 status = .failed(RecordingError.transcriptionService(error))
             }
         }
-        self.transcriptionTask = task
-        _ = await task.result
+        self.transcriptionTask = pipelineTask
+        _ = await pipelineTask.result
     }
 }

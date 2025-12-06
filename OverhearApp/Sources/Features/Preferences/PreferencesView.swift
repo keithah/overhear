@@ -348,8 +348,9 @@ struct PreferencesView: View {
     
     private func refreshNotificationStatus() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let status = settings.authorizationStatus
             Task { @MainActor in
-                self.notificationStatus = settings.authorizationStatus
+                self.notificationStatus = status
             }
         }
     }

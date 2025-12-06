@@ -11,6 +11,8 @@ struct StoredTranscript: Codable, Identifiable {
     let transcript: String
     let duration: TimeInterval
     let audioFilePath: String?
+    let segments: [SpeakerSegment]
+    let summary: MeetingSummary?
     
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -29,6 +31,7 @@ actor TranscriptStore {
     enum Error: LocalizedError {
         case storageDisabled
         case storageDirectoryNotFound
+        case storageDirectoryCreationFailed(String)
         case encodingFailed(String)
         case decodingFailed(String)
         case notFound
@@ -43,6 +46,8 @@ actor TranscriptStore {
                 return "Transcript storage is disabled by configuration"
             case .storageDirectoryNotFound:
                 return "Transcript storage directory not found"
+            case .storageDirectoryCreationFailed(let message):
+                return "Failed to create transcript storage directory: \(message)"
             case .encodingFailed(let message):
                 return "Failed to encode transcript: \(message)"
             case .decodingFailed(let message):
@@ -66,12 +71,9 @@ actor TranscriptStore {
     private let decoder = JSONDecoder()
     private let encryptionKey: SymmetricKey
     private let persistenceEnabled: Bool
-    private static let storageEnabled: Bool = {
-        ProcessInfo.processInfo.environment["OVERHEAR_DISABLE_TRANSCRIPT_STORAGE"] != "1"
-    }()
     
     init(storageDirectory: URL? = nil) throws {
-        guard Self.storageEnabled else {
+        guard Self.isStorageEnabled else {
             throw Error.storageDisabled
         }
         self.persistenceEnabled = true
@@ -84,27 +86,20 @@ actor TranscriptStore {
             self.storageDirectory = appSupport.appendingPathComponent("com.overhear.app/Transcripts")
         }
         
-        // Ensure storage directory exists with proper error handling
-        do {
-            let attributes = try FileManager.default.attributesOfItem(atPath: self.storageDirectory.path)
-            // Directory exists, verify it's actually a directory
-            guard attributes[.type] as? FileAttributeType == .typeDirectory else {
+        // Ensure storage directory exists (create if missing) and is not shadowed by a file
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: self.storageDirectory.path, isDirectory: &isDirectory) {
+            if !isDirectory.boolValue {
                 throw Error.storageDirectoryNotFound
             }
-        } catch CocoaError.fileNoSuchFile {
-            // Directory doesn't exist, create it
+        } else {
             do {
-                try FileManager.default.createDirectory(
-                    at: self.storageDirectory,
-                    withIntermediateDirectories: true,
-                    attributes: nil
-                )
+                try FileManager.default.createDirectory(at: self.storageDirectory,
+                                                        withIntermediateDirectories: true,
+                                                        attributes: nil)
             } catch {
-                throw Error.storageDirectoryNotFound
+                throw Error.storageDirectoryCreationFailed(error.localizedDescription)
             }
-        } catch {
-            // Other file system errors
-            throw Error.storageDirectoryNotFound
         }
         
         // Initialize encryption key from Keychain
@@ -113,6 +108,10 @@ actor TranscriptStore {
         } catch {
             throw Error.keyManagementFailed(error.localizedDescription)
         }
+    }
+
+    private static var isStorageEnabled: Bool {
+        ProcessInfo.processInfo.environment["OVERHEAR_DISABLE_TRANSCRIPT_STORAGE"] != "1"
     }
     
     /// Save a transcript (encrypted)

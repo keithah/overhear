@@ -52,8 +52,11 @@ final class MeetingListViewModel: ObservableObject {
 
         if !authorized {
             log("Reload aborted; not authorized")
+            withAnimation {
+                upcomingSections = []
+                pastSections = []
+            }
             isLoading = false
-            meetings = []
             return
         }
 
@@ -172,12 +175,11 @@ final class MeetingListViewModel: ObservableObject {
 }
 
 private func showClipboardNotification(url: URL) {
-    let center = UNUserNotificationCenter.current()
-    center.getNotificationSettings { settings in
+    UNUserNotificationCenter.current().getNotificationSettings { settings in
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
             return
         }
-        
+
         let content = UNMutableNotificationContent()
         content.title = "Meeting link copied"
         content.body = "We couldn't open the link. It's been copied to your clipboard."
@@ -186,7 +188,7 @@ private func showClipboardNotification(url: URL) {
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         )
-        center.add(request, withCompletionHandler: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 }
 
