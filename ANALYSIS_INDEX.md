@@ -166,7 +166,7 @@ Sources/
 |---------|-------|---------|--------|
 | CalendarService | 96 | Calendar access & meeting fetch | ✅ Good |
 | PreferencesService | 202 | Settings persistence | ✅ Good |
-| AudioCaptureService | 127 | Audio recording (AudioSpike CLI) | ⚠️ Review concurrency |
+| AudioCaptureService | 127 | Audio recording via AVAudioEngine | ⚠️ Review concurrency |
 | TranscriptionService | 153 | Audio transcription (whisper.cpp) | ⚠️ Review concurrency |
 | TranscriptStore | 288 | Encrypted transcript storage | ⚠️ Review I/O atomicity |
 | MenuBarController | 294 | macOS menu bar UI | ⚠️ Review timers |
@@ -267,4 +267,3 @@ When using these documents for code review:
 **Last Updated:** December 2, 2025
 **Created By:** Codebase Analysis Tool
 **Total Files Analyzed:** 19 Swift files (2,816 lines of code)
-

@@ -6,11 +6,15 @@ let package = Package(
     platforms: [
         .macOS(.v14)
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.7.11")
+    ],
     targets: [
         .executableTarget(
             name: "Overhear",
-            dependencies: [],
+            dependencies: [
+                .product(name: "FluidAudio", package: "FluidAudio")
+            ],
             path: ".",
             exclude: ["Overhear.xcodeproj", "Resources/Info.plist", "Tests"],
             resources: [

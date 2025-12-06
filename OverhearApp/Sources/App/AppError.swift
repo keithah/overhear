@@ -87,7 +87,7 @@ enum AppError: LocalizedError, CustomDebugStringConvertible {
     var recoverySuggestion: String? {
         switch self {
         case .audioNotFound:
-            return "Please ensure AudioSpike is installed at the expected location"
+            return "Ensure your microphone and AVAudio capture pipeline are available and not blocked by another app"
         case .whisperModelNotFound:
             return "Please download the Whisper model file"
         case .calendarAccessDenied:

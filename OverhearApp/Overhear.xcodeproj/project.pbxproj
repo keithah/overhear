@@ -38,6 +38,7 @@
 	672895B9E03830086B5E32E1 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0467AC2803809ABEE6368BF8 /* PreferencesService.swift */; };
 	7B4976A61FDC8DF74F991A16 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6760441C0977FD19F2B6838 /* PreferencesView.swift */; };
 	B09ACBBF34AF004C83A0835A /* OverhearApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5563B52A06A54C980A22A14 /* OverhearApp.swift */; };
+	B6D0B2A219F53F31AD9C3EB3 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 8C1DE61BFEDC45A39B3A7D65 /* FluidAudio */; };
 	C2D5E6CE6C1B18A934FB6917 /* MenuBarContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12220410D1DBBF18A9BA1D0 /* MenuBarContentView.swift */; };
 	C3BAC7E2A8CDBF78BAB8A332 /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1126CA13260065D9BC095422 /* Meeting.swift */; };
 	EAF99761927E193EB588F6CA /* PreferencesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C268D5AFB48081C5B8477301 /* PreferencesWindowController.swift */; };
@@ -92,6 +93,7 @@
 		isa = PBXFrameworksBuildPhase;
 		buildActionMask = 2147483647;
 		files = (
+			B6D0B2A219F53F31AD9C3EB3 /* FluidAudio in Frameworks */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
@@ -283,6 +285,9 @@
 		);
 		mainGroup = 8C39F975C240A321E98F405C;
 		productRefGroup = D2B8E6BF76808FD739F37E61 /* Products */;
+		packageReferences = (
+			88C9F04FA24C42FB8A939657 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+		);
 		projectDirPath = "";
 		projectRoot = "";
 		targets = (
@@ -531,6 +536,25 @@
 		defaultConfigurationName = Debug;
 	};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		88C9F04FA24C42FB8A939657 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/FluidInference/FluidAudio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.7.11;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		8C1DE61BFEDC45A39B3A7D65 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 88C9F04FA24C42FB8A939657 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 	};
 	rootObject = F5D72C8DB1660CE48CC2B4D9 /* Project object */;
