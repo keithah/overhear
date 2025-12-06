@@ -12,17 +12,12 @@ actor DiarizationService {
 
     func analyze(audioURL: URL) async -> [SpeakerSegment] {
         do {
-            let payload = try await engine.diarize(audioURL: audioURL)
-            diarizationLogger.info("Diarization result: \(payload)")
-            return parse(payload)
+            let segments = try await engine.diarize(audioURL: audioURL)
+            diarizationLogger.info("FluidAudio returned \(segments.count) speaker segments")
+            return segments
         } catch {
             diarizationLogger.error("Diarization failed: \(error.localizedDescription, privacy: .public)")
             return []
         }
-    }
-
-    private func parse(_ payload: String) -> [SpeakerSegment] {
-        // TODO: parse FluidAudio diarization JSON/CSV output. Placeholder currently returns empty.
-        []
     }
 }

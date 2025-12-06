@@ -12,14 +12,13 @@ enum DiarizationEngineFactory {
 
 private struct FluidAudioDiarizationEngine: DiarizationEngine {
     let fluid: FluidAudioClient
-    func diarize(audioURL: URL) async throws -> String {
+    func diarize(audioURL: URL) async throws -> [SpeakerSegment] {
         try await fluid.diarize(url: audioURL)
     }
 }
 
 private struct LegacyDiarizationEngine: DiarizationEngine {
-    func diarize(audioURL: URL) async throws -> String {
-        // Placeholder for future diarization logic; currently returns an empty transcript.
-        return ""
+    func diarize(audioURL: URL) async throws -> [SpeakerSegment] {
+        []
     }
 }

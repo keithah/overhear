@@ -8,7 +8,7 @@ protocol TranscriptionEngine: Sendable {
 }
 
 protocol DiarizationEngine: Sendable {
-    func diarize(audioURL: URL) async throws -> String
+    func diarize(audioURL: URL) async throws -> [SpeakerSegment]
 }
 
 enum TranscriptionEngineFactory {
