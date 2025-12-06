@@ -11,6 +11,8 @@ struct StoredTranscript: Codable, Identifiable {
     let transcript: String
     let duration: TimeInterval
     let audioFilePath: String?
+    let segments: [SpeakerSegment]
+    let summary: MeetingSummary?
     
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()

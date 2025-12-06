@@ -2,11 +2,11 @@ import Foundation
 
 // MARK: - Transcription Engines
 
-protocol TranscriptionEngine {
+protocol TranscriptionEngine: Sendable {
     func transcribe(audioURL: URL) async throws -> String
 }
 
-protocol DiarizationEngine {
+protocol DiarizationEngine: Sendable {
     func diarize(audioURL: URL) async throws -> String
 }
 
