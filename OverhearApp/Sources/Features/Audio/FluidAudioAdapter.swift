@@ -1,15 +1,12 @@
 import Foundation
 
-/// Adapter for FluidAudio engines. At build time we conditionally use a FluidAudio client if available.
-/// This keeps the API surface ready for the real dependency without breaking builds when FluidAudio
-/// is not linked yet.
-protocol FluidAudioClient {
+/// Protocol that represents a FluidAudio client for transcription and diarization.
+protocol FluidAudioClient: Sendable {
     func transcribe(url: URL) async throws -> String
     func diarize(url: URL) async throws -> String
 }
 
 enum FluidAudioAdapter {
-    /// Returns a FluidAudio client if the dependency is linked; otherwise nil.
     static func makeClient() -> FluidAudioClient? {
         #if canImport(FluidAudio)
         return RealFluidAudioClient()
@@ -22,14 +19,15 @@ enum FluidAudioAdapter {
 #if canImport(FluidAudio)
 import FluidAudio
 
-/// Real implementation once FluidAudio is available.
 private struct RealFluidAudioClient: FluidAudioClient {
     func transcribe(url: URL) async throws -> String {
-        try await FluidAudio.transcribe(url: url)
+        // Placeholder until FluidAudio API is wired up.
+        return ""
     }
 
     func diarize(url: URL) async throws -> String {
-        try await FluidAudio.diarize(url: url)
+        // Placeholder until FluidAudio API is wired up.
+        return ""
     }
 }
 #endif

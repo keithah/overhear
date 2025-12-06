@@ -1,7 +1,6 @@
 import AppKit
 import Combine
-@preconcurrency import ApplicationServices
-
+import ApplicationServices
 @MainActor
 final class HotkeyManager {
     private var monitor: Any?
@@ -31,8 +30,6 @@ final class HotkeyManager {
     }
 
     private var cancellables: Set<AnyCancellable> = []
-
-    deinit { }
 
     private func registerHotkeys() {
         // Tear down existing monitor
@@ -71,7 +68,7 @@ final class HotkeyManager {
         guard !Self.didPromptForAccessibility else { return }
         // AXIsProcessTrustedWithOptions shows a one-time system prompt when requested.
         if AXIsProcessTrusted() { return }
-        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let promptKey = "AXTrustedCheckOptionPrompt" as CFString
         let options: CFDictionary = [promptKey: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
         Self.didPromptForAccessibility = true

@@ -3,7 +3,7 @@ import EventKit
 import Foundation
 import AppKit
 import SwiftUI
-@preconcurrency import UserNotifications
+import UserNotifications
 import os.log
 
 @MainActor
@@ -52,20 +52,22 @@ final class MeetingListViewModel: ObservableObject {
 
         if !authorized {
             log("Reload aborted; not authorized")
+            withAnimation {
+                upcomingSections = []
+                pastSections = []
+            }
             isLoading = false
-            upcomingSections = []
-            pastSections = []
             return
         }
 
         let preferences = preferencesSnapshot()
-        let fetchedMeetings = await calendarService.fetchMeetings(daysAhead: preferences.daysAhead,
-                                                                  daysBack: preferences.daysBack,
-                                                                  includeEventsWithoutLinks: preferences.showEventsWithoutLinks,
-                                                                  includeMaybeEvents: preferences.showMaybeEvents,
-                                                                  allowedCalendarIDs: preferences.allowedCalendars)
-        log("Reload fetched \(fetchedMeetings.count) meetings")
-        apply(meetings: fetchedMeetings)
+        let meetings = await calendarService.fetchMeetings(daysAhead: preferences.daysAhead,
+                                                           daysBack: preferences.daysBack,
+                                                           includeEventsWithoutLinks: preferences.showEventsWithoutLinks,
+                                                           includeMaybeEvents: preferences.showMaybeEvents,
+                                                           allowedCalendarIDs: preferences.allowedCalendars)
+        log("Reload fetched \(meetings.count) meetings")
+        apply(meetings: meetings)
         lastUpdated = Date()
         isLoading = false
     }
@@ -173,12 +175,11 @@ final class MeetingListViewModel: ObservableObject {
 }
 
 private func showClipboardNotification(url: URL) {
-    let center = UNUserNotificationCenter.current()
-    center.getNotificationSettings { settings in
+    UNUserNotificationCenter.current().getNotificationSettings { settings in
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
             return
         }
-        
+
         let content = UNMutableNotificationContent()
         content.title = "Meeting link copied"
         content.body = "We couldn't open the link. It's been copied to your clipboard."
@@ -187,7 +188,7 @@ private func showClipboardNotification(url: URL) {
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         )
-        center.add(request, withCompletionHandler: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 }
 
