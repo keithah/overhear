@@ -21,17 +21,11 @@ enum FluidAudioAdapter {
 /// Marks that FluidAudio wiring is still pending so callers can fall back gracefully.
 private enum FluidAudioAdapterError: LocalizedError {
     case notImplemented
-    case initializationFailed(String)
-    case diarizationFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .notImplemented:
             return "FluidAudio client is not yet implemented in this build."
-        case .initializationFailed(let message):
-            return "FluidAudio initialization failed: \(message)"
-        case .diarizationFailed(let message):
-            return "FluidAudio diarization failed: \(message)"
         }
     }
 
@@ -39,8 +33,6 @@ private enum FluidAudioAdapterError: LocalizedError {
         switch self {
         case .notImplemented:
             return "Run with the legacy transcription pipeline or enable FluidAudio once the client implementation is complete."
-        case .initializationFailed, .diarizationFailed:
-            return "Verify your FluidAudio models are downloaded and accessible, or run with the Whisper fallback."
         }
     }
 }
@@ -48,6 +40,8 @@ private enum FluidAudioAdapterError: LocalizedError {
 #if canImport(FluidAudio)
 import FluidAudio
 
+// FluidAudio's AsrManager and DiarizerManager are designed to be used from a single actor/queue
+// and are only accessed through FluidAudioModelStore actor, ensuring thread-safe usage.
 extension AsrManager: @unchecked Sendable {}
 
 extension DiarizerManager: @unchecked Sendable {}
@@ -104,7 +98,7 @@ private final actor FluidAudioModelStore {
 
     func diarize(audioURL: URL) async throws -> DiarizationResult {
         let diarizer = try await ensureDiarizerManager()
-        let samples = try converter.resampleAudioFile(audioURL)
+        let samples = try await Task { converter.resampleAudioFile(audioURL) }.value
         return try diarizer.performCompleteDiarization(samples)
     }
 
@@ -154,7 +148,7 @@ private final actor FluidAudioModelStore {
         let models = try await loadAsrModels()
         let manager = AsrManager()
         try await manager.initialize(models: models)
-        Self.logger.info("FluidAudio ASR initialized version \(String(describing: self.configuration.asrModelVersion))")
+        Self.logger.info("FluidAudio ASR initialized version \(self.configuration.asrModelVersion)")
         return manager
     }
 

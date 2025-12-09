@@ -24,6 +24,20 @@ final class FluidAudioConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.asrModelVersion, AsrModelVersion.v2)
     }
 
+    func testInvalidVersionDefaultsToV3() {
+        setenv("OVERHEAR_FLUIDAUDIO_ASR_VERSION", "v4", 1)
+        defer { unsetenv("OVERHEAR_FLUIDAUDIO_ASR_VERSION") }
+        let configuration = FluidAudioConfiguration.fromEnvironment()
+        XCTAssertEqual(configuration.asrModelVersion, AsrModelVersion.v3)
+    }
+
+    func testUnrecognizedVersionDefaultsToV3() {
+        setenv("OVERHEAR_FLUIDAUDIO_ASR_VERSION", "invalid", 1)
+        defer { unsetenv("OVERHEAR_FLUIDAUDIO_ASR_VERSION") }
+        let configuration = FluidAudioConfiguration.fromEnvironment()
+        XCTAssertEqual(configuration.asrModelVersion, AsrModelVersion.v3)
+    }
+
     func testCustomModelDirectories() {
         let asrPath = "/tmp/overhear-fluid-asr"
         let diarizerPath = "/tmp/overhear-fluid-diarizer"
@@ -41,8 +55,8 @@ final class FluidAudioConfigurationTests: XCTestCase {
 }
 #else
 final class FluidAudioConfigurationTests: XCTestCase {
-    func testPlaceholder() {
-        XCTFail("FluidAudio module is required for these tests")
+    func testPlaceholder() throws {
+        throw XCTSkip("FluidAudio module is required for these tests")
     }
 }
 #endif
