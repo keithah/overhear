@@ -25,7 +25,9 @@ All processing is **local-first** and privacy-conscious.
 
 ## Screenshots
 
-![Upcoming meetings menu](docs/screenshots/meeting-list.png)
+![Upcoming meetings menu with example text and supported link icons](docs/screenshots/meeting-list-placeholder.png)
+
+![Live recording banner with the blue mic badge and Floating Notes CTA](docs/screenshots/live-recording-banner.png)
 
 ![Open rules and shortcuts](docs/screenshots/link-rules.png)
 
@@ -76,6 +78,12 @@ All processing is **local-first** and privacy-conscious.
 - `OVERHEAR_FLUIDAUDIO_ASR_VERSION={v2|v3}` — choose the Parakeet v2 (English-only) or v3 (multilingual) bundle when FluidAudio is enabled.
 - `OVERHEAR_FLUIDAUDIO_ASR_MODELS=/path/to/models` — override FluidAudio’s ASR cache if you pre-stage downloaded bundles.
 - `OVERHEAR_FLUIDAUDIO_DIARIZER_MODELS=/path/to/models` — override FluidAudio’s diarization cache if you host the models in a custom location.
+
+### Live recording & manual capture
+
+- The menu bar now shows a live recording banner with a blue mic badge whenever a capture is in progress. Clicking **Live Notes** opens the floating transcript + notes window that streams Hypothesis/confirmed text from FluidAudio’s `StreamingAsrManager`.
+- Manual recordings create ad-hoc meetings that persist in the timeline, notify every 30 minutes while active, and display a tape icon once the transcript/summary exists. Calendar events stay visible for 5 minutes after their scheduled end so you can still one‑click join running meetings even when you’re late.
+- Use `OVERHEAR_USE_FLUIDAUDIO=1` on an Apple Silicon machine to let FluidAudio download its models, stream updates, and write the live transcript entries to `/tmp/overhear.log`. This is the best way to smoke-test the streaming pipeline before cutting a release.
 
 ## FluidAudio configuration
 
