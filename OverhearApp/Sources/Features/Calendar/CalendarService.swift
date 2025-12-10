@@ -30,15 +30,7 @@ final class CalendarService: ObservableObject {
         }
 
         let previousPolicy = NSApp.activationPolicy()
-        let shouldPromoteForPrompt = status == .notDetermined && previousPolicy == .accessory
-        log("Current activation policy: \(previousPolicy.rawValue) shouldPromoteForPrompt=\(shouldPromoteForPrompt)")
-        if shouldPromoteForPrompt {
-            log("Promoting activation policy to regular to present permissions dialog")
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
-            // Give macOS a moment to surface the dialog
-            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
-        }
+        let promotedPolicy = await ensureAppIsReadyForPrompt(previousPolicy: previousPolicy, status: status)
         
         // If denied or restricted, bail early
         if status == .denied || status == .restricted {
@@ -55,7 +47,7 @@ final class CalendarService: ObservableObject {
         }
         
         let task = Task { @MainActor () -> Bool in
-            let granted = await performAccessRequestFlow(status: status, promotedPolicy: shouldPromoteForPrompt, previousPolicy: previousPolicy)
+            let granted = await performAccessRequestFlow(status: status, promotedPolicy: promotedPolicy, previousPolicy: previousPolicy)
             accessRequestTask = nil
             return granted
         }
@@ -64,7 +56,7 @@ final class CalendarService: ObservableObject {
 
         if !result && authorizationStatus == .notDetermined && retryCount < 2 {
             log("Authorization unsettled and prompt did not resolve (retry \(retryCount + 1))")
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             return await requestAccessIfNeeded(retryCount: retryCount + 1)
         }
 
@@ -136,6 +128,27 @@ final class CalendarService: ObservableObject {
         } else {
             log("Failed to construct System Settings URL")
         }
+    }
+
+    @MainActor
+    private func ensureAppIsReadyForPrompt(previousPolicy: NSApplication.ActivationPolicy, status: EKAuthorizationStatus) async -> Bool {
+        guard status == .notDetermined else {
+            return false
+        }
+
+        log("Current activation policy: \(previousPolicy.rawValue)")
+        if previousPolicy == .accessory {
+            log("Promoting activation policy to regular to present permissions dialog")
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            return true
+        }
+
+        log("Activating app to present permissions dialog")
+        NSApp.activate(ignoringOtherApps: true)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        return false
     }
 
     nonisolated private func log(_ message: String) {

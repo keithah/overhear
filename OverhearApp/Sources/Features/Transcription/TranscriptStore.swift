@@ -257,8 +257,32 @@ actor TranscriptStore {
     
     /// Get transcripts for a specific meeting
     func transcriptsForMeeting(_ meetingID: String) async throws -> [StoredTranscript] {
-        let transcripts = try await allTranscripts()
-        return transcripts.filter { $0.meetingID == meetingID }
+        try await transcripts(forMeetingID: meetingID)
+    }
+
+    func transcripts(forMeetingID meetingID: String) async throws -> [StoredTranscript] {
+        guard persistenceEnabled else { return [] }
+        guard FileManager.default.fileExists(atPath: storageDirectory.path) else { return [] }
+
+        let fileURLs = try FileManager.default.contentsOfDirectory(
+            at: storageDirectory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "json" }
+
+        var transcripts: [StoredTranscript] = []
+        for fileURL in fileURLs {
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
+                if transcript.meetingID == meetingID {
+                    transcripts.append(transcript)
+                }
+            } catch {
+                continue
+            }
+        }
+
+        return transcripts.sorted { $0.date > $1.date }
     }
     
     // MARK: - Encryption

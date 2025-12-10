@@ -35,6 +35,9 @@ actor AVAudioCaptureService {
     private var continuation: CheckedContinuation<URL, Swift.Error>?
     private var isRecording = false
     private var durationTask: Task<Void, Never>?
+    private var bufferObservers: [UUID: AudioBufferObserver] = [:]
+
+    typealias AudioBufferObserver = @Sendable (AVAudioPCMBuffer) -> Void
 
     func startCapture(duration: TimeInterval, outputURL: URL) async throws -> URL {
         guard !isRecording else { throw Error.alreadyRecording }
@@ -46,6 +49,7 @@ actor AVAudioCaptureService {
         engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
             do {
                 try file.write(from: buffer)
+                self.notifyBufferObservers(buffer: buffer)
             } catch {
                 Task { @MainActor in
                     await self.log("Tap write failed: \(error.localizedDescription)")
@@ -77,9 +81,25 @@ actor AVAudioCaptureService {
         }
     }
 
+    func registerBufferObserver(_ observer: @escaping AudioBufferObserver) -> UUID {
+        let id = UUID()
+        bufferObservers[id] = observer
+        return id
+    }
+
+    func unregisterBufferObserver(_ id: UUID) {
+        bufferObservers.removeValue(forKey: id)
+    }
+
     func stopCapture() async {
         await log("stopCapture requested")
-        await finalizeRecording(result: .failure(Error.stoppedEarly))
+        guard isRecording else { return }
+        guard let targetURL = outputURL else {
+            await log("stopCapture failed - missing output URL")
+            await finalizeRecording(result: .failure(Error.captureFailed("Missing output file")))
+            return
+        }
+        await finalizeRecording(result: .success(targetURL))
     }
 
     private func finalizeRecording(result: Result<URL, Swift.Error>) async {
@@ -101,23 +121,42 @@ actor AVAudioCaptureService {
         continuation = nil
     }
 
-    private func log(_ message: String) async {
-        logger.info("\(message, privacy: .public)")
-        guard isLoggingEnabled else { return }
-        let line = "[AVAudioCaptureService] \(Date()): \(message)\n"
-        appendLogLine(line)
-    }
-
-    private func appendLogLine(_ line: String) {
-        let url = URL(fileURLWithPath: "/tmp/overhear.log")
-        guard let data = line.data(using: .utf8) else { return }
-        if FileManager.default.fileExists(atPath: url.path),
-           let handle = try? FileHandle(forWritingTo: url) {
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: data)
-        } else {
-            try? data.write(to: url, options: .atomic)
+    private func notifyBufferObservers(buffer: AVAudioPCMBuffer) {
+        guard !bufferObservers.isEmpty else { return }
+        for observer in bufferObservers.values {
+            guard let copy = buffer.cloned() else { continue }
+            observer(copy)
         }
     }
+
+    private func log(_ message: String) async {
+        logger.info("\(message, privacy: .public)")
+        FileLogger.log(category: "AVAudioCaptureService", message: message)
+    }
+
 }
+
+private extension AVAudioPCMBuffer {
+    func cloned() -> AVAudioPCMBuffer? {
+        guard let copy = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCapacity) else {
+            return nil
+        }
+        copy.frameLength = frameLength
+        if let src = floatChannelData, let dst = copy.floatChannelData {
+            let channels = Int(format.channelCount)
+            let frames = Int(frameLength)
+            for channel in 0..<channels {
+                dst[channel].assign(from: src[channel], count: frames)
+            }
+        } else if let src = int16ChannelData, let dst = copy.int16ChannelData {
+            let channels = Int(format.channelCount)
+            let frames = Int(frameLength)
+            for channel in 0..<channels {
+                dst[channel].assign(from: src[channel], count: frames)
+            }
+        }
+        return copy
+    }
+}
+
+extension AVAudioPCMBuffer: @unchecked Sendable {}

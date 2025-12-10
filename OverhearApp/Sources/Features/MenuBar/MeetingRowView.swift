@@ -3,7 +3,10 @@ import SwiftUI
 struct MeetingRowView: View {
     let meeting: Meeting
     let use24HourClock: Bool
+    var recorded: Bool = false
+    var manualRecordingStatus: MeetingListViewModel.ManualRecordingStatus? = nil
     var onJoin: (Meeting) -> Void
+    var onShowRecordings: (Meeting) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
@@ -73,6 +76,20 @@ struct MeetingRowView: View {
                 }
                 
                 Spacer()
+                if recorded {
+                    Button {
+                        onShowRecordings(meeting)
+                    } label: {
+                        Image(systemName: "tape")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                } else if meeting.isManual, manualRecordingStatus == .processing {
+                    Text("Processing…")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(.secondary)
+                }
             }
             .padding(.vertical, 6)
             .padding(.horizontal, 12)
@@ -108,7 +125,10 @@ struct MeetingRowView: View {
 struct MinimalistMeetingRowView: View {
     let meeting: Meeting
     let use24HourClock: Bool
+    var recorded: Bool = false
+    var manualRecordingStatus: MeetingListViewModel.ManualRecordingStatus? = nil
     var onJoin: (Meeting) -> Void
+    var onShowRecordings: (Meeting) -> Void = { _ in }
 
     @State private var isHovered = false
     
@@ -181,9 +201,23 @@ HStack(alignment: .center, spacing: 10) {
                      .truncationMode(.tail)
                  
                  Spacer()
-             }
-             .frame(height: 24)
-         }
+                 if recorded {
+                     Button {
+                         onShowRecordings(meeting)
+                     } label: {
+                         Image(systemName: "tape")
+                             .font(.system(size: 12))
+                             .foregroundColor(.secondary)
+                     }
+                     .buttonStyle(.borderless)
+                 } else if meeting.isManual, manualRecordingStatus == .processing {
+                     Text("Processing…")
+                         .font(.system(size: 10, weight: .regular))
+                         .foregroundColor(.secondary)
+                 }
+            }
+            .frame(height: 24)
+        }
          .opacity((isPastEvent || isPastDate) ? 0.5 : 1.0)
          .contentShape(Rectangle())
          .onHover { hovering in

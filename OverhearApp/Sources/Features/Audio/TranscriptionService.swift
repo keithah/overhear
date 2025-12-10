@@ -15,8 +15,14 @@ enum TranscriptionEngineFactory {
     static func makeEngine() -> TranscriptionEngine {
         // Feature flag for future FluidAudio integration
         let useFluid = ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] == "1"
+        let engineDescription: String
         if useFluid, let fluid = FluidAudioAdapter.makeClient() {
+            engineDescription = "FluidAudio"
+            FileLogger.log(category: "TranscriptionEngineFactory", message: "FluidAudio enabled, using FluidAudioTranscriptionEngine")
             return FluidAudioTranscriptionEngine(fluid: fluid, fallback: TranscriptionService())
+        } else {
+            engineDescription = "Whisper"
+            FileLogger.log(category: "TranscriptionEngineFactory", message: "FluidAudio disabled/ unavailable, falling back to \(engineDescription)")
         }
         return TranscriptionService()
     }

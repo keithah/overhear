@@ -19,7 +19,7 @@ final class MenuBarIconProvider {
     /// Generate calendar-style icon for the menu bar
     /// - Parameter date: The date to display (default: today)
     /// - Returns: NSImage with calendar icon styled like the system calendar app
-    func makeMenuBarIcon(for date: Date = Date()) -> NSImage {
+    func makeMenuBarIcon(for date: Date = Date(), recordingIndicator: Bool = false) -> NSImage {
         let size = NSSize(width: 22, height: 22)
         let icon = NSImage(size: size)
         icon.lockFocus()
@@ -77,7 +77,51 @@ final class MenuBarIconProvider {
         )
         dayString.draw(at: dayPoint, withAttributes: dayAttrs)
 
+        if recordingIndicator {
+            drawRecordingBadge(in: NSRect(origin: .zero, size: size))
+        }
+
         return icon
+    }
+
+    private func drawRecordingBadge(in bounds: NSRect) {
+        let badgeDiameter: CGFloat = 8
+        let badgeRect = NSRect(
+            x: bounds.maxX - badgeDiameter - 1,
+            y: bounds.minY + 1,
+            width: badgeDiameter,
+            height: badgeDiameter
+        )
+
+        NSColor(calibratedRed: 0.04, green: 0.36, blue: 1.0, alpha: 1.0).setFill()
+        NSBezierPath(ovalIn: badgeRect).fill()
+
+        NSColor.white.setFill()
+        let micBodyWidth: CGFloat = 2
+        let micBodyHeight: CGFloat = badgeRect.height * 0.5
+        let micBodyRect = NSRect(
+            x: badgeRect.midX - micBodyWidth / 2,
+            y: badgeRect.minY + 1,
+            width: micBodyWidth,
+            height: micBodyHeight
+        )
+        NSBezierPath(roundedRect: micBodyRect, xRadius: 1, yRadius: 1).fill()
+
+        let micHeadRect = NSRect(
+            x: micBodyRect.minX - micBodyWidth,
+            y: micBodyRect.maxY - micBodyWidth,
+            width: micBodyWidth * 3,
+            height: micBodyWidth * 1.4
+        )
+        NSBezierPath(ovalIn: micHeadRect).fill()
+
+        let micStand = NSRect(
+            x: badgeRect.midX - 0.5,
+            y: badgeRect.minY,
+            width: 1,
+            height: 2
+        )
+        NSBezierPath(rect: micStand).fill()
     }
     
     /// Calculate next midnight for icon update scheduling

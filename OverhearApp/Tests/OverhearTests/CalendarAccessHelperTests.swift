@@ -18,5 +18,8 @@ final class CalendarAccessHelperTests: XCTestCase {
         XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .authorized))
         XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .denied))
         XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .restricted))
+        if #available(macOS 14.0, *) {
+            XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .writeOnly))
+        }
     }
 }

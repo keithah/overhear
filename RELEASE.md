@@ -6,13 +6,13 @@ This repository requires a signed Apple Developer build and notarization before 
 2. **Install dependencies** (`swift package resolve` inside `OverhearApp` and `xcodebuild -resolvePackageDependencies`).
 3. **Build a Release artifact** for Apple Silicon:
    ```sh
-   xcbuild -project OverhearApp/Overhear.xcodeproj \
+   xcodebuild -project OverhearApp/Overhear.xcodeproj \
        -scheme Overhear \
        -configuration Release \
        -destination 'platform=macOS,arch=arm64' \
        BUILD_DIR="$PWD/build" clean build
    ```
-4. **Codesign the `.app` bundle** with your Developer ID (`Developer ID Application: Keith Herringtion (TEAMID)`). Use `codesign --sign "Developer ID Application: YOUR NAME" --options runtime OverhearApp/build/Release/Overhear.app`.
+4. **Codesign the `.app` bundle** with your Developer ID (`Developer ID Application: Keith Herrington (TEAMID)`). Use `codesign --sign "Developer ID Application: YOUR NAME" --options runtime OverhearApp/build/Release/Overhear.app`.
 5. **Notarize** using `xcrun notarytool submit --team-id TEAMID --apple-id YOU@EMAIL --password @keychain:AC_PASSWORD OverhearApp/build/Release/Overhear.app` and wait for success.
 6. **Staple** the notarization ticket: `xcrun stapler staple OverhearApp/build/Release/Overhear.app`.
 7. **Package** if you ship a `.pkg`/`.dmg` (optional) and verify it uses the notarized `.app`.

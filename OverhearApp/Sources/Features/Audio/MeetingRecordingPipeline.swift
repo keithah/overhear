@@ -58,6 +58,7 @@ actor MeetingRecordingPipeline {
 
         do {
             try await transcriptStore.save(stored)
+            NotificationCenter.default.post(name: .overhearTranscriptSaved, object: nil, userInfo: ["meetingID": metadata.meetingID])
         } catch {
             logger.error("Failed to persist transcript: \(error.localizedDescription, privacy: .public)")
         }

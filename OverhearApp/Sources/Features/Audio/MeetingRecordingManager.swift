@@ -1,5 +1,9 @@
 import Foundation
 import Combine
+import os.log
+#if canImport(FluidAudio)
+import FluidAudio
+#endif
 
 /// Manages recording and transcription for a specific meeting
 @MainActor
@@ -36,6 +40,7 @@ final class MeetingRecordingManager: ObservableObject {
     
     @Published private(set) var status: Status = .idle
     @Published private(set) var transcript: String = ""
+    @Published private(set) var liveTranscript: String = ""
     @Published private(set) var audioFileURL: URL?
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     @Published private(set) var summary: MeetingSummary?
@@ -45,10 +50,21 @@ final class MeetingRecordingManager: ObservableObject {
     private let recordingDirectory: URL
     private let meetingTitle: String
     private let meetingDate: Date
+    private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingManager")
     
     private var captureStartTime: Date?
     private var transcriptionTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
+
+#if canImport(FluidAudio)
+    private var streamingManager: StreamingAsrManager?
+    private var streamingObserverToken: UUID?
+    private var streamingTask: Task<Void, Never>?
+
+    private var isStreamingEnabled: Bool {
+        ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] == "1"
+    }
+#endif
     
     init(
         meetingID: String,
@@ -95,6 +111,12 @@ final class MeetingRecordingManager: ObservableObject {
         
         status = .capturing
         captureStartTime = Date()
+        liveTranscript = ""
+#if canImport(FluidAudio)
+        if isStreamingEnabled {
+            await startLiveStreaming()
+        }
+#endif
         
         let outputURL = recordingDirectory
             .appendingPathComponent("\(meetingID)-\(ISO8601DateFormatter().string(from: Date()))")
@@ -102,6 +124,7 @@ final class MeetingRecordingManager: ObservableObject {
         
         do {
             let audioURL = try await captureService.startCapture(duration: duration, outputURL: outputURL)
+            await stopLiveStreaming()
             
             let metadata = MeetingRecordingMetadata(
                 meetingID: meetingID,
@@ -112,6 +135,7 @@ final class MeetingRecordingManager: ObservableObject {
             // Start transcription pipeline
             await startTranscription(audioURL: audioURL, metadata: metadata, duration: duration)
         } catch {
+            await stopLiveStreaming()
             status = .failed(RecordingError.captureService(error))
         }
     }
@@ -119,6 +143,7 @@ final class MeetingRecordingManager: ObservableObject {
     /// Stop the current recording
     func stopRecording() async {
         await captureService.stopCapture()
+        await stopLiveStreaming()
         
         // If we are already transcribing, cancel it so status resets cleanly
         if case .transcribing = status {
@@ -131,7 +156,7 @@ final class MeetingRecordingManager: ObservableObject {
     private func startTranscription(audioURL: URL, metadata: MeetingRecordingMetadata, duration: TimeInterval) async {
         status = .transcribing
         
-        let pipelineTask = Task { @MainActor in
+        let processingTask = Task { @MainActor in
             do {
                 let stored = try await pipeline.process(audioURL: audioURL, metadata: metadata, duration: duration)
                 self.transcript = stored.transcript
@@ -147,7 +172,63 @@ final class MeetingRecordingManager: ObservableObject {
                 status = .failed(RecordingError.transcriptionService(error))
             }
         }
-        self.transcriptionTask = pipelineTask
-        _ = await pipelineTask.result
+        self.transcriptionTask = processingTask
+        _ = await processingTask.result
     }
 }
+
+#if canImport(FluidAudio)
+private extension MeetingRecordingManager {
+    func startLiveStreaming() async {
+        guard isStreamingEnabled, streamingManager == nil else { return }
+
+        do {
+            let manager = StreamingAsrManager()
+            try await manager.start()
+            streamingManager = manager
+            FileLogger.log(category: "MeetingRecordingManager", message: "Streaming ASR started")
+
+            streamingObserverToken = await captureService.registerBufferObserver { [weak manager] buffer in
+                guard let manager else { return }
+                Task {
+                    await manager.streamAudio(buffer)
+                }
+            }
+
+            streamingTask = Task { [weak self] in
+                let updates = await manager.transcriptionUpdates
+                for await update in updates {
+                    await self?.handleStreamingUpdate(update)
+                }
+            }
+        } catch {
+            logger.error("Streaming ASR failed to start: \(error.localizedDescription, privacy: .public)")
+            await stopLiveStreaming()
+        }
+    }
+
+    func stopLiveStreaming() async {
+        streamingTask?.cancel()
+        streamingTask = nil
+
+        if let token = streamingObserverToken {
+            await captureService.unregisterBufferObserver(token)
+            streamingObserverToken = nil
+        }
+
+        streamingManager = nil
+    }
+
+    @MainActor
+    func handleStreamingUpdate(_ update: StreamingTranscriptionUpdate) {
+        liveTranscript = update.text
+        let status = update.isConfirmed ? "confirmed" : "hypothesis"
+        FileLogger.log(category: "MeetingRecordingManager", message: "Streaming update (\(status)): \(update.text)")
+    }
+}
+#else
+private extension MeetingRecordingManager {
+    func startLiveStreaming() async {}
+    func stopLiveStreaming() async {}
+}
+#endif

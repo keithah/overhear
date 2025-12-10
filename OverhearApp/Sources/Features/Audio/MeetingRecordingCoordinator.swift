@@ -35,18 +35,21 @@ final class MeetingRecordingCoordinator: ObservableObject {
         manualRecordingSubject.eraseToAnyPublisher()
     }
 
+    /// Starts recording audio for the provided meeting; stops any in-progress capture, resets the transcript, and returns immediately.
     func startRecording(for meeting: Meeting) {
         Task { [weak self] in
             await self?.startRecordingInternal(for: meeting)
         }
     }
 
+    /// Begins a manual recording session that isn't tied to a calendar event and schedules reminder notifications.
     func startManualRecording() {
         Task { [weak self] in
             await self?.startManualRecordingInternal()
         }
     }
 
+    /// Stops the active recording, if any, and finalizes manual entries as needed.
     func stopRecording() {
         Task { [weak self] in
             await self?.stopRecordingInternal()

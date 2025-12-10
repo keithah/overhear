@@ -48,8 +48,10 @@ private enum FluidAudioAdapterError: LocalizedError {
 #if canImport(FluidAudio)
 import FluidAudio
 
+/// FluidAudio's ASR manager is safe to share across concurrency domains (per FluidAudio documentation).
 extension AsrManager: @unchecked Sendable {}
 
+/// FluidAudio's diarizer manager is only used via the actor and exposes thread-safe APIs.
 extension DiarizerManager: @unchecked Sendable {}
 
 struct FluidAudioConfiguration {
@@ -65,6 +67,14 @@ struct FluidAudioConfiguration {
         )
     }
 
+    var effectiveAsrDirectory: URL {
+        asrModelsDirectory ?? Self.defaultAsrDirectory(for: asrModelVersion)
+    }
+
+    var effectiveDiarizerDirectory: URL {
+        diarizerModelsDirectory ?? Self.defaultDiarizerDirectory()
+    }
+
     private static func parseVersion() -> AsrModelVersion {
         switch ProcessInfo.processInfo.environment["OVERHEAR_FLUIDAUDIO_ASR_VERSION"]?.lowercased() {
         case "v2": return .v2
@@ -77,6 +87,26 @@ struct FluidAudioConfiguration {
             return nil
         }
         return URL(fileURLWithPath: value, isDirectory: true)
+    }
+
+    private static func defaultAsrDirectory(for version: AsrModelVersion) -> URL {
+        defaultFluidAudioBase()
+            .appendingPathComponent("Models", isDirectory: true)
+            .appendingPathComponent("ASR-\(version)", isDirectory: true)
+    }
+
+    private static func defaultDiarizerDirectory() -> URL {
+        defaultFluidAudioBase()
+            .appendingPathComponent("Models", isDirectory: true)
+            .appendingPathComponent("Diarizer", isDirectory: true)
+    }
+
+    private static func defaultFluidAudioBase() -> URL {
+        let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+        return supportDir
+            .appendingPathComponent("Overhear", isDirectory: true)
+            .appendingPathComponent("FluidAudio", isDirectory: true)
     }
 }
 
@@ -98,14 +128,25 @@ private final actor FluidAudioModelStore {
     }
 
     func transcribe(audioURL: URL) async throws -> ASRResult {
+        log("Transcription requested for \(audioURL.lastPathComponent)")
         let manager = try await ensureAsrManager()
-        return try await manager.transcribe(audioURL, source: .system)
+        let result = try await manager.transcribe(audioURL, source: .system)
+        log("Transcription completed (\(result.text.count) chars)")
+        return result
     }
 
     func diarize(audioURL: URL) async throws -> DiarizationResult {
+        log("Diarization requested for \(audioURL.lastPathComponent)")
         let diarizer = try await ensureDiarizerManager()
-        let samples = try converter.resampleAudioFile(audioURL)
-        return try diarizer.performCompleteDiarization(samples)
+        let samples = try await Task { try converter.resampleAudioFile(audioURL) }.value
+        let result = try diarizer.performCompleteDiarization(samples)
+        log("Diarization produced \(result.segments.count) segments")
+        return result
+    }
+
+    private func log(_ message: String) {
+        Self.logger.info("\(message, privacy: .public)")
+        FileLogger.log(category: "FluidAudioModelStore", message: message)
     }
 
     // MARK: - Initialization Helpers
@@ -154,7 +195,8 @@ private final actor FluidAudioModelStore {
         let models = try await loadAsrModels()
         let manager = AsrManager()
         try await manager.initialize(models: models)
-        Self.logger.info("FluidAudio ASR initialized version \(String(describing: self.configuration.asrModelVersion))")
+        let versionDescription = String(describing: self.configuration.asrModelVersion)
+        Self.logger.info("FluidAudio ASR initialized version \(versionDescription)")
         return manager
     }
 
@@ -191,23 +233,31 @@ private final actor FluidAudioModelStore {
     }
 
     private func loadAsrModels() async throws -> AsrModels {
-        let directory = configuration.asrModelsDirectory
-            ?? AsrModels.defaultCacheDirectory(for: configuration.asrModelVersion)
+        let directory = configuration.effectiveAsrDirectory
         try ensureDirectory(directory)
+        log("ASR directory \(directory.path), version \(configuration.asrModelVersion)")
         if AsrModels.modelsExist(at: directory, version: configuration.asrModelVersion) {
+            log("ASR models already cached")
             return try await AsrModels.load(from: directory, version: configuration.asrModelVersion)
         }
+        log("Downloading ASR models to \(directory.path)")
         return try await AsrModels.downloadAndLoad(to: directory, version: configuration.asrModelVersion)
     }
 
     private func loadDiarizerModels() async throws -> DiarizerModels {
-        let directory = configuration.diarizerModelsDirectory ?? DiarizerModels.defaultModelsDirectory()
+        let directory = configuration.effectiveDiarizerDirectory
         try ensureDirectory(directory)
+        log("Downloading Diarizer models to \(directory.path)")
         return try await DiarizerModels.download(to: directory)
     }
 
     private func ensureDirectory(_ directory: URL) throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            log("Ensured directory \(directory.path)")
+        } catch {
+            throw FluidAudioAdapterError.initializationFailed("Could not create models directory at \(directory.path): \(error.localizedDescription)")
+        }
     }
 }
 
@@ -220,22 +270,34 @@ private struct RealFluidAudioClient: FluidAudioClient {
     }
 
     func transcribe(url: URL) async throws -> String {
-        let result = try await store.transcribe(audioURL: url)
-        Self.logger.info("FluidAudio recognized \(result.text.count) characters (confidence: \(result.confidence))")
-        return result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let result = try await store.transcribe(audioURL: url)
+            Self.logger.info("FluidAudio recognized \(result.text.count) characters (confidence: \(result.confidence))")
+            return result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch let adapterError as FluidAudioAdapterError {
+            throw adapterError
+        } catch {
+            throw FluidAudioAdapterError.initializationFailed(error.localizedDescription)
+        }
     }
 
     func diarize(url: URL) async throws -> [SpeakerSegment] {
-        let result = try await store.diarize(audioURL: url)
-        let segments = result.segments.map { segment in
-            SpeakerSegment(
-                speaker: segment.speakerId,
-                start: TimeInterval(segment.startTimeSeconds),
-                end: TimeInterval(segment.endTimeSeconds)
-            )
+        do {
+            let result = try await store.diarize(audioURL: url)
+            let segments = result.segments.map { segment in
+                SpeakerSegment(
+                    speaker: segment.speakerId,
+                    start: TimeInterval(segment.startTimeSeconds),
+                    end: TimeInterval(segment.endTimeSeconds)
+                )
+            }
+            Self.logger.info("FluidAudio diarization produced \(segments.count) segments")
+            return segments
+        } catch let adapterError as FluidAudioAdapterError {
+            throw adapterError
+        } catch {
+            throw FluidAudioAdapterError.diarizationFailed(error.localizedDescription)
         }
-        Self.logger.info("FluidAudio diarization produced \(segments.count) segments")
-        return segments
     }
 }
 #endif
