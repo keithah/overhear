@@ -9,7 +9,20 @@ protocol FluidAudioClient: Sendable {
 
 /// Abstraction for wiring FluidAudio once the framework is available.
 enum FluidAudioAdapter {
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] != "0"
+    }
+
+    static var isAvailable: Bool {
+        #if canImport(FluidAudio)
+        return true
+        #else
+        return false
+        #endif
+    }
+
     static func makeClient() -> FluidAudioClient? {
+        guard isEnabled else { return nil }
         #if canImport(FluidAudio)
         return RealFluidAudioClient(configuration: FluidAudioConfiguration.fromEnvironment())
         #else

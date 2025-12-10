@@ -14,7 +14,7 @@ protocol DiarizationEngine: Sendable {
 enum TranscriptionEngineFactory {
     static func makeEngine() -> TranscriptionEngine {
         // Feature flag for future FluidAudio integration
-        let useFluid = ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] == "1"
+        let useFluid = FluidAudioAdapter.isEnabled
         let engineDescription: String
         if useFluid, let fluid = FluidAudioAdapter.makeClient() {
             engineDescription = "FluidAudio"

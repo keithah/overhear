@@ -62,7 +62,7 @@ final class MeetingRecordingManager: ObservableObject {
     private var streamingTask: Task<Void, Never>?
 
     private var isStreamingEnabled: Bool {
-        ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] == "1"
+        FluidAudioAdapter.isEnabled
     }
 #endif
     

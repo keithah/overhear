@@ -72,7 +72,7 @@ All processing is **local-first** and privacy-conscious.
 
 ## Developer toggles
 
-- `OVERHEAR_USE_FLUIDAUDIO=1` — enable FluidAudio for batch ASR plus diarization. The first launch downloads ~1 GB of CoreML models to `~/Library/Application Support/FluidAudio/Models`.
+- `OVERHEAR_USE_FLUIDAUDIO=0` — disable FluidAudio and fall back to the Whisper pipeline. When unset, FluidAudio is enabled by default so live transcripts/diarization stream during meetings and manual recordings; the first launch downloads ~1 GB of CoreML models to `~/Library/Application Support/FluidAudio/Models`.
 - `OVERHEAR_DISABLE_TRANSCRIPT_STORAGE=1` — run without writing transcripts to disk (search UI shows a banner).
 - `OVERHEAR_FILE_LOGS=1` — append diagnostic logs to `/tmp/overhear.log` for meeting fetch/open flows and audio capture lifecycle events.
 - `OVERHEAR_FLUIDAUDIO_ASR_VERSION={v2|v3}` — choose the Parakeet v2 (English-only) or v3 (multilingual) bundle when FluidAudio is enabled.

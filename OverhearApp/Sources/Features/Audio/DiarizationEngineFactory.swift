@@ -2,7 +2,7 @@ import Foundation
 
 enum DiarizationEngineFactory {
     static func makeEngine() -> any DiarizationEngine {
-        let useFluid = ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] == "1"
+        let useFluid = FluidAudioAdapter.isEnabled
         if useFluid, let fluid = FluidAudioAdapter.makeClient() {
             return FluidAudioDiarizationEngine(fluid: fluid)
         }
