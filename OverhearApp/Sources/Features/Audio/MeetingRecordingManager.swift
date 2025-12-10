@@ -160,6 +160,7 @@ final class MeetingRecordingManager: ObservableObject {
             do {
                 let stored = try await pipeline.process(audioURL: audioURL, metadata: metadata, duration: duration)
                 self.transcript = stored.transcript
+                self.liveTranscript = stored.transcript
                 self.speakerSegments = stored.segments
                 self.summary = stored.summary
                 if let path = stored.audioFilePath {
