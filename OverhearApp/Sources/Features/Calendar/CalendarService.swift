@@ -217,8 +217,21 @@ final class CalendarService: ObservableObject {
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         log("Authorization status after request: \(authorizationStatus.rawValue)")
         if !granted {
-            openCalendarPrivacySettingsIfNeeded(force: true)
-            await presentOneTimePermissionReminder()
+            let shouldRemind: Bool
+            if #available(macOS 14.0, *) {
+                shouldRemind = authorizationStatus == .denied ||
+                    authorizationStatus == .restricted ||
+                    authorizationStatus == .writeOnly
+            } else {
+                shouldRemind = authorizationStatus == .denied || authorizationStatus == .restricted
+            }
+
+            if shouldRemind {
+                openCalendarPrivacySettingsIfNeeded(force: true)
+                await presentOneTimePermissionReminder()
+            } else {
+                log("Access unsettled (status \(authorizationStatus.rawValue)); waiting before prompting again")
+            }
         }
         if promotedPolicy {
             log("Restoring activation policy to accessory after permission attempt")
