@@ -8,7 +8,9 @@ extension NSNotification.Name {
 struct MenuBarContentView: View {
      @ObservedObject var viewModel: MeetingListViewModel
      @ObservedObject var preferences: PreferencesService
+     @ObservedObject var recordingCoordinator: MeetingRecordingCoordinator
      var openPreferences: () -> Void
+     var onToggleRecording: () -> Void
     
      
      
@@ -16,9 +18,20 @@ struct MenuBarContentView: View {
      
 
       var body: some View {
-         VStack(spacing: 0) {
-             // Meetings list
-             ScrollViewReader { proxy in
+        VStack(spacing: 0) {
+            if recordingCoordinator.isRecording {
+                RecordingBannerView(
+                    recordingCoordinator: recordingCoordinator,
+                    openLiveNotes: {
+                        LiveNotesWindowController.shared.show(with: recordingCoordinator)
+                    },
+                    stopRecording: {
+                        recordingCoordinator.stopRecording()
+                    }
+                )
+            }
+            // Meetings list
+            ScrollViewReader { proxy in
                  ScrollView(.vertical) {
                      VStack(alignment: .leading, spacing: 0) {
 if viewModel.isLoading {
@@ -53,11 +66,25 @@ if viewModel.isLoading {
                                  // Meetings for this date
                                  ForEach(group.meetings) { meeting in
                                      if preferences.viewMode == .minimalist {
-                                         MinimalistMeetingRowView(meeting: meeting, use24HourClock: preferences.use24HourClock, onJoin: viewModel.join)
-                                     } else {
-                                         MeetingRowView(meeting: meeting, use24HourClock: preferences.use24HourClock, onJoin: viewModel.join)
-                                             .padding(.horizontal, 6)
-                                             .padding(.vertical, 3)
+                                        MinimalistMeetingRowView(
+                                            meeting: meeting,
+                                            use24HourClock: preferences.use24HourClock,
+                                            recorded: viewModel.recordedMeetingIDs.contains(meeting.id),
+                                            manualRecordingStatus: viewModel.manualRecordingStatus(for: meeting),
+                                            onJoin: viewModel.joinAndRecord,
+                                            onShowRecordings: viewModel.showRecordings
+                                        )
+                                    } else {
+                                        MeetingRowView(
+                                            meeting: meeting,
+                                            use24HourClock: preferences.use24HourClock,
+                                            recorded: viewModel.recordedMeetingIDs.contains(meeting.id),
+                                            manualRecordingStatus: viewModel.manualRecordingStatus(for: meeting),
+                                            onJoin: viewModel.joinAndRecord,
+                                            onShowRecordings: viewModel.showRecordings
+                                        )
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 3)
                                      }
                                  }
                              }
@@ -86,10 +113,29 @@ if viewModel.isLoading {
             
             // Footer
              HStack(spacing: 10) {
-                 // Today button on left
-                 Button(action: scrollToToday) {
-                     Text("Today")
-                         .font(.system(size: 11))
+                 VStack(alignment: .leading, spacing: 3) {
+                     HStack(spacing: 6) {
+                         Button(action: scrollToToday) {
+                             Text("Today")
+                                 .font(.system(size: 11))
+                         }
+                         Button(action: onToggleRecording) {
+                             Label(
+                                 recordingCoordinator.isRecording ? "Stop" : "Record",
+                                 systemImage: recordingCoordinator.isRecording ? "stop.fill" : "record.circle"
+                             )
+                             .font(.system(size: 11, weight: .medium))
+                         }
+                         .buttonStyle(.borderless)
+                         .controlSize(.small)
+                     }
+                     if recordingCoordinator.isRecording, let meeting = recordingCoordinator.activeMeeting {
+                         Text("Recording \(meeting.title)")
+                             .font(.system(size: 10))
+                             .foregroundColor(.green)
+                             .lineLimit(1)
+                             .truncationMode(.tail)
+                     }
                  }
                  
                  Spacer()
@@ -116,6 +162,9 @@ if viewModel.isLoading {
             .padding(.vertical, 6)
         }
         .frame(width: preferences.viewMode == .minimalist ? 360 : 360, height: calculateHeight())
+        .sheet(item: $viewModel.selectedTranscript) { transcript in
+            TranscriptDetailView(transcript: transcript)
+        }
     }
     
     private var allMeetings: [Meeting] {
@@ -220,4 +269,135 @@ private let dateIdentifierFormatter: DateFormatter = {
 // The scroll behavior will naturally slow down as you scroll up into the past.
 // To further customize scroll physics on macOS would require NSScrollView wrapper,
 // which is beyond SwiftUI's simple API.
+
+struct LiveNotesView: View {
+    @ObservedObject var coordinator: MeetingRecordingCoordinator
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Image(systemName: "mic.fill")
+                    .foregroundColor(.blue)
+                Text(coordinator.activeMeeting?.title ?? "Manual Recording")
+                    .font(.headline)
+                Spacer()
+                Text(coordinator.isRecording ? "Recording…" : "Idle")
+                    .font(.subheadline)
+                    .foregroundColor(coordinator.isRecording ? .green : .secondary)
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Live transcript")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+
+                ScrollView {
+                    Text(coordinator.liveTranscript.isEmpty ? "Waiting for audio…" : coordinator.liveTranscript)
+                        .font(.system(size: 13, weight: .regular, design: .monospaced))
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                }
+                .frame(maxHeight: 160)
+                .background(Color(NSColor.textBackgroundColor))
+                .cornerRadius(6)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Notes", systemImage: "pencil")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                TextEditor(text: $coordinator.liveNotes)
+                    .font(.system(size: 13))
+                    .frame(minHeight: 120)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 400, minHeight: 360)
+    }
+}
+
+struct RecordingBannerView: View {
+    @ObservedObject var recordingCoordinator: MeetingRecordingCoordinator
+    var openLiveNotes: () -> Void
+    var stopRecording: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "mic.fill")
+                .foregroundColor(.blue)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Recording in progress")
+                    .font(.system(size: 12, weight: .semibold))
+                if let meeting = recordingCoordinator.activeMeeting {
+                    Text(meeting.title)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                Text(recordingCoordinator.liveTranscript.isEmpty ? "Waiting for audio…" : recordingCoordinator.liveTranscript)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button(action: openLiveNotes) {
+                Text("Live Notes")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Button(action: stopRecording) {
+                Image(systemName: "stop.fill")
+                    .foregroundColor(.white)
+                    .padding(4)
+                    .background(Color.red)
+                    .cornerRadius(4)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.windowBackgroundColor).opacity(0.9))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.blue.opacity(0.2)))
+        .padding(.horizontal, 6)
+    }
+}
+
+@MainActor
+final class LiveNotesWindowController {
+    static let shared = LiveNotesWindowController()
+
+    private var window: NSWindow?
+    private var hostingController: NSHostingController<LiveNotesView>?
+
+    func show(with coordinator: MeetingRecordingCoordinator) {
+        if let hosting = hostingController {
+            hosting.rootView = LiveNotesView(coordinator: coordinator)
+            window?.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let view = LiveNotesView(coordinator: coordinator)
+        let controller = NSHostingController(rootView: view)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 420),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.center()
+        window.title = "Live Notes"
+        window.contentView = controller.view
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+
+        self.window = window
+        self.hostingController = controller
+    }
+}
  
