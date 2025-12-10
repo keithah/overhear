@@ -154,7 +154,7 @@ private final actor FluidAudioModelStore {
         let models = try await loadAsrModels()
         let manager = AsrManager()
         try await manager.initialize(models: models)
-        Self.logger.info("FluidAudio ASR initialized version \(String(describing: self.configuration.asrModelVersion))")
+        Self.logger.info("FluidAudio ASR initialized version \(self.configuration.asrModelVersion)")
         return manager
     }
 

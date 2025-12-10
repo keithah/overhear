@@ -41,8 +41,8 @@ final class FluidAudioConfigurationTests: XCTestCase {
 }
 #else
 final class FluidAudioConfigurationTests: XCTestCase {
-    func testPlaceholder() {
-        XCTFail("FluidAudio module is required for these tests")
+    func testPlaceholder() throws {
+        throw XCTSkip("FluidAudio module is required for these tests")
     }
 }
 #endif

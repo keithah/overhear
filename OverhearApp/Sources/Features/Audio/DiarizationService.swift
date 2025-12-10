@@ -13,7 +13,7 @@ actor DiarizationService {
     func analyze(audioURL: URL) async -> [SpeakerSegment] {
         do {
             let segments = try await engine.diarize(audioURL: audioURL)
-            diarizationLogger.info("FluidAudio returned \(segments.count) speaker segments")
+            diarizationLogger.info("Diarization returned \(segments.count) speaker segments")
             return segments
         } catch {
             diarizationLogger.error("Diarization failed: \(error.localizedDescription, privacy: .public)")

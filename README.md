@@ -88,4 +88,4 @@ All processing is **local-first** and privacy-conscious.
 ## FluidAudio configuration
 
 - FluidAudio downloads models to `~/Library/Application Support/FluidAudio/Models/<repo>` the first time `OVERHEAR_USE_FLUIDAUDIO=1` is seen. You can point the ASR/diarization caches at pre-staged folders via the `OVERHEAR_FLUIDAUDIO_ASR_MODELS` and `OVERHEAR_FLUIDAUDIO_DIARIZER_MODELS` environment variables if your CI or release artifact already ships the CoreML bundles.
-- Set `OVERHEAR_FLUIDAUDIO_ASR_VERSION=v2` for the English-optimized Parakeet v2 bundle or `v3` for the multilingual model before the app downloads models so the correct archive is fetched.
+- Set `OVERHEAR_FLUIDAUDIO_ASR_VERSION=v2` for the English-optimized Parakeet v2 bundle or `v3` for the multilingual model **before the first launch or before models are downloaded** to select which bundle to fetch. If models have already been downloaded, changing this variable will not retroactively fetch a different bundle; you must remove the existing models and restart the app to trigger a new download.
