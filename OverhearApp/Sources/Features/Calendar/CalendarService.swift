@@ -14,7 +14,7 @@ final class CalendarService: ObservableObject {
     private var didShowPermissionAlert = false
     private var accessRequestTask: Task<Bool, Never>?
 
-    func requestAccessIfNeeded() async -> Bool {
+    func requestAccessIfNeeded(retryCount: Int = 0) async -> Bool {
         let status = EKEventStore.authorizationStatus(for: .event)
         authorizationStatus = status
         log("Authorization status on entry: \(status.rawValue)")
@@ -31,6 +31,7 @@ final class CalendarService: ObservableObject {
 
         let previousPolicy = NSApp.activationPolicy()
         let shouldPromoteForPrompt = status == .notDetermined && previousPolicy == .accessory
+        log("Current activation policy: \(previousPolicy.rawValue) shouldPromoteForPrompt=\(shouldPromoteForPrompt)")
         if shouldPromoteForPrompt {
             log("Promoting activation policy to regular to present permissions dialog")
             NSApp.setActivationPolicy(.regular)
@@ -60,6 +61,13 @@ final class CalendarService: ObservableObject {
         }
         accessRequestTask = task
         let result = await task.value
+
+        if !result && authorizationStatus == .notDetermined && retryCount < 2 {
+            log("Authorization unsettled and prompt did not resolve (retry \(retryCount + 1))")
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            return await requestAccessIfNeeded(retryCount: retryCount + 1)
+        }
+
         return result
     }
 
