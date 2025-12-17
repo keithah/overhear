@@ -75,16 +75,29 @@ enum FluidAudioAdapterError: LocalizedError {
 import FluidAudio
 
 /// FluidAudio's ASR manager is safe to share across concurrency domains (per FluidAudio documentation).
-extension AsrManager: @unchecked Sendable {}
+extension AsrManager: @retroactive @unchecked Sendable {}
 
 /// FluidAudio's diarizer manager is only used via the actor and exposes thread-safe APIs.
-extension DiarizerManager: @unchecked Sendable {}
+extension DiarizerManager: @retroactive @unchecked Sendable {}
 
 struct FluidAudioConfiguration {
+    /// Which ASR (speech-to-text) model bundle to use.
+    /// - `v2`: English-only, smaller/faster
+    /// - `v3`: Multilingual (default)
     let asrModelVersion: AsrModelVersion
+
+    /// Optional override for where ASR model bundles are stored. When `nil`, the default cache
+    /// directory under `~/Library/Application Support/Overhear/FluidAudio/Models/ASR-<version>` is used.
     let asrModelsDirectory: URL?
+
+    /// Optional override for where diarization model bundles are stored. When `nil`, the default cache
+    /// directory under `~/Library/Application Support/Overhear/FluidAudio/Models/Diarizer` is used.
     let diarizerModelsDirectory: URL?
 
+    /// Reads configuration from environment variables:
+    /// - `OVERHEAR_FLUIDAUDIO_ASR_VERSION` (`v2` or `v3`)
+    /// - `OVERHEAR_FLUIDAUDIO_ASR_MODELS` (directory path)
+    /// - `OVERHEAR_FLUIDAUDIO_DIARIZER_MODELS` (directory path)
     static func fromEnvironment() -> FluidAudioConfiguration {
         FluidAudioConfiguration(
             asrModelVersion: parseVersion(),

@@ -155,8 +155,15 @@ final class MeetingRecordingManager: ObservableObject {
             .appendingPathExtension("wav")
         
         do {
-            let audioURL = try await captureService.startCapture(duration: duration, outputURL: outputURL)
+            let captureResult = try await captureService.startCapture(duration: duration, outputURL: outputURL)
             await stopLiveStreaming()
+            let recordedDuration = captureResult.duration > 0 ? captureResult.duration : duration
+            if captureResult.stoppedEarly {
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Capture stopped early (duration: \(String(format: "%.2fs", recordedDuration)))"
+                )
+            }
             
             let metadata = MeetingRecordingMetadata(
                 meetingID: meetingID,
@@ -171,9 +178,9 @@ final class MeetingRecordingManager: ObservableObject {
 
             // Start transcription pipeline
             await startTranscription(
-                audioURL: audioURL,
+                audioURL: captureResult.url,
                 metadata: metadata,
-                duration: duration,
+                duration: recordedDuration,
                 prefetchedTranscript: prefetchedTranscript.isEmpty ? nil : prefetchedTranscript
             )
         } catch {
@@ -220,7 +227,7 @@ final class MeetingRecordingManager: ObservableObject {
             bestEffortText = prefetched
         }
 
-        let quickID = metadata.meetingID
+        let transcriptID = UUID().uuidString
         // Save immediately using best-effort text (or a placeholder) so UI can flip to Ready.
         let quickTextToSave = bestEffortText.isEmpty ? "Transcription pending…" : bestEffortText
         do {
@@ -228,11 +235,11 @@ final class MeetingRecordingManager: ObservableObject {
                 transcriptText: quickTextToSave,
                 metadata: metadata,
                 duration: duration,
-                transcriptID: quickID
+                transcriptID: transcriptID
             )
             FileLogger.log(
                 category: "MeetingRecordingManager",
-                message: "Quick transcript saved id=\(quickID) textLength=\(quick.transcript.count)"
+                message: "Quick transcript saved id=\(transcriptID) textLength=\(quick.transcript.count)"
             )
             self.transcript = quick.transcript
             self.liveTranscript = quick.transcript
@@ -269,7 +276,7 @@ final class MeetingRecordingManager: ObservableObject {
                     metadata: metadata,
                     duration: duration,
                     prefetchedTranscript: quickTextToSave,
-                    overrideTranscriptID: metadata.meetingID
+                    overrideTranscriptID: transcriptID
                 )
                 await MainActor.run {
                     self.transcript = stored.transcript
@@ -297,16 +304,48 @@ final class MeetingRecordingManager: ObservableObject {
                     if let path = stored.audioFilePath {
                         self.audioFileURL = URL(fileURLWithPath: path)
                     }
-                    status = .completed
+                    self.status = .completed
                 }
             } catch is CancellationError {
-                await MainActor.run { status = .idle } // Reset status on cancellation
+                await MainActor.run { self.status = .idle } // Reset status on cancellation
             } catch {
                 FileLogger.log(
                     category: "MeetingRecordingManager",
                     message: "Background refresh failed: \(error.localizedDescription)"
                 )
-                await MainActor.run { status = .completed } // keep quick transcript but mark finished
+                if quickTextToSave == "Transcription pending…" {
+                    let failureText = "Transcription failed."
+                    do {
+                        let failed = try await pipeline.saveQuickTranscript(
+                            transcriptText: failureText,
+                            metadata: metadata,
+                            duration: duration,
+                            transcriptID: transcriptID
+                        )
+                        await MainActor.run {
+                            self.transcript = failed.transcript
+                            if self.streamingConfirmedSegments.isEmpty {
+                                self.liveTranscript = failed.transcript
+                                self.liveSegments = [
+                                    LiveTranscriptSegment(
+                                        id: UUID(),
+                                        text: failed.transcript,
+                                        isConfirmed: true,
+                                        timestamp: Date(),
+                                        speaker: nil,
+                                        tokenTimings: []
+                                    )
+                                ]
+                            }
+                        }
+                    } catch {
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: "Failed to persist failure transcript: \(error.localizedDescription)"
+                        )
+                    }
+                }
+                await MainActor.run { self.status = .completed } // keep quick transcript (or failure marker) but mark finished
             }
         }
         self.transcriptionTask = processingTask
@@ -419,7 +458,9 @@ private extension MeetingRecordingManager {
                 )
             }
         } else {
-            consecutiveEmptyStreamingUpdates = 0
+            if consecutiveEmptyStreamingUpdates != 0 {
+                consecutiveEmptyStreamingUpdates = 0
+            }
         }
 
         if update.isConfirmed {

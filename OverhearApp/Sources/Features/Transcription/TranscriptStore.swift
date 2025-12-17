@@ -316,10 +316,23 @@ actor TranscriptStore {
         let suffix = "\(Self.meetingIDDelimiter)\(id).json"
         let fileURLs = try FileManager.default.contentsOfDirectory(
             at: storageDirectory,
-            includingPropertiesForKeys: nil
+            includingPropertiesForKeys: [.contentModificationDateKey]
         ).filter { $0.lastPathComponent.hasSuffix(suffix) }
 
-        return fileURLs.first
+        if fileURLs.count > 1 {
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "Multiple transcripts share id=\(id); selecting most recently modified"
+            )
+        }
+
+        return fileURLs
+            .sorted { lhs, rhs in
+                let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhsDate > rhsDate
+            }
+            .first
     }
     
     // MARK: - Encryption

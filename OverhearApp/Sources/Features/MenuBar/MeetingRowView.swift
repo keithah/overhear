@@ -1,5 +1,9 @@
 import SwiftUI
 
+private func isRecordedOrReadyManual(recorded: Bool, meeting: Meeting) -> Bool {
+    recorded || meeting.isManual
+}
+
 struct MeetingRowView: View {
     let meeting: Meeting
     let use24HourClock: Bool
@@ -7,12 +11,6 @@ struct MeetingRowView: View {
     var manualRecordingStatus: MeetingListViewModel.ManualRecordingStatus? = nil
     var onJoin: (Meeting) -> Void
     var onShowRecordings: (Meeting) -> Void = { _ in }
-
-    private var isRecordedOrReadyManual: Bool {
-        if recorded { return true }
-        if meeting.isManual { return true }
-        return false
-    }
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
@@ -83,7 +81,7 @@ struct MeetingRowView: View {
                 
                 Spacer()
                 // Always show tape for manual or recorded meetings so transcripts are discoverable.
-                if meeting.isManual || isRecordedOrReadyManual {
+                if isRecordedOrReadyManual(recorded: recorded, meeting: meeting) {
                     Button {
                         onShowRecordings(meeting)
                     } label: {
@@ -163,12 +161,6 @@ struct MinimalistMeetingRowView: View {
         return eventDay < today
     }
 
-    private var isRecordedOrReadyManual: Bool {
-        if recorded { return true }
-        if meeting.isManual { return true }
-        return false
-    }
-
     var body: some View {
          // Simple one-line format matching Meeter exactly
          ZStack {
@@ -228,7 +220,7 @@ HStack(alignment: .center, spacing: 10) {
                  
                  Spacer()
                  // Always show tape for manual or recorded meetings.
-                 if meeting.isManual || isRecordedOrReadyManual {
+                 if isRecordedOrReadyManual(recorded: recorded, meeting: meeting) {
                      Button {
                          onShowRecordings(meeting)
                      } label: {
