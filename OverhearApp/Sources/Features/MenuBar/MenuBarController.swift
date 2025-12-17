@@ -219,7 +219,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
          
          let now = Date()
          let currentEvent = allMeetings
-             .filter { !$0.isAllDay && $0.startDate <= now && $0.startDate.addingTimeInterval(5 * 60) >= now }
+             .filter { !$0.isAllDay && $0.startDate <= now && $0.endDate.addingTimeInterval(5 * 60) >= now }
              .max { $0.startDate < $1.startDate }
          let upcomingEvent = allMeetings
              .filter { !$0.isAllDay && $0.startDate > now }  // Exclude all-day events
@@ -263,9 +263,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private func handleRecordingToggle() {
         if recordingCoordinator.isRecording {
-            recordingCoordinator.stopRecording()
+            Task { await recordingCoordinator.stopRecording() }
         } else {
-            recordingCoordinator.startManualRecording()
+            Task { await recordingCoordinator.startManualRecording() }
         }
     }
 }

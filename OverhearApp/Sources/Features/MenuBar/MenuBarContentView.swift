@@ -27,7 +27,7 @@ struct MenuBarContentView: View {
                         LiveNotesWindowController.shared.show(with: recordingCoordinator)
                     },
                     stopRecording: {
-                        recordingCoordinator.stopRecording()
+                        Task { await recordingCoordinator.stopRecording() }
                     }
                 )
             }
@@ -72,7 +72,9 @@ if viewModel.isLoading {
                                             use24HourClock: preferences.use24HourClock,
                                             recorded: viewModel.isRecorded(meeting),
                                             manualRecordingStatus: viewModel.manualRecordingStatus(for: meeting),
-                                            onJoin: viewModel.joinAndRecord,
+                                            onJoin: { meeting in
+                                                Task { await viewModel.joinAndRecord(meeting: meeting) }
+                                            },
                                             onShowRecordings: viewModel.showRecordings
                                         )
                                     } else {
@@ -81,7 +83,9 @@ if viewModel.isLoading {
                                             use24HourClock: preferences.use24HourClock,
                                             recorded: viewModel.isRecorded(meeting),
                                             manualRecordingStatus: viewModel.manualRecordingStatus(for: meeting),
-                                            onJoin: viewModel.joinAndRecord,
+                                            onJoin: { meeting in
+                                                Task { await viewModel.joinAndRecord(meeting: meeting) }
+                                            },
                                             onShowRecordings: viewModel.showRecordings
                                         )
                                             .padding(.horizontal, 6)

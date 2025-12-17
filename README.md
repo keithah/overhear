@@ -19,7 +19,7 @@ All processing is **local-first** and privacy-conscious.
 - When `OVERHEAR_FILE_LOGS=1` (or the persisted `overhear.enableFileLogs` setting) is enabled, capture startup, completion, and errors append diagnostic entries to `/tmp/overhear.log`, making it easy to verify permission dialogs and recording handoffs.
 
 ### Insights & summarization
-- FluidAudio is the on-device ASR + diarization engine powering Phase 1 transcription and speaker analysis; it downloads CoreML bundles into `~/Library/Application Support/FluidAudio/Models`, with overrides available via environment variables.
+- FluidAudio is the on-device ASR + diarization engine powering Phase 1 transcription and speaker analysis; it downloads CoreML bundles into `~/Library/Application Support/Overhear/FluidAudio/Models`, with overrides available via environment variables.
 - Meeting summaries and action items are produced post-meeting by a local MLX runtime using a compact quantized model such as SmolLM2-1.7B-Instruct or Llama 3.2 1B Instruct.
 - Output includes a concise summary, highlight bullets, and a JSON list of action items with owners, descriptions, and due dates.
 
@@ -72,7 +72,7 @@ All processing is **local-first** and privacy-conscious.
 
 ## Developer toggles
 
-- `OVERHEAR_USE_FLUIDAUDIO=0` — disable FluidAudio and fall back to the Whisper pipeline. When unset, FluidAudio is enabled by default so live transcripts/diarization stream during meetings and manual recordings; the first launch downloads ~1 GB of CoreML models to `~/Library/Application Support/FluidAudio/Models`.
+- `OVERHEAR_USE_FLUIDAUDIO=0` — disable FluidAudio and fall back to the Whisper pipeline. When unset, FluidAudio is enabled by default so live transcripts/diarization stream during meetings and manual recordings; the first launch downloads ~1 GB of CoreML models to `~/Library/Application Support/Overhear/FluidAudio/Models`.
 - `OVERHEAR_DISABLE_TRANSCRIPT_STORAGE=1` — run without writing transcripts to disk (search UI shows a banner).
 - `OVERHEAR_FILE_LOGS=1` — append diagnostic logs to `/tmp/overhear.log` for meeting fetch/open flows and audio capture lifecycle events.
 - `OVERHEAR_FLUIDAUDIO_ASR_VERSION={v2|v3}` — choose the Parakeet v2 (English-only) or v3 (multilingual) bundle when FluidAudio is enabled.
@@ -87,5 +87,5 @@ All processing is **local-first** and privacy-conscious.
 
 ## FluidAudio configuration
 
-- FluidAudio downloads models to `~/Library/Application Support/FluidAudio/Models/<repo>` the first time `OVERHEAR_USE_FLUIDAUDIO=1` is seen. You can point the ASR/diarization caches at pre-staged folders via the `OVERHEAR_FLUIDAUDIO_ASR_MODELS` and `OVERHEAR_FLUIDAUDIO_DIARIZER_MODELS` environment variables if your CI or release artifact already ships the CoreML bundles.
+- FluidAudio downloads models to `~/Library/Application Support/Overhear/FluidAudio/Models/<repo>` the first time `OVERHEAR_USE_FLUIDAUDIO=1` is seen. You can point the ASR/diarization caches at pre-staged folders via the `OVERHEAR_FLUIDAUDIO_ASR_MODELS` and `OVERHEAR_FLUIDAUDIO_DIARIZER_MODELS` environment variables if your CI or release artifact already ships the CoreML bundles.
 - Set `OVERHEAR_FLUIDAUDIO_ASR_VERSION=v2` for the English-optimized Parakeet v2 bundle or `v3` for the multilingual model before the first launch or before models are downloaded so the correct archive is fetched. Changing this value after the models are cached requires deleting the existing directory and restarting the app to trigger a new download.

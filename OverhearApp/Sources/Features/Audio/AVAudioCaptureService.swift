@@ -166,5 +166,3 @@ private extension AVAudioPCMBuffer {
         return copy
     }
 }
-
-extension AVAudioPCMBuffer: @unchecked Sendable {}

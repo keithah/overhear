@@ -113,9 +113,9 @@ final class MeetingListViewModel: ObservableObject {
         isLoading = false
     }
 
-    func joinNextUpcoming() {
+    func joinNextUpcoming() async {
         if let meeting = nextUpcomingMeeting(includeAllDay: false) {
-            recordingCoordinator.startRecording(for: meeting)
+            await recordingCoordinator.startRecording(for: meeting)
             join(meeting: meeting)
         } else {
             log("No upcoming meeting to join via hotkey")
@@ -133,19 +133,19 @@ final class MeetingListViewModel: ObservableObject {
         }
     }
 
-    func joinAndRecord(meeting: Meeting) {
-        recordingCoordinator.startRecording(for: meeting)
+    func joinAndRecord(meeting: Meeting) async {
+        await recordingCoordinator.startRecording(for: meeting)
         join(meeting: meeting)
     }
 
-    func toggleRecordingForNextMeeting() {
+    func toggleRecordingForNextMeeting() async {
         if recordingCoordinator.isRecording {
-            recordingCoordinator.stopRecording()
+            await recordingCoordinator.stopRecording()
             return
         }
 
         if let meeting = recordingCoordinator.activeMeeting ?? nextUpcomingMeeting(includeAllDay: false) {
-            recordingCoordinator.startRecording(for: meeting)
+            await recordingCoordinator.startRecording(for: meeting)
         } else {
             log("No meeting to record")
         }

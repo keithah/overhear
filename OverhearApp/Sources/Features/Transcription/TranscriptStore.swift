@@ -71,6 +71,8 @@ actor TranscriptStore {
     private let decoder = JSONDecoder()
     private let encryptionKey: SymmetricKey
     private let persistenceEnabled: Bool
+
+    private static let meetingIDDelimiter = "__"
     
     init(storageDirectory: URL? = nil) throws {
         guard Self.isStorageEnabled else {
@@ -117,7 +119,7 @@ actor TranscriptStore {
     /// Save a transcript (encrypted)
     func save(_ transcript: StoredTranscript) async throws {
         guard persistenceEnabled else { throw Error.storageDisabled }
-        let fileURL = storageDirectory.appendingPathComponent("\(transcript.id).json")
+        let fileURL = storageDirectory.appendingPathComponent(Self.fileName(for: transcript))
         
         do {
             FileLogger.log(
@@ -137,9 +139,7 @@ actor TranscriptStore {
     /// Retrieve a transcript by ID (decrypted)
     func retrieve(id: String) async throws -> StoredTranscript {
         guard persistenceEnabled else { throw Error.storageDisabled }
-        let fileURL = storageDirectory.appendingPathComponent("\(id).json")
-        
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+        guard let fileURL = try fileURLForTranscript(id: id) else {
             throw Error.notFound
         }
         FileLogger.log(
@@ -250,9 +250,7 @@ actor TranscriptStore {
     /// Delete a transcript
     func delete(id: String) async throws {
         guard persistenceEnabled else { throw Error.storageDisabled }
-        let fileURL = storageDirectory.appendingPathComponent("\(id).json")
-        
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+        guard let fileURL = try fileURLForTranscript(id: id) else {
             throw Error.notFound
         }
         
@@ -265,32 +263,63 @@ actor TranscriptStore {
     
     /// Get transcripts for a specific meeting
     func transcriptsForMeeting(_ meetingID: String) async throws -> [StoredTranscript] {
-        try await transcripts(forMeetingID: meetingID)
+        return try await transcripts(forMeetingID: meetingID)
     }
 
     func transcripts(forMeetingID meetingID: String) async throws -> [StoredTranscript] {
         guard persistenceEnabled else { return [] }
         guard FileManager.default.fileExists(atPath: storageDirectory.path) else { return [] }
 
+        let safeMeetingID = Self.fileSafeMeetingID(meetingID)
+        let meetingPrefix = safeMeetingID + Self.meetingIDDelimiter
+
         let fileURLs = try FileManager.default.contentsOfDirectory(
             at: storageDirectory,
             includingPropertiesForKeys: nil
         ).filter { $0.pathExtension == "json" }
 
-        var transcripts: [StoredTranscript] = []
-        for fileURL in fileURLs {
-            do {
-                let data = try Data(contentsOf: fileURL)
-                let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
-                if transcript.meetingID == meetingID {
-                    transcripts.append(transcript)
+        let meetingFiles = fileURLs.filter { $0.lastPathComponent.hasPrefix(meetingPrefix) }
+        if !meetingFiles.isEmpty {
+            let transcripts = meetingFiles.compactMap { fileURL in
+                do {
+                    let data = try Data(contentsOf: fileURL)
+                    return try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
+                } catch {
+                    return nil
                 }
-            } catch {
-                continue
             }
+            return transcripts.sorted { $0.date > $1.date }
         }
 
-        return transcripts.sorted { $0.date > $1.date }
+        // Legacy fallback: prior versions stored transcripts as `id.json`, requiring scanning to filter by meetingID.
+        let transcripts = try await allTranscripts()
+        return transcripts.filter { $0.meetingID == meetingID }
+    }
+
+    private static func fileName(for transcript: StoredTranscript) -> String {
+        let safeMeetingID = fileSafeMeetingID(transcript.meetingID)
+        return "\(safeMeetingID)\(meetingIDDelimiter)\(transcript.id).json"
+    }
+
+    private static func fileSafeMeetingID(_ meetingID: String) -> String {
+        meetingID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? meetingID
+    }
+
+    private func fileURLForTranscript(id: String) throws -> URL? {
+        let legacyURL = storageDirectory.appendingPathComponent("\(id).json")
+        if FileManager.default.fileExists(atPath: legacyURL.path) {
+            return legacyURL
+        }
+
+        guard FileManager.default.fileExists(atPath: storageDirectory.path) else { return nil }
+
+        let suffix = "\(Self.meetingIDDelimiter)\(id).json"
+        let fileURLs = try FileManager.default.contentsOfDirectory(
+            at: storageDirectory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.lastPathComponent.hasSuffix(suffix) }
+
+        return fileURLs.first
     }
     
     // MARK: - Encryption

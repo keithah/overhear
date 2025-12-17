@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         context.hotkeyManager = HotkeyManager(
             preferences: context.preferencesService,
             toggleAction: { controller.togglePopoverAction() },
-            joinNextAction: { context.meetingViewModel.joinNextUpcoming() }
+            joinNextAction: { Task { await context.meetingViewModel.joinNextUpcoming() } }
         )
 
         // Keep strong reference to controller
