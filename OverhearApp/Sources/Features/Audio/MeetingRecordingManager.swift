@@ -5,6 +5,31 @@ import os.log
 import FluidAudio
 #endif
 
+struct TokenTimingSnapshot: Codable, Hashable, Sendable {
+    let start: TimeInterval
+    let end: TimeInterval
+}
+
+struct LiveTranscriptSegment: Identifiable, Sendable {
+    let id: UUID
+    let text: String
+    let isConfirmed: Bool
+    let timestamp: Date
+    let speaker: String?
+    let tokenTimings: [TokenTimingSnapshot]
+
+    func assigningSpeaker(_ speaker: String?) -> LiveTranscriptSegment {
+        LiveTranscriptSegment(
+            id: id,
+            text: text,
+            isConfirmed: isConfirmed,
+            timestamp: timestamp,
+            speaker: speaker,
+            tokenTimings: tokenTimings
+        )
+    }
+}
+
 /// Manages recording and transcription for a specific meeting
 @MainActor
 final class MeetingRecordingManager: ObservableObject {
@@ -41,6 +66,7 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var status: Status = .idle
     @Published private(set) var transcript: String = ""
     @Published private(set) var liveTranscript: String = ""
+    @Published private(set) var liveSegments: [LiveTranscriptSegment] = []
     @Published private(set) var audioFileURL: URL?
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     @Published private(set) var summary: MeetingSummary?
@@ -60,6 +86,9 @@ final class MeetingRecordingManager: ObservableObject {
     private var streamingManager: StreamingAsrManager?
     private var streamingObserverToken: UUID?
     private var streamingTask: Task<Void, Never>?
+    private var streamingConfirmedSegments: [LiveTranscriptSegment] = []
+    private var streamingHypothesis: LiveTranscriptSegment?
+    private var consecutiveEmptyStreamingUpdates = 0
 
     private var isStreamingEnabled: Bool {
         FluidAudioAdapter.isEnabled
@@ -112,7 +141,10 @@ final class MeetingRecordingManager: ObservableObject {
         status = .capturing
         captureStartTime = Date()
         liveTranscript = ""
+        liveSegments = []
 #if canImport(FluidAudio)
+        streamingConfirmedSegments = []
+        streamingHypothesis = nil
         if isStreamingEnabled {
             await startLiveStreaming()
         }
@@ -132,8 +164,18 @@ final class MeetingRecordingManager: ObservableObject {
                 startDate: meetingDate
             )
 
+            let prefetchedTranscript = streamingConfirmedSegments
+                .map(\.text)
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
+
             // Start transcription pipeline
-            await startTranscription(audioURL: audioURL, metadata: metadata, duration: duration)
+            await startTranscription(
+                audioURL: audioURL,
+                metadata: metadata,
+                duration: duration,
+                prefetchedTranscript: prefetchedTranscript.isEmpty ? nil : prefetchedTranscript
+            )
         } catch {
             await stopLiveStreaming()
             status = .failed(RecordingError.captureService(error))
@@ -153,24 +195,118 @@ final class MeetingRecordingManager: ObservableObject {
     
     // MARK: - Private
     
-    private func startTranscription(audioURL: URL, metadata: MeetingRecordingMetadata, duration: TimeInterval) async {
+    private func startTranscription(
+        audioURL: URL,
+        metadata: MeetingRecordingMetadata,
+        duration: TimeInterval,
+        prefetchedTranscript: String?
+    ) async {
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "startTranscription invoked for \(metadata.meetingID)"
+        )
         status = .transcribing
-        
-        let processingTask = Task { @MainActor in
+
+        // Build best-effort streaming text (confirmed + latest hypothesis)
+        let combinedStreaming = streamingConfirmedSegments.map(\.text).joined(separator: "\n")
+        let hypothesisText = streamingHypothesis?.text ?? ""
+        var bestEffortText = [combinedStreaming, hypothesisText]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n")
+
+        if bestEffortText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let prefetched = prefetchedTranscript?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !prefetched.isEmpty {
+            bestEffortText = prefetched
+        }
+
+        let quickID = metadata.meetingID
+        // Save immediately using best-effort text (or a placeholder) so UI can flip to Ready.
+        let quickTextToSave = bestEffortText.isEmpty ? "Transcription pending…" : bestEffortText
+        do {
+            let quick = try await pipeline.saveQuickTranscript(
+                transcriptText: quickTextToSave,
+                metadata: metadata,
+                duration: duration,
+                transcriptID: quickID
+            )
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Quick transcript saved id=\(quickID) textLength=\(quick.transcript.count)"
+            )
+            self.transcript = quick.transcript
+            self.liveTranscript = quick.transcript
+            self.liveSegments = self.streamingConfirmedSegments.isEmpty
+                ? [
+                    LiveTranscriptSegment(
+                        id: UUID(),
+                        text: quick.transcript,
+                        isConfirmed: true,
+                        timestamp: Date(),
+                        speaker: nil,
+                        tokenTimings: []
+                    )
+                ]
+                : self.streamingConfirmedSegments
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Quick transcript saved for \(metadata.meetingID); scheduling background refresh"
+            )
+        } catch {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Quick transcript save failed for \(metadata.meetingID): \(error.localizedDescription)"
+            )
+            status = .failed(RecordingError.transcriptionService(error))
+            return
+        }
+
+        let processingTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                let stored = try await pipeline.process(audioURL: audioURL, metadata: metadata, duration: duration)
-                self.transcript = stored.transcript
-                self.liveTranscript = stored.transcript
-                self.speakerSegments = stored.segments
-                self.summary = stored.summary
-                if let path = stored.audioFilePath {
-                    self.audioFileURL = URL(fileURLWithPath: path)
+                let stored = try await pipeline.process(
+                    audioURL: audioURL,
+                    metadata: metadata,
+                    duration: duration,
+                    prefetchedTranscript: quickTextToSave,
+                    overrideTranscriptID: metadata.meetingID
+                )
+                await MainActor.run {
+                    self.transcript = stored.transcript
+                    if self.streamingConfirmedSegments.isEmpty {
+                        self.liveTranscript = stored.transcript
+                        if !stored.transcript.isEmpty {
+                            self.liveSegments = [
+                                LiveTranscriptSegment(
+                                    id: UUID(),
+                                    text: stored.transcript,
+                                    isConfirmed: true,
+                                    timestamp: Date(),
+                                    speaker: nil,
+                                    tokenTimings: []
+                                )
+                            ]
+                        }
+                    } else {
+                        self.liveSegments = self.streamingConfirmedSegments
+                        self.liveTranscript = self.streamingConfirmedSegments.map(\.text).joined(separator: "\n")
+                    }
+                    self.speakerSegments = stored.segments
+                    self.applySpeakerLabelsIfPossible()
+                    self.summary = stored.summary
+                    if let path = stored.audioFilePath {
+                        self.audioFileURL = URL(fileURLWithPath: path)
+                    }
+                    status = .completed
                 }
-                status = .completed
             } catch is CancellationError {
-                status = .idle // Reset status on cancellation
+                await MainActor.run { status = .idle } // Reset status on cancellation
             } catch {
-                status = .failed(RecordingError.transcriptionService(error))
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Background refresh failed: \(error.localizedDescription)"
+                )
+                await MainActor.run { status = .completed } // keep quick transcript but mark finished
             }
         }
         self.transcriptionTask = processingTask
@@ -180,14 +316,46 @@ final class MeetingRecordingManager: ObservableObject {
 
 #if canImport(FluidAudio)
 private extension MeetingRecordingManager {
+    /// Streaming configuration tuned for balanced accuracy/latency for live transcripts.
+    private var streamingConfig: StreamingAsrConfig {
+        StreamingAsrConfig(
+            chunkSeconds: 6.0,
+            hypothesisChunkSeconds: 0.8,
+            leftContextSeconds: 1.0,
+            rightContextSeconds: 0.8,
+            minContextForConfirmation: 2.5,
+            confirmationThreshold: 0.6
+        )
+    }
+
     func startLiveStreaming() async {
         guard isStreamingEnabled, streamingManager == nil else { return }
 
         do {
-            let manager = StreamingAsrManager()
-            try await manager.start()
+            streamingConfirmedSegments = []
+            streamingHypothesis = nil
+            consecutiveEmptyStreamingUpdates = 0
+
+            let manager = StreamingAsrManager(config: streamingConfig)
             streamingManager = manager
-            FileLogger.log(category: "MeetingRecordingManager", message: "Streaming ASR started")
+
+            let updates = await manager.transcriptionUpdates
+            streamingTask = Task { [weak self] in
+                guard let self = self else { return }
+                logger.info("Streaming task launched; awaiting updates")
+                FileLogger.log(category: "MeetingRecordingManager", message: "Streaming updates subscriber started")
+                for await update in updates {
+                    await self.handleStreamingUpdate(update)
+                }
+                logger.info("Streaming updates stream ended")
+                FileLogger.log(category: "MeetingRecordingManager", message: "Streaming updates stream ended")
+            }
+
+            logger.info("Streaming ASR started; registering buffer observer")
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Streaming ASR starting with chunk=\(streamingConfig.chunkSeconds)s left=\(streamingConfig.leftContextSeconds)s right=\(streamingConfig.rightContextSeconds)s minConfirm=\(streamingConfig.minContextForConfirmation)s"
+            )
 
             streamingObserverToken = await captureService.registerBufferObserver { [weak manager] buffer in
                 guard let manager else { return }
@@ -196,12 +364,8 @@ private extension MeetingRecordingManager {
                 }
             }
 
-            streamingTask = Task { [weak self] in
-                let updates = await manager.transcriptionUpdates
-                for await update in updates {
-                    await self?.handleStreamingUpdate(update)
-                }
-            }
+            try await manager.start()
+            FileLogger.log(category: "MeetingRecordingManager", message: "Streaming ASR started")
         } catch {
             logger.error("Streaming ASR failed to start: \(error.localizedDescription, privacy: .public)")
             await stopLiveStreaming()
@@ -209,6 +373,24 @@ private extension MeetingRecordingManager {
     }
 
     func stopLiveStreaming() async {
+        if let pending = streamingHypothesis, !pending.text.isEmpty {
+            let confirmed = LiveTranscriptSegment(
+                id: pending.id,
+                text: pending.text,
+                isConfirmed: true,
+                timestamp: pending.timestamp,
+                speaker: pending.speaker,
+                tokenTimings: pending.tokenTimings
+            )
+            streamingConfirmedSegments.append(confirmed)
+            streamingHypothesis = nil
+            liveSegments = streamingConfirmedSegments
+            liveTranscript = streamingConfirmedSegments
+                .map(\.text)
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
+        }
+
         streamingTask?.cancel()
         streamingTask = nil
 
@@ -221,10 +403,113 @@ private extension MeetingRecordingManager {
     }
 
     @MainActor
-    func handleStreamingUpdate(_ update: StreamingTranscriptionUpdate) {
-        liveTranscript = update.text
+    func handleStreamingUpdate(_ update: StreamingTranscriptionUpdate) async {
+        let segmentID = streamingHypothesis?.id ?? UUID()
+        let timingSnapshots = update.tokenTimings.map { timing in
+            TokenTimingSnapshot(start: timing.startTime, end: timing.endTime)
+        }
+
+        let trimmed = update.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            consecutiveEmptyStreamingUpdates += 1
+            if consecutiveEmptyStreamingUpdates % 5 == 0 {
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Streaming still waiting on confirmed tokens (empty updates=\(consecutiveEmptyStreamingUpdates))"
+                )
+            }
+        } else {
+            consecutiveEmptyStreamingUpdates = 0
+        }
+
+        if update.isConfirmed {
+            if let existingIndex = streamingConfirmedSegments.firstIndex(where: { $0.id == segmentID }) {
+                streamingConfirmedSegments[existingIndex] = LiveTranscriptSegment(
+                    id: segmentID,
+                    text: update.text,
+                    isConfirmed: true,
+                    timestamp: update.timestamp,
+                    speaker: streamingConfirmedSegments[existingIndex].speaker,
+                    tokenTimings: timingSnapshots
+                )
+            } else if !update.text.isEmpty {
+                streamingConfirmedSegments.append(
+                    LiveTranscriptSegment(
+                        id: segmentID,
+                        text: update.text,
+                        isConfirmed: true,
+                        timestamp: update.timestamp,
+                        speaker: nil,
+                        tokenTimings: timingSnapshots
+                    )
+                )
+            }
+            streamingHypothesis = nil
+        } else {
+            streamingHypothesis = LiveTranscriptSegment(
+                id: segmentID,
+                text: update.text,
+                isConfirmed: false,
+                timestamp: update.timestamp,
+                speaker: nil,
+                tokenTimings: timingSnapshots
+            )
+        }
+
+        var segments = streamingConfirmedSegments
+        if let hyp = streamingHypothesis {
+            segments.append(hyp)
+        }
+        liveSegments = segments
+
+        let transcript = segments
+            .map(\.text)
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+
+        liveTranscript = transcript
         let status = update.isConfirmed ? "confirmed" : "hypothesis"
-        FileLogger.log(category: "MeetingRecordingManager", message: "Streaming update (\(status)): \(update.text)")
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "Streaming update (\(status)): \(update.text) [chars=\(update.text.count) tokens=\(update.tokenIds.count)]"
+        )
+        logger.debug("Streaming update (\(status)): \(update.text)")
+        applySpeakerLabelsIfPossible()
+    }
+
+    func applySpeakerLabelsIfPossible() {
+        guard !speakerSegments.isEmpty else { return }
+        guard !streamingConfirmedSegments.isEmpty else { return }
+
+        func label(for segment: LiveTranscriptSegment) -> String? {
+            let timings = segment.tokenTimings
+            guard !timings.isEmpty else { return nil }
+            var overlapBySpeaker: [String: TimeInterval] = [:]
+            for timing in timings {
+                let tokenRange = timing.start...timing.end
+                for diarization in speakerSegments {
+                    let diarizationRange = diarization.start...diarization.end
+                    let overlapStart = max(tokenRange.lowerBound, diarizationRange.lowerBound)
+                    let overlapEnd = min(tokenRange.upperBound, diarizationRange.upperBound)
+                    let overlap = max(0, overlapEnd - overlapStart)
+                    if overlap > 0 {
+                        overlapBySpeaker[diarization.speaker, default: 0] += overlap
+                    }
+                }
+            }
+            return overlapBySpeaker.max(by: { $0.value < $1.value })?.key
+        }
+
+        streamingConfirmedSegments = streamingConfirmedSegments.map { segment in
+            guard let speaker = label(for: segment) else { return segment }
+            return segment.assigningSpeaker(speaker)
+        }
+
+        var combined = streamingConfirmedSegments
+        if let hyp = streamingHypothesis {
+            combined.append(hyp)
+        }
+        liveSegments = combined
     }
 }
 #else

@@ -9,6 +9,8 @@ protocol FluidAudioClient: Sendable {
 
 /// Abstraction for wiring FluidAudio once the framework is available.
 enum FluidAudioAdapter {
+    private static let logger = Logger(subsystem: "com.overhear.app", category: "FluidAudioAdapter")
+
     static var isEnabled: Bool {
         ProcessInfo.processInfo.environment["OVERHEAR_USE_FLUIDAUDIO"] != "0"
     }
@@ -22,17 +24,28 @@ enum FluidAudioAdapter {
     }
 
     static func makeClient() -> FluidAudioClient? {
-        guard isEnabled else { return nil }
+        guard isEnabled else {
+            log("FluidAudio disabled via OVERHEAR_USE_FLUIDAUDIO=0")
+            return nil
+        }
+
         #if canImport(FluidAudio)
+        log("FluidAudio client available; initializing")
         return RealFluidAudioClient(configuration: FluidAudioConfiguration.fromEnvironment())
         #else
+        log("FluidAudio module unavailable at compile time")
         return nil
         #endif
+    }
+
+    private static func log(_ message: String) {
+        logger.info("\(message, privacy: .public)")
+        FileLogger.log(category: "FluidAudioAdapter", message: message)
     }
 }
 
 /// Marks that FluidAudio wiring is still pending so callers can fall back gracefully.
-private enum FluidAudioAdapterError: LocalizedError {
+enum FluidAudioAdapterError: LocalizedError {
     case notImplemented
     case initializationFailed(String)
     case diarizationFailed(String)
@@ -141,20 +154,39 @@ private final actor FluidAudioModelStore {
     }
 
     func transcribe(audioURL: URL) async throws -> ASRResult {
+        let start = Date()
         log("Transcription requested for \(audioURL.lastPathComponent)")
         let manager = try await ensureAsrManager()
-        let result = try await manager.transcribe(audioURL, source: .system)
-        log("Transcription completed (\(result.text.count) chars)")
-        return result
+        log("ASR manager ready; resampling and invoking FluidAudio transcription")
+        do {
+            // Normalize to FluidAudio-friendly PCM samples to avoid format errors
+            let samples = try await Task { try converter.resampleAudioFile(audioURL) }.value
+            let result = try await manager.transcribe(samples, source: .system)
+            let elapsed = Date().timeIntervalSince(start)
+            log("Transcription completed (\(result.text.count) chars) in \(String(format: "%.2fs", elapsed))")
+            return result
+        } catch {
+            let elapsed = Date().timeIntervalSince(start)
+            log("Transcription failed after \(String(format: "%.2fs", elapsed)): \(error.localizedDescription)")
+            throw error
+        }
     }
 
     func diarize(audioURL: URL) async throws -> DiarizationResult {
+        let start = Date()
         log("Diarization requested for \(audioURL.lastPathComponent)")
         let diarizer = try await ensureDiarizerManager()
         let samples = try await Task { try converter.resampleAudioFile(audioURL) }.value
-        let result = try diarizer.performCompleteDiarization(samples)
-        log("Diarization produced \(result.segments.count) segments")
-        return result
+        do {
+            let result = try diarizer.performCompleteDiarization(samples)
+            let elapsed = Date().timeIntervalSince(start)
+            log("Diarization produced \(result.segments.count) segments in \(String(format: "%.2fs", elapsed))")
+            return result
+        } catch {
+            let elapsed = Date().timeIntervalSince(start)
+            log("Diarization failed after \(String(format: "%.2fs", elapsed)): \(error.localizedDescription)")
+            throw error
+        }
     }
 
     private func log(_ message: String) {
@@ -166,6 +198,7 @@ private final actor FluidAudioModelStore {
 
     private func ensureAsrManager() async throws -> AsrManager {
         if let manager = asrManager {
+            log("ASR manager reuse; already initialized")
             return manager
         }
 
@@ -173,6 +206,7 @@ private final actor FluidAudioModelStore {
             asrContinuations.append(continuation)
             guard !isAsrInitializing else { return }
             isAsrInitializing = true
+            log("ASR manager initialization started")
             Task {
                 do {
                     let manager = try await buildAsrManager()
@@ -186,6 +220,7 @@ private final actor FluidAudioModelStore {
 
     private func ensureDiarizerManager() async throws -> DiarizerManager {
         if let manager = diarizerManager {
+            log("Diarizer manager reuse; already initialized")
             return manager
         }
 
@@ -193,6 +228,7 @@ private final actor FluidAudioModelStore {
             diarizerContinuations.append(continuation)
             guard !isDiarizerInitializing else { return }
             isDiarizerInitializing = true
+            log("Diarizer manager initialization started")
             Task {
                 do {
                     let manager = try await buildDiarizerManager()
@@ -207,9 +243,11 @@ private final actor FluidAudioModelStore {
     private func buildAsrManager() async throws -> AsrManager {
         let models = try await loadAsrModels()
         let manager = AsrManager()
+        log("Initializing FluidAudio ASR manager")
         try await manager.initialize(models: models)
         let versionDescription = String(describing: self.configuration.asrModelVersion)
         Self.logger.info("FluidAudio ASR initialized version \(versionDescription)")
+        FileLogger.log(category: "FluidAudioModelStore", message: "ASR manager initialized (version \(versionDescription))")
         return manager
     }
 

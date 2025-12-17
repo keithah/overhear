@@ -120,6 +120,10 @@ actor TranscriptStore {
         let fileURL = storageDirectory.appendingPathComponent("\(transcript.id).json")
         
         do {
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "save() writing \(fileURL.lastPathComponent)"
+            )
             let data = try encoder.encode(transcript)
             let encrypted = try Self.encryptData(data, using: encryptionKey)
             try encrypted.write(to: fileURL, options: [.atomic])
@@ -138,6 +142,10 @@ actor TranscriptStore {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw Error.notFound
         }
+        FileLogger.log(
+            category: "TranscriptStore",
+            message: "retrieve() reading \(fileURL.lastPathComponent)"
+        )
         
         let data = try Data(contentsOf: fileURL)
         return try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)

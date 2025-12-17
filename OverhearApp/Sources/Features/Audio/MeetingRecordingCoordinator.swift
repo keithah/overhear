@@ -7,6 +7,7 @@ final class MeetingRecordingCoordinator: ObservableObject {
     @Published private(set) var status: MeetingRecordingManager.Status = .idle
     @Published private(set) var activeMeeting: Meeting?
     @Published private(set) var liveTranscript: String = ""
+    @Published private(set) var liveSegments: [LiveTranscriptSegment] = []
     @Published var liveNotes: String = ""
 
     private var recordingManager: MeetingRecordingManager?
@@ -70,6 +71,7 @@ final class MeetingRecordingCoordinator: ObservableObject {
         logger.debug("Starting recording for \(meeting.title, privacy: .public)")
         await stopRecordingInternal()
         liveTranscript = ""
+        liveSegments = []
 
         do {
             let manager = try MeetingRecordingManager(
@@ -86,6 +88,10 @@ final class MeetingRecordingCoordinator: ObservableObject {
             transcriptSubscription = manager.$liveTranscript
                 .receive(on: RunLoop.main)
                 .sink { [weak self] in self?.liveTranscript = $0 }
+            manager.$liveSegments
+                .receive(on: RunLoop.main)
+                .sink { [weak self] in self?.liveSegments = $0 }
+                .store(in: &cancellables)
 
             status = manager.status
 
@@ -142,6 +148,7 @@ final class MeetingRecordingCoordinator: ObservableObject {
         hasRecordedOnce = false
         transcriptSubscription?.cancel()
         transcriptSubscription = nil
+        liveSegments = []
     }
 
     private func completeManualRecordingIfNeeded() {

@@ -26,7 +26,7 @@ struct TranscriptionView: View {
             
             // Transcript text area
             ScrollView {
-                Text(recordingManager.transcript.isEmpty ? "Waiting for audio..." : recordingManager.transcript)
+                Text(recordingManager.transcript.isEmpty ? "Transcription pending…" : recordingManager.transcript)
                     .font(.system(size: 12, design: .monospaced))
                     .lineLimit(nil)
                     .frame(maxWidth: .infinity, alignment: .leading)

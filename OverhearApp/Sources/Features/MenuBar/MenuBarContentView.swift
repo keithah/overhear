@@ -3,6 +3,7 @@ import AppKit
 
 extension NSNotification.Name {
     static let scrollToToday = NSNotification.Name("ScrollToToday")
+    static let closeMenuPopover = NSNotification.Name("CloseMenuPopover")
 }
 
 struct MenuBarContentView: View {
@@ -32,7 +33,7 @@ struct MenuBarContentView: View {
             }
             // Meetings list
             ScrollViewReader { proxy in
-                 ScrollView(.vertical) {
+             ScrollView(.vertical) {
                      VStack(alignment: .leading, spacing: 0) {
 if viewModel.isLoading {
                               HStack { 
@@ -69,7 +70,7 @@ if viewModel.isLoading {
                                         MinimalistMeetingRowView(
                                             meeting: meeting,
                                             use24HourClock: preferences.use24HourClock,
-                                            recorded: viewModel.recordedMeetingIDs.contains(meeting.id),
+                                            recorded: viewModel.isRecorded(meeting),
                                             manualRecordingStatus: viewModel.manualRecordingStatus(for: meeting),
                                             onJoin: viewModel.joinAndRecord,
                                             onShowRecordings: viewModel.showRecordings
@@ -78,18 +79,18 @@ if viewModel.isLoading {
                                         MeetingRowView(
                                             meeting: meeting,
                                             use24HourClock: preferences.use24HourClock,
-                                            recorded: viewModel.recordedMeetingIDs.contains(meeting.id),
+                                            recorded: viewModel.isRecorded(meeting),
                                             manualRecordingStatus: viewModel.manualRecordingStatus(for: meeting),
                                             onJoin: viewModel.joinAndRecord,
                                             onShowRecordings: viewModel.showRecordings
                                         )
                                             .padding(.horizontal, 6)
                                             .padding(.vertical, 3)
-                                     }
-                                 }
-                             }
-                         }
-                     }
+                                    }
+                                }
+                            }
+                        }
+                    }
                      .padding(.vertical, 4)
                   }
 .onAppear {
@@ -162,9 +163,6 @@ if viewModel.isLoading {
             .padding(.vertical, 6)
         }
         .frame(width: preferences.viewMode == .minimalist ? 360 : 360, height: calculateHeight())
-        .sheet(item: $viewModel.selectedTranscript) { transcript in
-            TranscriptDetailView(transcript: transcript)
-        }
     }
     
     private var allMeetings: [Meeting] {
@@ -293,17 +291,7 @@ struct LiveNotesView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
 
-                ScrollView {
-                    Text(coordinator.liveTranscript.isEmpty ? "Waiting for audio…" : coordinator.liveTranscript)
-                        .font(.system(size: 13, weight: .regular, design: .monospaced))
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 4)
-                }
-                .frame(maxHeight: 160)
-                .background(Color(NSColor.textBackgroundColor))
-                .cornerRadius(6)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
+                LiveTranscriptList(segments: coordinator.liveSegments)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -365,6 +353,69 @@ struct RecordingBannerView: View {
         .background(Color(NSColor.windowBackgroundColor).opacity(0.9))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.blue.opacity(0.2)))
         .padding(.horizontal, 6)
+    }
+}
+
+struct LiveTranscriptList: View {
+    let segments: [LiveTranscriptSegment]
+    private let palette: [Color] = [
+        .blue, .purple, .green, .orange, .pink, .teal, .indigo, .brown
+    ]
+
+    private func color(for speaker: String) -> Color {
+        let hash = abs(speaker.hashValue)
+        return palette[hash % palette.count]
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    if segments.isEmpty {
+                        Text("Waiting for audio…")
+                            .font(.system(size: 13, weight: .regular, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ForEach(segments) { segment in
+                            VStack(alignment: .leading, spacing: 4) {
+                                if let speaker = segment.speaker {
+                                    Text(speaker)
+                                        .font(.caption.bold())
+                                        .foregroundColor(color(for: speaker))
+                                }
+                                Text(segment.text)
+                                    .font(.system(size: 13, weight: .regular, design: .monospaced))
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(segment.isConfirmed ? Color(NSColor.controlBackgroundColor) : Color.blue.opacity(0.15))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(segment.isConfirmed ? Color.secondary.opacity(0.25) : Color.blue.opacity(0.35))
+                            )
+                            .id(segment.id)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+            }
+            .onChange(of: segments.count) { _ in
+                if let last = segments.last {
+                    withAnimation {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+        }
+        .frame(maxHeight: 200)
+        .background(Color(NSColor.textBackgroundColor))
+        .cornerRadius(6)
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
     }
 }
 

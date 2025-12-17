@@ -13,60 +13,39 @@ protocol DiarizationEngine: Sendable {
 
 enum TranscriptionEngineFactory {
     static func makeEngine() -> TranscriptionEngine {
-        // Feature flag for future FluidAudio integration
-        let useFluid = FluidAudioAdapter.isEnabled
-        let engineDescription: String
-        if useFluid, let fluid = FluidAudioAdapter.makeClient() {
-            engineDescription = "FluidAudio"
-            FileLogger.log(category: "TranscriptionEngineFactory", message: "FluidAudio enabled, using FluidAudioTranscriptionEngine")
-            return FluidAudioTranscriptionEngine(fluid: fluid, fallback: TranscriptionService())
-        } else {
-            engineDescription = "Whisper"
-            FileLogger.log(category: "TranscriptionEngineFactory", message: "FluidAudio disabled/ unavailable, falling back to \(engineDescription)")
+        // Apple Silicon first: use FluidAudio when available/enabled.
+        if FluidAudioAdapter.isEnabled, let fluid = FluidAudioAdapter.makeClient() {
+            FileLogger.log(category: "TranscriptionEngineFactory", message: "FluidAudio enabled, using FluidAudioTranscriptionEngine (no whisper fallback)")
+            return FluidAudioTranscriptionEngine(fluid: fluid)
         }
+
+        // Fallback only if FluidAudio is unavailable at build/runtime.
+        FileLogger.log(category: "TranscriptionEngineFactory", message: "FluidAudio unavailable; falling back to Whisper transcription")
         return TranscriptionService()
     }
 }
 
-/// Placeholder for FluidAudio-backed transcription. Currently falls back with a clear error
-/// so we can wire FluidAudio later without changing call sites.
+/// FluidAudio-backed transcription engine. Designed to be the primary/sole engine on Apple Silicon.
 struct FluidAudioTranscriptionEngine: TranscriptionEngine {
-    enum FluidError: LocalizedError {
-        case notAvailable
-        var errorDescription: String? {
-            "FluidAudio transcription not yet available in this build."
-        }
-        var recoverySuggestion: String? {
-            "Falling back to the built-in Whisper transcription engine."
-        }
-    }
-    
     private let fluid: FluidAudioClient?
-    private let fallback: TranscriptionEngine
     private let logger = Logger(subsystem: "com.overhear.app", category: "Transcription")
     
-    init(fluid: FluidAudioClient?, fallback: TranscriptionEngine) {
+    init(fluid: FluidAudioClient?) {
         self.fluid = fluid
-        self.fallback = fallback
     }
     
     func transcribe(audioURL: URL) async throws -> String {
         guard let fluid else {
-            logger.info("FluidAudio not available; falling back to Whisper transcription.")
-            return try await fallback.transcribe(audioURL: audioURL)
+            logger.info("FluidAudio not available; cannot transcribe.")
+            throw FluidAudioAdapterError.notImplemented
         }
 
         do {
             logger.debug("FluidAudio available; attempting Fluid transcription.")
-            let transcript = try await fluid.transcribe(url: audioURL)
-            if transcript.isEmpty {
-                logger.warning("FluidAudio returned empty transcript; falling back to Whisper transcription.")
-                return try await fallback.transcribe(audioURL: audioURL)
-            }
-            return transcript
+            return try await fluid.transcribe(url: audioURL)
         } catch {
-            logger.warning("FluidAudio transcription failed (\(error.localizedDescription)); falling back to Whisper transcription.")
-            return try await fallback.transcribe(audioURL: audioURL)
+            logger.warning("FluidAudio transcription failed (\(error.localizedDescription)); no whisper fallback configured.")
+            throw error
         }
     }
 }

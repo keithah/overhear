@@ -8,6 +8,12 @@ struct MeetingRowView: View {
     var onJoin: (Meeting) -> Void
     var onShowRecordings: (Meeting) -> Void = { _ in }
 
+    private var isRecordedOrReadyManual: Bool {
+        if recorded { return true }
+        if meeting.isManual { return true }
+        return false
+    }
+
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
     
@@ -76,13 +82,23 @@ struct MeetingRowView: View {
                 }
                 
                 Spacer()
-                if recorded {
+                // Always show tape for manual or recorded meetings so transcripts are discoverable.
+                if meeting.isManual || isRecordedOrReadyManual {
                     Button {
                         onShowRecordings(meeting)
                     } label: {
-                        Image(systemName: "tape")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                        HStack(spacing: 4) {
+                            Image(systemName: "tape")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("View")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.accentColor.opacity(0.2))
+                        )
                     }
                     .buttonStyle(.borderless)
                 } else if meeting.isManual, manualRecordingStatus == .processing {
@@ -100,7 +116,11 @@ struct MeetingRowView: View {
             isHovered = hovering
         }
         .onTapGesture {
-            onJoin(meeting)  // Always allow click
+            if meeting.isManual {
+                onShowRecordings(meeting)
+            } else {
+                onJoin(meeting)
+            }
         }
     }
 
@@ -141,6 +161,12 @@ struct MinimalistMeetingRowView: View {
         let today = calendar.startOfDay(for: Date())
         let eventDay = calendar.startOfDay(for: meeting.startDate)
         return eventDay < today
+    }
+
+    private var isRecordedOrReadyManual: Bool {
+        if recorded { return true }
+        if meeting.isManual { return true }
+        return false
     }
 
     var body: some View {
@@ -201,13 +227,23 @@ HStack(alignment: .center, spacing: 10) {
                      .truncationMode(.tail)
                  
                  Spacer()
-                 if recorded {
+                 // Always show tape for manual or recorded meetings.
+                 if meeting.isManual || isRecordedOrReadyManual {
                      Button {
                          onShowRecordings(meeting)
                      } label: {
-                         Image(systemName: "tape")
-                             .font(.system(size: 12))
-                             .foregroundColor(.secondary)
+                         HStack(spacing: 4) {
+                             Image(systemName: "tape")
+                                 .font(.system(size: 12, weight: .semibold))
+                             Text("View")
+                                 .font(.system(size: 11, weight: .medium))
+                         }
+                         .padding(.horizontal, 6)
+                         .padding(.vertical, 2)
+                         .background(
+                             RoundedRectangle(cornerRadius: 6)
+                                 .fill(Color.accentColor.opacity(0.2))
+                         )
                      }
                      .buttonStyle(.borderless)
                  } else if meeting.isManual, manualRecordingStatus == .processing {

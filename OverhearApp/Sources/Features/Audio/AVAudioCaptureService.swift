@@ -36,13 +36,15 @@ actor AVAudioCaptureService {
     private var isRecording = false
     private var durationTask: Task<Void, Never>?
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
-
+    private var bufferNotificationsLogged = 0
+   
     typealias AudioBufferObserver = @Sendable (AVAudioPCMBuffer) -> Void
 
     func startCapture(duration: TimeInterval, outputURL: URL) async throws -> URL {
         guard !isRecording else { throw Error.alreadyRecording }
         await log("startCapture requested (duration: \(duration)s, output: \(outputURL.path))")
         let format = engine.inputNode.outputFormat(forBus: 0)
+        await log("Input format: \(format.sampleRate) Hz, channels: \(format.channelCount)")
         try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
 
@@ -60,6 +62,7 @@ actor AVAudioCaptureService {
 
         try engine.start()
         await log("Audio engine started")
+        bufferNotificationsLogged = 0
         self.file = file
         self.outputURL = outputURL
         self.isRecording = true
@@ -84,6 +87,7 @@ actor AVAudioCaptureService {
     func registerBufferObserver(_ observer: @escaping AudioBufferObserver) -> UUID {
         let id = UUID()
         bufferObservers[id] = observer
+        FileLogger.log(category: "AVAudioCaptureService", message: "Registered buffer observer (total \(bufferObservers.count))")
         return id
     }
 
@@ -123,6 +127,10 @@ actor AVAudioCaptureService {
 
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer) {
         guard !bufferObservers.isEmpty else { return }
+        bufferNotificationsLogged += 1
+        if bufferNotificationsLogged <= 5 {
+            FileLogger.log(category: "AVAudioCaptureService", message: "notifyBufferObservers count=\(bufferNotificationsLogged), frameLength=\(buffer.frameLength)")
+        }
         for observer in bufferObservers.values {
             guard let copy = buffer.cloned() else { continue }
             observer(copy)

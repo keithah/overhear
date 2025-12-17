@@ -8,11 +8,12 @@ import os.log
 final class MenuBarController: NSObject, NSMenuDelegate {
      private var statusItem: NSStatusItem?
      private var popover = NSPopover()
-     private var iconUpdateTimer: Timer?
-     private var minuteUpdateTimer: Timer?
-     private var eventMonitor: Any?
-     private var dataCancellable: AnyCancellable?
-     private var recordingCancellable: AnyCancellable?
+    private var iconUpdateTimer: Timer?
+    private var minuteUpdateTimer: Timer?
+    private var eventMonitor: Any?
+    private var closePopoverObserver: NSObjectProtocol?
+    private var dataCancellable: AnyCancellable?
+    private var recordingCancellable: AnyCancellable?
      private let viewModel: MeetingListViewModel
      private let preferencesWindowController: PreferencesWindowController
      private let preferences: PreferencesService
@@ -53,6 +54,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
         }
+        if let observer = closePopoverObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        NotificationCenter.default.removeObserver(self)
     }
 
      func setup() {
@@ -80,12 +85,22 @@ final class MenuBarController: NSObject, NSMenuDelegate {
          // Store status item (must be retained)
          statusItem = item
          
-         // Update whenever meeting data changes so we don't wait for the minute timer
-         dataCancellable = viewModel.$upcomingSections
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.updateStatusItemIcon()
-            }
+        // Update whenever meeting data changes so we don't wait for the minute timer
+        dataCancellable = viewModel.$upcomingSections
+           .receive(on: RunLoop.main)
+           .sink { [weak self] _ in
+               self?.updateStatusItemIcon()
+           }
+
+        closePopoverObserver = NotificationCenter.default.addObserver(
+            forName: .closeMenuPopover,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            FileLogger.log(category: "MenuBarController", message: "Received closeMenuPopover notification; closing popover")
+            self?.closePopover()
+        }
+        FileLogger.log(category: "MenuBarController", message: "Registered closeMenuPopover observer")
         
         // Update when recording state changes (so icon badge can appear)
         recordingCancellable = recordingCoordinator.$status
@@ -171,7 +186,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     
     func closePopover() {
         if popover.isShown {
+            FileLogger.log(category: "MenuBarController", message: "Closing popover")
             popover.performClose(nil)
+        } else {
+            FileLogger.log(category: "MenuBarController", message: "Popover already closed; ignoring close request")
         }
     }
     

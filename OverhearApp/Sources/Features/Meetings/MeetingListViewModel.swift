@@ -184,10 +184,15 @@ final class MeetingListViewModel: ObservableObject {
         manualRecordings.append(meeting)
         manualRecordings.sort { $0.startDate < $1.startDate }
         apply(meetings: cachedCalendarMeetings)
+        recordedMeetingIDs.insert(meeting.id)
+        updateManualRecordingStatus(meetingID: meeting.id, status: .ready)
+        FileLogger.log(
+            category: "MeetingListViewModel",
+            message: "Manual completion: marked \(meeting.id) ready; recorded IDs now \(recordedMeetingIDs.count)"
+        )
         Task {
             await refreshRecordedMeetingIDs()
         }
-        updateManualRecordingStatus(meetingID: meeting.id, status: .processing)
     }
 
     private func dayTitle(for date: Date, calendar: Calendar) -> String {
@@ -240,13 +245,23 @@ final class MeetingListViewModel: ObservableObject {
         guard let store = transcriptStore else { return }
         Task {
             do {
+                FileLogger.log(category: "MeetingListViewModel", message: "showRecordings invoked for \(meeting.id)")
                 let transcripts = try await store.transcripts(forMeetingID: meeting.id)
-                guard let latest = transcripts.first else { return }
+                FileLogger.log(category: "MeetingListViewModel", message: "Found \(transcripts.count) transcript(s) for \(meeting.id)")
+                guard let latest = transcripts.first else {
+                    FileLogger.log(category: "MeetingListViewModel", message: "No transcripts found for \(meeting.id)")
+                    return
+                }
                 await MainActor.run {
-                    self.selectedTranscript = latest
+                    FileLogger.log(category: "MeetingListViewModel", message: "Posting closeMenuPopover before opening transcript \(latest.id)")
+                    NotificationCenter.default.post(name: .closeMenuPopover, object: nil)
+                    FileLogger.log(category: "MeetingListViewModel", message: "Opening transcript window for \(meeting.id) id=\(latest.id)")
+                    TranscriptWindowController.shared.show(transcript: latest)
+                    FileLogger.log(category: "MeetingListViewModel", message: "Transcript window show() returned for \(latest.id)")
                 }
             } catch {
                 logger.error("Failed to load transcript for \(meeting.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                FileLogger.log(category: "MeetingListViewModel", message: "Failed to load transcript for \(meeting.id): \(error.localizedDescription)")
             }
         }
     }
@@ -259,9 +274,24 @@ final class MeetingListViewModel: ObservableObject {
 
         do {
             let transcripts = try await store.allTranscripts()
-            recordedMeetingIDs = Set(transcripts.map { $0.meetingID })
+            var recorded = Set(transcripts.map { $0.meetingID })
+            // Ensure manual recordings that have already been marked ready stay visible
+            let readyManuals = manualRecordingStatuses
+                .filter { $0.value == .ready }
+                .map(\.key)
+            recorded.formUnion(readyManuals)
+            recordedMeetingIDs = recorded
+            FileLogger.log(
+                category: "MeetingListViewModel",
+                message: "Refreshed recorded IDs: store=\(transcripts.count) readyManuals=\(readyManuals.count) total=\(recordedMeetingIDs.count)"
+            )
+            updatePersistedManualRecordings(with: transcripts)
         } catch {
             logger.error("Failed to refresh recorded IDs: \(error.localizedDescription, privacy: .public)")
+            FileLogger.log(
+                category: "MeetingListViewModel",
+                message: "Refresh recorded IDs failed: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -270,11 +300,45 @@ final class MeetingListViewModel: ObservableObject {
         return manualRecordingStatuses[meeting.id]
     }
 
+    func isRecorded(_ meeting: Meeting) -> Bool {
+        // Manual recordings always represent captured audio; show the tape immediately.
+        if meeting.isManual { return true }
+        return recordedMeetingIDs.contains(meeting.id)
+    }
+
     private func updateManualRecordingStatus(meetingID: String, status: ManualRecordingStatus?) {
         if let status {
             manualRecordingStatuses[meetingID] = status
         } else {
             manualRecordingStatuses.removeValue(forKey: meetingID)
+        }
+    }
+
+    private func updatePersistedManualRecordings(with transcripts: [StoredTranscript]) {
+        let manualTranscripts = transcripts.filter { $0.meetingID.hasPrefix("manual-") }
+        var didAddMeeting = false
+
+        for transcript in manualTranscripts {
+            manualRecordingStatuses[transcript.meetingID] = .ready
+            let endDate = transcript.date.addingTimeInterval(transcript.duration)
+
+            if manualRecordings.contains(where: { $0.id == transcript.meetingID }) {
+                continue
+            }
+
+            let meeting = Meeting.manualRecording(
+                id: transcript.meetingID,
+                title: transcript.title,
+                startDate: transcript.date,
+                endDate: endDate
+            )
+            manualRecordings.append(meeting)
+            didAddMeeting = true
+        }
+
+        if didAddMeeting {
+            manualRecordings.sort { $0.startDate < $1.startDate }
+            apply(meetings: cachedCalendarMeetings)
         }
     }
 }
