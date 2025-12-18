@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var menuBarController: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
         bootstrapFileLoggingFlag()
 
         // Default to accessory menubar mode; CalendarService will temporarily promote if needed.
@@ -76,6 +77,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Default to disabled unless explicitly opted-in.
         if defaults.object(forKey: "overhear.enableFileLogs") == nil {
             defaults.set(false, forKey: "overhear.enableFileLogs")
+        }
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard let context = context else { return }
+        let id = response.actionIdentifier
+        let content = response.notification.request.content
+        let appName = content.title.replacingOccurrences(of: "Meeting window detected (", with: "").replacingOccurrences(of: ")", with: "")
+        let meetingTitle = content.body
+
+        if id == "com.overhear.notification.start" {
+            context.autoRecordingCoordinator.onDetection(appName: appName, meetingTitle: meetingTitle)
+        } else if id == "com.overhear.notification.dismiss" {
+            context.autoRecordingCoordinator.onNoDetection()
         }
     }
 }
