@@ -7,6 +7,8 @@ final class CallDetectionService {
     private var pollTimer: Timer?
     private var lastNotifiedApp: String?
     private var lastNotifiedTitle: String?
+    private let micMonitor = MicUsageMonitor()
+    private var isMicActive = false
 
     // Known meeting bundle IDs (native apps) and browsers used for Meet.
     private let supportedMeetingBundles: Set<String> = [
@@ -22,6 +24,12 @@ final class CallDetectionService {
 
     func start() {
         guard pollTimer == nil else { return }
+        micMonitor.onChange = { [weak self] active in
+            Task { @MainActor [weak self] in
+                self?.isMicActive = active
+            }
+        }
+        micMonitor.start()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.pollFrontmostApp()
@@ -36,6 +44,7 @@ final class CallDetectionService {
         pollTimer = nil
         lastNotifiedApp = nil
         lastNotifiedTitle = nil
+        micMonitor.stop()
         logger.info("Call detection polling stopped")
     }
 
@@ -50,6 +59,9 @@ final class CallDetectionService {
             lastNotifiedTitle = nil
             return
         }
+
+        // Require mic-in-use to reduce false positives.
+        guard isMicActive else { return }
 
         guard let titleInfo = activeWindowTitle(for: app) else {
             return
