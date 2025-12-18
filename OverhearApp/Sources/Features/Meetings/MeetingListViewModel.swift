@@ -76,6 +76,16 @@ final class MeetingListViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Refresh meetings when the calendar store changes (new events, edits, deletions).
+        NotificationCenter.default.publisher(for: .EKEventStoreChanged)
+            .receive(on: RunLoop.main)
+            .debounce(for: .seconds(1), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.log("EKEventStoreChanged received; triggering reload")
+                Task { await self?.reload() }
+            }
+            .store(in: &cancellables)
+
         Task {
             await refreshRecordedMeetingIDs()
         }
