@@ -88,6 +88,14 @@ final class PreferencesService: ObservableObject {
         didSet { persist(joinNextMeetingHotkey, key: .joinNextMeetingHotkey) }
     }
 
+    @Published var meetingNotificationsEnabled: Bool {
+        didSet { persist(meetingNotificationsEnabled, key: .meetingNotificationsEnabled) }
+    }
+
+    @Published var autoRecordingEnabled: Bool {
+        didSet { persist(autoRecordingEnabled, key: .autoRecordingEnabled) }
+    }
+
     private let defaults: UserDefaults
     private var cancellables: Set<AnyCancellable> = []
 
@@ -111,6 +119,8 @@ final class PreferencesService: ObservableObject {
         self.menubarDaysToShow = defaults.object(forKey: PreferenceKey.menubarDaysToShow.rawValue) as? Int ?? 3
         self.menubarToggleHotkey = defaults.string(forKey: PreferenceKey.menubarToggleHotkey.rawValue) ?? ""
         self.joinNextMeetingHotkey = defaults.string(forKey: PreferenceKey.joinNextMeetingHotkey.rawValue) ?? ""
+        self.meetingNotificationsEnabled = defaults.object(forKey: PreferenceKey.meetingNotificationsEnabled.rawValue) as? Bool ?? true
+        self.autoRecordingEnabled = defaults.object(forKey: PreferenceKey.autoRecordingEnabled.rawValue) as? Bool ?? false
 
         updateLaunchAtLogin(launchAtLogin)
     }
@@ -220,4 +230,6 @@ private enum PreferenceKey: String {
     case menubarDaysToShow
     case menubarToggleHotkey
     case joinNextMeetingHotkey
+    case meetingNotificationsEnabled
+    case autoRecordingEnabled
 }
