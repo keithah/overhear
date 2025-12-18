@@ -4,6 +4,7 @@ import Combine
 import Foundation
 import os.log
 
+@MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
      private var statusItem: NSStatusItem?
      private var popover = NSPopover()
@@ -185,28 +186,26 @@ final class MenuBarController: NSObject, NSMenuDelegate {
          }
          
          eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-             // Early return if popover is not shown or self is nil
-             guard let self = self, self.popover.isShown else {
-                 return event
+             Task { @MainActor [weak self] in
+                 guard let self = self, self.popover.isShown else {
+                     return
+                 }
+
+                 guard let popoverWindow = self.popover.contentViewController?.view.window,
+                       let button = self.statusItem?.button,
+                       let buttonWindow = button.window else {
+                     return
+                 }
+
+                 let clickScreenPoint = NSEvent.mouseLocation
+                 let popoverScreenFrame = popoverWindow.frame
+                 let buttonScreenFrame = buttonWindow.convertToScreen(button.frame)
+
+                 if !popoverScreenFrame.contains(clickScreenPoint) && !buttonScreenFrame.contains(clickScreenPoint) {
+                     self.closePopover()
+                 }
              }
-             
-             // Safely check for popover window and button
-             guard let popoverWindow = self.popover.contentViewController?.view.window,
-                   let button = self.statusItem?.button,
-                   let buttonWindow = button.window else {
-                 return event
-             }
-             
-             // Get the click location in screen coordinates
-             let clickScreenPoint = NSEvent.mouseLocation
-             let popoverScreenFrame = popoverWindow.frame
-             let buttonScreenFrame = buttonWindow.convertToScreen(button.frame)
-             
-             // If click is outside both popover and button, close popover
-             if !popoverScreenFrame.contains(clickScreenPoint) && !buttonScreenFrame.contains(clickScreenPoint) {
-                 self.closePopover()
-             }
-             
+
              return event
          }
      }
