@@ -91,12 +91,11 @@ final class CallDetectionService {
         let shouldNotify = preferences?.meetingNotificationsEnabled != false
         let shouldAutoRecord = preferences?.autoRecordingEnabled == true
 
+        let cleanTitle = cleanMeetingTitle(from: body)
         if shouldNotify {
-            let cleanTitle = cleanMeetingTitle(from: body)
             NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
         }
         if shouldAutoRecord {
-            let cleanTitle = cleanMeetingTitle(from: body)
             autoCoordinator?.onDetection(appName: appName, meetingTitle: cleanTitle)
         } else {
             autoCoordinator?.onNoDetection()
@@ -159,6 +158,9 @@ final class CallDetectionService {
         // Body may contain prompt text; strip that prefix if present.
         if let range = body.range(of: "Start a New Note? ") {
             return String(body[range.upperBound...])
+        }
+        if body.hasPrefix("Start a New Note?") && body.count < 30 {
+            return ""
         }
         return body
     }

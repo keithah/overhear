@@ -10,6 +10,7 @@ final class AutoRecordingCoordinator {
     private var activeTitle: String?
     @Published private(set) var isRecording: Bool = false
     var onCompleted: (() -> Void)?
+    var onStatusUpdate: ((String, Bool) -> Void)?
 
     func onDetection(appName: String, meetingTitle: String?) {
         // Cancel any pending stop since we have a fresh detection.
@@ -51,6 +52,7 @@ final class AutoRecordingCoordinator {
             activeManager = manager
             isRecording = true
             logger.info("Auto-record start for \(title, privacy: .public)")
+            onStatusUpdate?(title, true)
             Task {
                 await self.startAndMonitor(manager: manager)
             }
@@ -87,9 +89,14 @@ final class AutoRecordingCoordinator {
     private func clearState() async {
         stopWorkItem?.cancel()
         stopWorkItem = nil
+        let endedTitle = activeTitle
         activeManager = nil
         activeTitle = nil
         isRecording = false
+        if let endedTitle {
+            onStatusUpdate?(endedTitle, false)
+            NotificationHelper.sendRecordingCompleted(title: endedTitle, transcriptReady: true)
+        }
         onCompleted?()
     }
 
