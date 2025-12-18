@@ -90,10 +90,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         guard let context = context else { return }
         let id = response.actionIdentifier
         let content = response.notification.request.content
-        let appName = (content.userInfo["appName"] as? String) ?? content.title
-            .replacingOccurrences(of: "Meeting window detected (", with: "")
-            .replacingOccurrences(of: ")", with: "")
-        let meetingTitle = (content.userInfo["meetingTitle"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? content.body
+        let appName = (content.userInfo["appName"] as? String)
+            ?? (
+                content.title
+                    .replacingOccurrences(of: "Meeting window detected (", with: "")
+                    .replacingOccurrences(of: ")", with: "")
+            )
+        let rawMeetingTitle = (content.userInfo["meetingTitle"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? content.body
+        let meetingTitle = NotificationHelper.cleanMeetingTitle(from: rawMeetingTitle)
 
         if id == "com.overhear.notification.start" {
             await context.autoRecordingCoordinator.onDetection(appName: appName, meetingTitle: meetingTitle)

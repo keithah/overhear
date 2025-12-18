@@ -78,7 +78,7 @@ final class AutoRecordingCoordinator: ObservableObject {
 
     private func monitorStatus() async {
         guard let manager = activeManager else { return await clearState(transcriptReady: false) }
-        while true {
+        while !Task.isCancelled {
             let status = manager.status
             switch status {
             case .capturing, .transcribing:

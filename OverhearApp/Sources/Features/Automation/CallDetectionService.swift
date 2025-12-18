@@ -4,7 +4,7 @@ import os.log
 @MainActor
 final class CallDetectionService {
     private let logger = Logger(subsystem: "com.overhear.app", category: "CallDetectionService")
-    private var pollTimer: Timer?
+    private var activationObserver: NSObjectProtocol?
     private var lastNotifiedApp: String?
     private var lastNotifiedTitle: String?
     private let micMonitor = MicUsageMonitor()
@@ -25,7 +25,7 @@ final class CallDetectionService {
     ]
 
     func start(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {
-        guard pollTimer == nil else { return }
+        guard activationObserver == nil else { return }
         self.autoCoordinator = autoCoordinator
         self.preferences = preferences
         micMonitor.onChange = { [weak self] active in
@@ -34,18 +34,26 @@ final class CallDetectionService {
             }
         }
         micMonitor.start()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
             Task { @MainActor in
                 await self?.pollFrontmostApp()
             }
         }
-        RunLoop.main.add(pollTimer!, forMode: .common)
-        logger.info("Call detection polling started")
+        Task { @MainActor in
+            await self.pollFrontmostApp()
+        }
+        logger.info("Call detection started with activation observer")
     }
 
     func stop() {
-        pollTimer?.invalidate()
-        pollTimer = nil
+        if let observer = activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            activationObserver = nil
+        }
         lastNotifiedApp = nil
         lastNotifiedTitle = nil
         micMonitor.stop()
@@ -54,6 +62,10 @@ final class CallDetectionService {
 
     private func pollFrontmostApp() async {
         guard preferencesAllowNotifications else { return }
+        guard AXIsProcessTrusted() else {
+            logger.error("Accessibility not granted; skipping detection")
+            return
+        }
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier else {
             autoCoordinator?.onNoDetection()
@@ -91,7 +103,7 @@ final class CallDetectionService {
         let shouldNotify = preferences?.meetingNotificationsEnabled != false
         let shouldAutoRecord = preferences?.autoRecordingEnabled == true
 
-        let cleanTitle = cleanMeetingTitle(from: body)
+        let cleanTitle = NotificationHelper.cleanMeetingTitle(from: body)
         if shouldNotify {
             NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
         }
@@ -112,17 +124,22 @@ final class CallDetectionService {
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         var focusedWindow: AnyObject?
         let status = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
-        guard status == .success, let window = focusedWindow else { return nil }
+        guard status == .success,
+              let window = focusedWindow,
+              CFGetTypeID(window) == AXUIElementGetTypeID() else {
+            return nil
+        }
+        let axWindow = unsafeBitCast(window, to: AXUIElement.self)
 
         var titleValue: AnyObject?
-        AXUIElementCopyAttributeValue(window as! AXUIElement, kAXTitleAttribute as CFString, &titleValue)
+        AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleValue)
         let rawTitle = titleValue as? String ?? ""
 
         // For browsers, try to extract the URL to distinguish Meet.
         var urlDescription: String?
-        if let safariURL = copyURLAttribute(window: window, key: kAXURLAttribute as CFString) {
+        if let safariURL = copyURLAttribute(window: axWindow, key: kAXURLAttribute as CFString) {
             urlDescription = safariURL
-        } else if let chromeURL = copyURLAttribute(window: window, key: "AXDocument" as CFString) {
+        } else if let chromeURL = copyURLAttribute(window: axWindow, key: "AXDocument" as CFString) {
             urlDescription = chromeURL
         }
 
@@ -138,9 +155,9 @@ final class CallDetectionService {
         return (displayTitle: displayTitle, urlDescription: urlDescription)
     }
 
-    private func copyURLAttribute(window: AnyObject, key: CFString) -> String? {
+    private func copyURLAttribute(window: AXUIElement, key: CFString) -> String? {
         var urlValue: AnyObject?
-        let status = AXUIElementCopyAttributeValue(window as! AXUIElement, key, &urlValue)
+        let status = AXUIElementCopyAttributeValue(window, key, &urlValue)
         guard status == .success else { return nil }
         if let cfValue = urlValue, CFGetTypeID(cfValue) == CFURLGetTypeID() {
             return (cfValue as! URL).absoluteString
@@ -155,14 +172,4 @@ final class CallDetectionService {
         preferences?.meetingNotificationsEnabled != false || preferences?.autoRecordingEnabled == true
     }
 
-    private func cleanMeetingTitle(from body: String) -> String {
-        // Body may contain prompt text; strip that prefix if present.
-        if let range = body.range(of: "Start a New Note? ") {
-            return String(body[range.upperBound...])
-        }
-        if body.hasPrefix("Start a New Note?") && body.count < 30 {
-            return ""
-        }
-        return body
-    }
 }

@@ -169,4 +169,14 @@ extension NotificationHelper {
             }
         }
     }
+
+    static func cleanMeetingTitle(from body: String) -> String {
+        if let range = body.range(of: "Start a New Note? ") {
+            return String(body[range.upperBound...])
+        }
+        if body.hasPrefix("Start a New Note?") && body.count < 30 {
+            return ""
+        }
+        return body
+    }
 }
