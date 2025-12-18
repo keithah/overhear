@@ -2,7 +2,7 @@ import Foundation
 import os.log
 
 @MainActor
-final class AutoRecordingCoordinator {
+final class AutoRecordingCoordinator: ObservableObject {
     private let logger = Logger(subsystem: "com.overhear.app", category: "AutoRecordingCoordinator")
     private var activeManager: MeetingRecordingManager?
     private var stopWorkItem: DispatchWorkItem?

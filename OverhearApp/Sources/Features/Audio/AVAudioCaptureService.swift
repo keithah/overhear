@@ -181,7 +181,7 @@ actor AVAudioCaptureService {
 
 }
 
-private extension AVAudioPCMBuffer {
+extension AVAudioPCMBuffer {
     func cloned() -> AVAudioPCMBuffer? {
         guard let copy = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCapacity) else {
             return nil

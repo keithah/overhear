@@ -96,9 +96,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         let meetingTitle = (content.userInfo["meetingTitle"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? content.body
 
         if id == "com.overhear.notification.start" {
-            context.autoRecordingCoordinator.onDetection(appName: appName, meetingTitle: meetingTitle)
+            await context.autoRecordingCoordinator.onDetection(appName: appName, meetingTitle: meetingTitle)
         } else if id == "com.overhear.notification.dismiss" {
-            context.autoRecordingCoordinator.onNoDetection()
+            await context.autoRecordingCoordinator.onNoDetection()
         }
     }
 }

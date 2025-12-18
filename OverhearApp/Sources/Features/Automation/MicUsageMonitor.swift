@@ -28,11 +28,10 @@ final class MicUsageMonitor {
             Task { @MainActor in
                 await self?.refreshState()
             }
-            return noErr
         }
         listenerBlock = block
 
-        let defaultDevice = kAudioObjectSystemObject
+        let defaultDevice = AudioObjectID(kAudioObjectSystemObject)
         let status = AudioObjectAddPropertyListenerBlock(defaultDevice, &address, DispatchQueue.main, block)
         if status == noErr {
             listenerAdded = true
@@ -52,7 +51,7 @@ final class MicUsageMonitor {
             mScope: kAudioObjectPropertyScopeInput,
             mElement: kAudioObjectPropertyElementMain
         )
-        let defaultDevice = kAudioObjectSystemObject
+        let defaultDevice = AudioObjectID(kAudioObjectSystemObject)
         if let block = listenerBlock {
             AudioObjectRemovePropertyListenerBlock(defaultDevice, &address, DispatchQueue.main, block)
         }
@@ -70,7 +69,7 @@ final class MicUsageMonitor {
         var value: UInt32 = 0
         var dataSize = UInt32(MemoryLayout<UInt32>.size)
         let status = AudioObjectGetPropertyData(
-            kAudioObjectSystemObject,
+            AudioObjectID(kAudioObjectSystemObject),
             &address,
             0,
             nil,

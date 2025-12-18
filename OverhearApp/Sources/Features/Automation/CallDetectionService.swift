@@ -122,7 +122,7 @@ final class CallDetectionService {
         var urlDescription: String?
         if let safariURL = copyURLAttribute(window: window, key: kAXURLAttribute) {
             urlDescription = safariURL
-        } else if let chromeURL = copyURLAttribute(window: window, key: "AXDocument") {
+        } else if let chromeURL = copyURLAttribute(window: window, key: "AXDocument" as CFString) {
             urlDescription = chromeURL
         }
 
@@ -141,10 +141,11 @@ final class CallDetectionService {
     private func copyURLAttribute(window: AnyObject, key: CFString) -> String? {
         var urlValue: AnyObject?
         let status = AXUIElementCopyAttributeValue(window as! AXUIElement, key, &urlValue)
-        if status == .success, let cfURL = urlValue as? CFURL {
-            return (cfURL as URL).absoluteString
+        guard status == .success else { return nil }
+        if let cfValue = urlValue, CFGetTypeID(cfValue) == CFURLGetTypeID() {
+            return (cfValue as! URL).absoluteString
         }
-        if status == .success, let urlString = urlValue as? String {
+        if let urlString = urlValue as? String {
             return urlString
         }
         return nil
