@@ -70,23 +70,29 @@ final class AutoRecordingCoordinator {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
                 // Simple polling; MeetingRecordingManager doesn't expose a delegate.
-                while let status = await self?.activeManager?.status {
-                    switch status {
-                    case .capturing, .transcribing:
-                        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
-                        continue
-                    case .completed, .failed, .idle:
-                        await self?.clearState()
-                        return
-                    }
-                }
-                await self?.clearState()
+                await self?.monitorStatus()
             }
             await group.waitForAll()
         }
     }
 
-    private func clearState() async {
+    private func monitorStatus() async {
+        guard let manager = activeManager else { return await clearState(transcriptReady: false) }
+        while true {
+            let status = manager.status
+            switch status {
+            case .capturing, .transcribing:
+                try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
+                continue
+            case .completed:
+                return await clearState(transcriptReady: true)
+            case .failed, .idle:
+                return await clearState(transcriptReady: false)
+            }
+        }
+    }
+
+    private func clearState(transcriptReady: Bool = false) async {
         stopWorkItem?.cancel()
         stopWorkItem = nil
         let endedTitle = activeTitle
@@ -95,7 +101,7 @@ final class AutoRecordingCoordinator {
         isRecording = false
         if let endedTitle {
             onStatusUpdate?(endedTitle, false)
-            NotificationHelper.sendRecordingCompleted(title: endedTitle, transcriptReady: true)
+            NotificationHelper.sendRecordingCompleted(title: endedTitle, transcriptReady: transcriptReady)
         }
         onCompleted?()
     }
