@@ -9,6 +9,7 @@ final class CallDetectionService {
     private var lastNotifiedTitle: String?
     private let micMonitor = MicUsageMonitor()
     private var isMicActive = false
+    private weak var autoCoordinator: AutoRecordingCoordinator?
 
     // Known meeting bundle IDs (native apps) and browsers used for Meet.
     private let supportedMeetingBundles: Set<String> = [
@@ -22,8 +23,9 @@ final class CallDetectionService {
         "com.microsoft.edgemac"
     ]
 
-    func start() {
+    func start(autoCoordinator: AutoRecordingCoordinator?) {
         guard pollTimer == nil else { return }
+        self.autoCoordinator = autoCoordinator
         micMonitor.onChange = { [weak self] active in
             Task { @MainActor [weak self] in
                 self?.isMicActive = active
@@ -78,6 +80,7 @@ final class CallDetectionService {
         let appName = app.localizedName ?? bundleID
         let body = titleInfo.urlDescription ?? titleInfo.displayTitle
         NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: body)
+        autoCoordinator?.onDetection(appName: appName, meetingTitle: body)
         logger.info("Detected meeting window for \(appName, privacy: .public) title=\(body, privacy: .public)")
     }
 

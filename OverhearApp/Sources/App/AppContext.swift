@@ -8,6 +8,7 @@ final class AppContext: ObservableObject {
     let meetingViewModel: MeetingListViewModel
     let preferencesWindowController: PreferencesWindowController
     let callDetectionService: CallDetectionService
+    let autoRecordingCoordinator: AutoRecordingCoordinator
     var menuBarController: MenuBarController?
     var hotkeyManager: HotkeyManager?
 
@@ -21,5 +22,6 @@ final class AppContext: ObservableObject {
         self.meetingViewModel = MeetingListViewModel(calendarService: calendar, preferences: preferences)
         self.preferencesWindowController = PreferencesWindowController(preferences: preferences, calendarService: calendar)
         self.callDetectionService = CallDetectionService()
+        self.autoRecordingCoordinator = AutoRecordingCoordinator()
     }
 }
