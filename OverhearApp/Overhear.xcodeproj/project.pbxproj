@@ -99,10 +99,10 @@
 	82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRowView.swift; sourceTree = "<group>"; };
 	5B3C1D4E6A9845A4B7F8C2DA /* TranscriptWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptWindowController.swift; sourceTree = "<group>"; };
 
-		FD7D27902BBF20D900A5CB6F /* AutoRecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoRecordingCoordinator.swift; sourceTree = "<group>"; };
-		FD7D27922BBF20EA00A5CB6F /* CallDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDetectionService.swift; sourceTree = "<group>"; };
-		FD7D27942BBF20F500A5CB6F /* MicUsageMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicUsageMonitor.swift; sourceTree = "<group>"; };
-		FD7D27962BBF20FE00A5CB6F /* RecordingStateIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateIndicator.swift; sourceTree = "<group>"; };
+		FD7D27902BBF20D900A5CB6F /* AutoRecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/AutoRecordingCoordinator.swift; sourceTree = "<group>"; };
+		FD7D27922BBF20EA00A5CB6F /* CallDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/CallDetectionService.swift; sourceTree = "<group>"; };
+		FD7D27942BBF20F500A5CB6F /* MicUsageMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/MicUsageMonitor.swift; sourceTree = "<group>"; };
+		FD7D27962BBF20FE00A5CB6F /* RecordingStateIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/RecordingStateIndicator.swift; sourceTree = "<group>"; };
 
 /* End PBXFileReference section */
 
