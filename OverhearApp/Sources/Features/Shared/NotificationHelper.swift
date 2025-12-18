@@ -79,6 +79,27 @@ extension NotificationHelper {
         }
         content.sound = .default
 
+        // Add action buttons
+        let startAction = UNNotificationAction(
+            identifier: "com.overhear.notification.start",
+            title: "Start New Note",
+            options: [.foreground]
+        )
+        let dismissAction = UNNotificationAction(
+            identifier: "com.overhear.notification.dismiss",
+            title: "Dismiss",
+            options: [.destructive]
+        )
+
+        let category = UNNotificationCategory(
+            identifier: "com.overhear.notification.meeting-detected",
+            actions: [startAction, dismissAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+        content.categoryIdentifier = category.identifier
+
         let request = UNNotificationRequest(
             identifier: "com.overhear.notification.meeting-detected.\(UUID().uuidString)",
             content: content,

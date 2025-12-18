@@ -8,6 +8,7 @@ extension NSNotification.Name {
 struct MenuBarContentView: View {
      @ObservedObject var viewModel: MeetingListViewModel
      @ObservedObject var preferences: PreferencesService
+     @ObservedObject var autoRecordingCoordinator: AutoRecordingCoordinator
      var openPreferences: () -> Void
     
      
@@ -15,11 +16,20 @@ struct MenuBarContentView: View {
      
      
 
-      var body: some View {
-         VStack(spacing: 0) {
-             // Meetings list
-             ScrollViewReader { proxy in
-                 ScrollView(.vertical) {
+     var body: some View {
+        VStack(spacing: 0) {
+            if autoRecordingCoordinator.isRecording, let title = autoRecordingCoordinator.currentRecordingTitle() {
+                RecordingStateIndicator(title: title) {
+                    Task { @MainActor in
+                        await autoRecordingCoordinator.stopRecording()
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+            }
+            // Meetings list
+            ScrollViewReader { proxy in
+             ScrollView(.vertical) {
                      VStack(alignment: .leading, spacing: 0) {
 if viewModel.isLoading {
                               HStack { 

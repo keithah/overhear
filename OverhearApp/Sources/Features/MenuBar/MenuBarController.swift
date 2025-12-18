@@ -14,7 +14,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
      private var dataCancellable: AnyCancellable?
      private let viewModel: MeetingListViewModel
      private let preferencesWindowController: PreferencesWindowController
-     private let preferences: PreferencesService
+    private let preferences: PreferencesService
+    private let autoRecordingCoordinator: AutoRecordingCoordinator?
      private let iconProvider = MenuBarIconProvider()
     private let logger = Logger(subsystem: "com.overhear.app", category: "MenuBar")
 
@@ -32,10 +33,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         return formatter
     }()
 
-    init(viewModel: MeetingListViewModel, preferencesWindowController: PreferencesWindowController, preferences: PreferencesService) {
+    init(viewModel: MeetingListViewModel, preferencesWindowController: PreferencesWindowController, preferences: PreferencesService, autoRecordingCoordinator: AutoRecordingCoordinator? = nil) {
          self.viewModel = viewModel
          self.preferencesWindowController = preferencesWindowController
          self.preferences = preferences
+         self.autoRecordingCoordinator = autoRecordingCoordinator
          super.init()
      }
 
@@ -62,9 +64,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
          // Setup popover
          popover.behavior = .transient  // Close immediately when clicking outside
          popover.contentSize = NSSize(width: 380, height: 520)
-         popover.contentViewController = NSHostingController(rootView: MenuBarContentView(viewModel: viewModel, preferences: preferences) {
-             self.showPreferences()
-         })
+         popover.contentViewController = NSHostingController(rootView: MenuBarContentView(
+            viewModel: viewModel,
+            preferences: preferences,
+            autoRecordingCoordinator: autoRecordingCoordinator ?? AutoRecordingCoordinator(),
+            openPreferences: { self.showPreferences() }
+         ))
          
          // Store status item (must be retained)
          statusItem = item

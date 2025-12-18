@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await requestCalendarAccessWithActivation(context: context, retryDelay: 1.0)
         }
 
-        let controller = MenuBarController(viewModel: context.meetingViewModel, preferencesWindowController: context.preferencesWindowController, preferences: context.preferencesService)
+        let controller = MenuBarController(viewModel: context.meetingViewModel, preferencesWindowController: context.preferencesWindowController, preferences: context.preferencesService, autoRecordingCoordinator: context.autoRecordingCoordinator)
         controller.setup()
         context.menuBarController = controller
 

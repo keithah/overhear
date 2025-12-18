@@ -88,10 +88,13 @@ final class CallDetectionService {
 
         let appName = app.localizedName ?? bundleID
         let body = titleInfo.urlDescription ?? titleInfo.displayTitle
-        if preferences?.meetingNotificationsEnabled != false {
+        let shouldNotify = preferences?.meetingNotificationsEnabled != false
+        let shouldAutoRecord = preferences?.autoRecordingEnabled == true
+
+        if shouldNotify {
             NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: body)
         }
-        if preferences?.autoRecordingEnabled == true {
+        if shouldAutoRecord {
             autoCoordinator?.onDetection(appName: appName, meetingTitle: body)
         } else {
             autoCoordinator?.onNoDetection()
