@@ -98,8 +98,13 @@ enum NotificationHelper {
 extension NotificationHelper {
     static func sendRecordingCompleted(title: String, transcriptReady: Bool) {
         let content = UNMutableNotificationContent()
-        content.title = "New Note \(transcriptReady ? "ready" : "stopped")"
-        content.body = transcriptReady ? "\(title) transcript is ready." : "\(title) recording stopped."
+        if transcriptReady {
+            content.title = "New Note ready"
+            content.body = "\(title) transcript is ready."
+        } else {
+            content.title = "Recording stopped"
+            content.body = "\(title) recording stopped."
+        }
         content.sound = .default
 
         let request = UNNotificationRequest(
