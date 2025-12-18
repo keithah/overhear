@@ -16,7 +16,7 @@ final class PermissionsService: ObservableObject {
         calendarAuthorizationStatus = status
         
         // If already have permission, return true
-        if status == .authorized || status == .fullAccess {
+        if status == .fullAccess || status == .authorized {
             return true
         }
         
