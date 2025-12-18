@@ -46,7 +46,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
          super.init()
      }
 
-    @MainActor deinit {
+    deinit {
         iconUpdateTimer?.invalidate()
         minuteUpdateTimer?.invalidate()
         dataCancellable?.cancel()

@@ -75,7 +75,6 @@ final class HotkeyManager {
         }
     }
 
-    @MainActor
     deinit {
         if let token = monitorBox.token {
             NSEvent.removeMonitor(token)
