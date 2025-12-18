@@ -46,7 +46,7 @@ actor AVAudioCaptureService {
     private var captureStartDate: Date?
     private var requestedDuration: TimeInterval = 0
    
-    typealias AudioBufferObserver = (AVAudioPCMBuffer) -> Void
+    typealias AudioBufferObserver = @Sendable (AVAudioPCMBuffer) -> Void
 
     func startCapture(duration: TimeInterval, outputURL: URL) async throws -> CaptureResult {
         guard !isRecording else { throw Error.alreadyRecording }
@@ -56,11 +56,18 @@ actor AVAudioCaptureService {
         try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
 
-        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+        // Use a smaller buffer to reduce latency for streaming transcripts.
+        engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
+            guard let self else { return }
+
+            // Work with a copy so we don't share task-isolated buffers across actors.
+            guard let bufferCopy = buffer.cloned() else { return }
+
             do {
                 try file.write(from: buffer)
-                Task { [weak self] in
-                    await self?.notifyBufferObservers(buffer: buffer)
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    await self.notifyBufferObservers(buffer: bufferCopy)
                 }
             } catch {
                 Task { [weak self] in

@@ -89,6 +89,8 @@ final class MeetingRecordingManager: ObservableObject {
     private var streamingConfirmedSegments: [LiveTranscriptSegment] = []
     private var streamingHypothesis: LiveTranscriptSegment?
     private var consecutiveEmptyStreamingUpdates = 0
+    private var streamingStartDate: Date?
+    private var loggedFirstStreamingToken = false
 
     private var isStreamingEnabled: Bool {
         FluidAudioAdapter.isEnabled
@@ -358,12 +360,13 @@ private extension MeetingRecordingManager {
     /// Streaming configuration tuned for balanced accuracy/latency for live transcripts.
     private var streamingConfig: StreamingAsrConfig {
         StreamingAsrConfig(
-            chunkSeconds: 6.0,
-            hypothesisChunkSeconds: 0.8,
-            leftContextSeconds: 1.0,
-            rightContextSeconds: 0.8,
-            minContextForConfirmation: 2.5,
-            confirmationThreshold: 0.6
+            // Bias toward lower latency for first tokens and confirmations.
+            chunkSeconds: 3.5,
+            hypothesisChunkSeconds: 0.5,
+            leftContextSeconds: 0.7,
+            rightContextSeconds: 0.5,
+            minContextForConfirmation: 1.6,
+            confirmationThreshold: 0.55
         )
     }
 
@@ -371,6 +374,8 @@ private extension MeetingRecordingManager {
         guard isStreamingEnabled, streamingManager == nil else { return }
 
         do {
+            streamingStartDate = Date()
+            loggedFirstStreamingToken = false
             streamingConfirmedSegments = []
             streamingHypothesis = nil
             consecutiveEmptyStreamingUpdates = 0
@@ -384,6 +389,14 @@ private extension MeetingRecordingManager {
                 logger.info("Streaming task launched; awaiting updates")
                 FileLogger.log(category: "MeetingRecordingManager", message: "Streaming updates subscriber started")
                 for await update in updates {
+                    if !loggedFirstStreamingToken, let start = streamingStartDate {
+                        let delta = Date().timeIntervalSince(start)
+                        loggedFirstStreamingToken = true
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: String(format: "First streaming update after %.2fs", delta)
+                        )
+                    }
                     await self.handleStreamingUpdate(update)
                 }
                 logger.info("Streaming updates stream ended")
@@ -398,8 +411,9 @@ private extension MeetingRecordingManager {
 
             streamingObserverToken = await captureService.registerBufferObserver { [weak manager] buffer in
                 guard let manager else { return }
-                Task {
-                    await manager.streamAudio(buffer)
+                guard let copy = buffer.cloned() else { return }
+                Task { @MainActor in
+                    await manager.streamAudio(copy)
                 }
             }
 

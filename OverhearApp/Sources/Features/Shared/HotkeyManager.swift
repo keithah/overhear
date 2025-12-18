@@ -76,9 +76,12 @@ final class HotkeyManager {
     }
 
     deinit {
-        if let token = monitorBox.token {
-            NSEvent.removeMonitor(token)
-            monitorBox.token = nil
+        // Perform teardown on the main actor to avoid Sendable isolation issues.
+        Task { @MainActor [weak monitorBox] in
+            if let token = monitorBox?.token {
+                NSEvent.removeMonitor(token)
+                monitorBox?.token = nil
+            }
         }
     }
 
