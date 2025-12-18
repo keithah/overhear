@@ -23,6 +23,7 @@ struct RecordingStateIndicator: View {
                     .foregroundColor(.primary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Stop recording")
         }
         .padding(8)
         .background(

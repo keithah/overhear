@@ -1,6 +1,8 @@
 import CoreAudio
 import os.log
 
+/// Observes the system microphone activity flag (CoreAudio `kAudioDevicePropertyDeviceIsRunningSomewhere`)
+/// and publishes changes on the main actor so UI and detection logic can react without hopping threads.
 @MainActor
 final class MicUsageMonitor {
     private let logger = Logger(subsystem: "com.overhear.app", category: "MicUsageMonitor")
@@ -14,7 +16,7 @@ final class MicUsageMonitor {
         }
     }
 
-    var onChange: ((Bool) -> Void)?
+    var onChange: (@MainActor (Bool) -> Void)?
 
     func start() {
         guard !listenerAdded else { return }

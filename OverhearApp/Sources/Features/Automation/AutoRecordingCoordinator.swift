@@ -1,12 +1,22 @@
 import Foundation
+import Combine
 import os.log
 
+/// Coordinates auto-recording sessions that start from meeting-window detection.
+/// Runs on the main actor so UI bindings stay consistent and avoids actor hops when
+/// interacting with AppKit and SwiftUI.
 @MainActor
 final class AutoRecordingCoordinator: ObservableObject {
     private let logger = Logger(subsystem: "com.overhear.app", category: "AutoRecordingCoordinator")
     private var activeManager: MeetingRecordingManager?
     private var stopWorkItem: DispatchWorkItem?
+    // Grace period before stopping to avoid flapping on brief focus changes.
+    // 8 seconds was chosen as a balance between responsiveness (stop soon after
+    // a meeting ends) and stability (ignore transient focus changes).
     private let stopGracePeriod: TimeInterval = 8.0
+    // Backstop duration to prevent runaway recordings; auto-stop via detection
+    // should normally end sessions first.
+    private let maxRecordingDuration: TimeInterval = 4 * 3600
     private var activeTitle: String?
     private var monitorTask: Task<Void, Never>?
     @Published private(set) var isRecording: Bool = false
@@ -42,7 +52,12 @@ final class AutoRecordingCoordinator: ObservableObject {
 
     private func startRecording(appName: String, meetingTitle: String?) {
         let id = "detected-\(Int(Date().timeIntervalSince1970))"
-        let title = meetingTitle?.isEmpty == false ? meetingTitle! : appName
+        let title: String
+        if let meetingTitle, !meetingTitle.isEmpty {
+            title = meetingTitle
+        } else {
+            title = appName
+        }
         activeTitle = title
 
         do {
@@ -66,12 +81,11 @@ final class AutoRecordingCoordinator: ObservableObject {
     }
 
     private func startAndMonitor(manager: MeetingRecordingManager) async {
-        await manager.startRecording(duration: 3600)
-        // Watch until it completes/fails, then clear state.
         monitorTask = Task { [weak self, weak manager] in
             guard let manager else { return }
             await self?.monitorStatus(manager: manager)
         }
+        await manager.startRecording(duration: maxRecordingDuration)
         await monitorTask?.value
     }
 
@@ -82,7 +96,7 @@ final class AutoRecordingCoordinator: ObservableObject {
             let status = currentManager.status
             switch status {
             case .capturing, .transcribing:
-                try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s
                 continue
             case .completed:
                 return await clearState(transcriptReady: true)

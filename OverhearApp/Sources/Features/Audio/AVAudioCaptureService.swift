@@ -181,8 +181,12 @@ actor AVAudioCaptureService {
 
 }
 
-extension AVAudioPCMBuffer: @unchecked Sendable {
-}
+// SAFETY: `AVAudioPCMBuffer` is treated as `@unchecked Sendable` so it can be
+// stored and passed between actors inside the capture pipeline. This is safe
+// because buffers are never shared mutably across actors: every observer
+// receives a freshly cloned buffer (`notifyBufferObservers`), and the capture
+// actor owns the original buffer lifetime.
+extension AVAudioPCMBuffer: @unchecked Sendable {}
 
 extension AVAudioPCMBuffer {
     func cloned() -> AVAudioPCMBuffer? {

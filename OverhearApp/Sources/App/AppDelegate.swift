@@ -50,6 +50,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.windows.forEach { $0.orderOut(nil) }
         }
     }
+    
+    func applicationWillTerminate(_ notification: Notification) {
+        context?.callDetectionService.stop()
+    }
 
     @MainActor
     private func requestCalendarAccessWithActivation(context: AppContext, retryDelay: TimeInterval) async {
@@ -88,20 +92,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         guard let context = context else { return }
-        let id = response.actionIdentifier
+        let actionIdentifier = response.actionIdentifier
         let content = response.notification.request.content
-        let appName = (content.userInfo["appName"] as? String)
-            ?? (
-                content.title
-                    .replacingOccurrences(of: "Meeting window detected (", with: "")
-                    .replacingOccurrences(of: ")", with: "")
-            )
+
+        let appName: String = {
+            if let name = (content.userInfo["appName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !name.isEmpty {
+                return name
+            }
+            NSLog("Overhear: Expected 'appName' in notification userInfo but none was found; falling back to notification title.")
+            return content.title
+        }()
+
         let rawMeetingTitle = (content.userInfo["meetingTitle"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? content.body
         let meetingTitle = NotificationHelper.cleanMeetingTitle(from: rawMeetingTitle)
 
-        if id == "com.overhear.notification.start" {
+        if actionIdentifier == "com.overhear.notification.start" || actionIdentifier == UNNotificationDefaultActionIdentifier {
             await context.autoRecordingCoordinator.onDetection(appName: appName, meetingTitle: meetingTitle)
-        } else if id == "com.overhear.notification.dismiss" {
+        } else if actionIdentifier == "com.overhear.notification.dismiss" {
             await context.autoRecordingCoordinator.onNoDetection()
         }
     }

@@ -119,7 +119,7 @@ final class PreferencesService: ObservableObject {
         self.menubarDaysToShow = defaults.object(forKey: PreferenceKey.menubarDaysToShow.rawValue) as? Int ?? 3
         self.menubarToggleHotkey = defaults.string(forKey: PreferenceKey.menubarToggleHotkey.rawValue) ?? ""
         self.joinNextMeetingHotkey = defaults.string(forKey: PreferenceKey.joinNextMeetingHotkey.rawValue) ?? ""
-        self.meetingNotificationsEnabled = defaults.object(forKey: PreferenceKey.meetingNotificationsEnabled.rawValue) as? Bool ?? true
+        self.meetingNotificationsEnabled = defaults.object(forKey: PreferenceKey.meetingNotificationsEnabled.rawValue) as? Bool ?? false
         self.autoRecordingEnabled = defaults.object(forKey: PreferenceKey.autoRecordingEnabled.rawValue) as? Bool ?? false
 
         updateLaunchAtLogin(launchAtLogin)

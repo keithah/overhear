@@ -1,6 +1,9 @@
 import AppKit
 import os.log
 
+/// Observes the frontmost window to infer when the user is in a call and trigger
+/// meeting notifications/auto-recording. Requires Accessibility permission and
+/// uses microphone-in-use as a gating signal to reduce false positives.
 @MainActor
 final class CallDetectionService {
     private let logger = Logger(subsystem: "com.overhear.app", category: "CallDetectionService")
@@ -30,9 +33,7 @@ final class CallDetectionService {
         self.autoCoordinator = autoCoordinator
         self.preferences = preferences
         micMonitor.onChange = { [weak self] active in
-            Task { @MainActor [weak self] in
-                self?.isMicActive = active
-            }
+            self?.isMicActive = active
         }
         micMonitor.start()
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -110,11 +111,17 @@ final class CallDetectionService {
         lastNotifiedTitle = titleInfo.displayTitle
 
         let appName = app.localizedName ?? bundleID
-        let body = titleInfo.urlDescription ?? titleInfo.displayTitle
-        let shouldNotify = preferences?.meetingNotificationsEnabled != false
-        let shouldAutoRecord = preferences?.autoRecordingEnabled == true
+        let meetingInfo = titleInfo.urlDescription ?? titleInfo.displayTitle
 
-        let cleanTitle = NotificationHelper.cleanMeetingTitle(from: body)
+        guard let preferences else {
+            autoCoordinator?.onNoDetection()
+            return
+        }
+
+        let shouldNotify = preferences.meetingNotificationsEnabled
+        let shouldAutoRecord = preferences.autoRecordingEnabled
+
+        let cleanTitle = NotificationHelper.cleanMeetingTitle(from: meetingInfo)
         if shouldNotify {
             NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
         }
@@ -123,7 +130,7 @@ final class CallDetectionService {
         } else {
             autoCoordinator?.onNoDetection()
         }
-        logger.info("Detected meeting window for \(appName, privacy: .public) title=\(body, privacy: .public)")
+        logger.info("Detected meeting window for \(appName, privacy: .public) title=\(cleanTitle, privacy: .private)")
     }
 
     private func activeWindowTitle(for app: NSRunningApplication) -> (displayTitle: String, urlDescription: String?)? {
@@ -140,17 +147,18 @@ final class CallDetectionService {
               CFGetTypeID(window) == AXUIElementGetTypeID() else {
             return nil
         }
-        let axWindow = unsafeDowncast(window, to: AXUIElement.self)
+        // Safe after CFTypeID check.
+        let windowElement = unsafeDowncast(window, to: AXUIElement.self)
 
         var titleValue: AnyObject?
-        AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleValue)
+        AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)
         let rawTitle = titleValue as? String ?? ""
 
         // For browsers, try to extract the URL to distinguish Meet.
         var urlDescription: String?
-        if let safariURL = copyURLAttribute(window: axWindow, key: kAXURLAttribute as CFString) {
+        if let safariURL = copyURLAttribute(window: windowElement, key: kAXURLAttribute as CFString) {
             urlDescription = safariURL
-        } else if let chromeURL = copyURLAttribute(window: axWindow, key: "AXDocument" as CFString) {
+        } else if let chromeURL = copyURLAttribute(window: windowElement, key: "AXDocument" as CFString) {
             urlDescription = chromeURL
         }
 
@@ -159,7 +167,10 @@ final class CallDetectionService {
         guard !displayTitle.isEmpty else { return nil }
 
         // Only accept Meet if the URL host matches meet.google.com.
-        if let urlDescription, urlDescription.contains("meet.google.com") {
+        if let urlDescription,
+           let url = URL(string: urlDescription),
+           let host = url.host,
+           host == "meet.google.com" {
             return (displayTitle: "Google Meet", urlDescription: urlDescription)
         }
 
@@ -171,7 +182,9 @@ final class CallDetectionService {
         let status = AXUIElementCopyAttributeValue(window, key, &urlValue)
         guard status == .success else { return nil }
         if let cfValue = urlValue, CFGetTypeID(cfValue) == CFURLGetTypeID() {
-            return (cfValue as! URL).absoluteString
+            if let url = cfValue as? URL {
+                return url.absoluteString
+            }
         }
         if let urlString = urlValue as? String {
             return urlString
@@ -180,7 +193,8 @@ final class CallDetectionService {
     }
 
     private var preferencesAllowNotifications: Bool {
-        preferences?.meetingNotificationsEnabled != false || preferences?.autoRecordingEnabled == true
+        guard let preferences else { return false }
+        return (preferences.meetingNotificationsEnabled || preferences.autoRecordingEnabled)
     }
 
 }

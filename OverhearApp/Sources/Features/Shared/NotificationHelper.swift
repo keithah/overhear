@@ -4,6 +4,10 @@ import os.log
 
 enum NotificationHelper {
     private static let logger = Logger(subsystem: "com.overhear.app", category: "Notifications")
+    private static let meetingCategoryIdentifier = "com.overhear.notification.meeting-detected"
+    // Maximum length at which a notification body that starts with the prompt is
+    // still considered to be just the prompt text without a meeting title.
+    private static let maxPromptOnlyBodyLength = 30
 
     static func requestPermission() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -125,22 +129,20 @@ extension NotificationHelper {
     static func sendMeetingPrompt(appName: String, meetingTitle: String?) {
         let content = UNMutableNotificationContent()
         content.title = "Meeting window detected (\(appName))"
-        if let meetingTitle, !meetingTitle.isEmpty {
-            content.body = "Start a New Note? \(meetingTitle)"
-        } else {
-            content.body = "Start a New Note for this meeting?"
-        }
+        let cleanedTitle = meetingTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bodyTitle = (cleanedTitle?.isEmpty == false) ? cleanedTitle : nil
+        content.body = bodyTitle.map { "Start a New Note for \($0)?" } ?? "Start a New Note for this meeting?"
         content.sound = .default
         content.userInfo = [
             "appName": appName,
-            "meetingTitle": meetingTitle ?? ""
+            "meetingTitle": bodyTitle ?? ""
         ]
 
         // Add action buttons
         let startAction = UNNotificationAction(
             identifier: "com.overhear.notification.start",
             title: "Start New Note",
-            options: [.foreground]
+            options: []
         )
         let dismissAction = UNNotificationAction(
             identifier: "com.overhear.notification.dismiss",
@@ -149,16 +151,32 @@ extension NotificationHelper {
         )
 
         let category = UNNotificationCategory(
-            identifier: "com.overhear.notification.meeting-detected",
+            identifier: meetingCategoryIdentifier,
             actions: [startAction, dismissAction],
             intentIdentifiers: [],
             options: []
         )
-        UNUserNotificationCenter.current().setNotificationCategories([category])
-        content.categoryIdentifier = category.identifier
+        let notificationCenter = UNUserNotificationCenter.current()
+        notificationCenter.getNotificationCategories { existing in
+            var categories = existing
+            categories.insert(category)
+            notificationCenter.setNotificationCategories(categories)
+        }
+        content.categoryIdentifier = meetingCategoryIdentifier
+
+        let identifierSeed = [appName, bodyTitle ?? ""]
+            .joined(separator: "-")
+            .lowercased()
+        let sanitizedSeed = identifierSeed
+            .map { $0.isLetter || $0.isNumber ? String($0) : "-" }
+            .joined()
+            .split(separator: "-", omittingEmptySubsequences: true)
+            .joined(separator: "-")
+        let finalSeed = sanitizedSeed.isEmpty ? UUID().uuidString : sanitizedSeed
+        let identifier = "com.overhear.notification.meeting-detected.\(finalSeed)"
 
         let request = UNNotificationRequest(
-            identifier: "com.overhear.notification.meeting-detected.\(UUID().uuidString)",
+            identifier: identifier,
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
         )
@@ -171,12 +189,20 @@ extension NotificationHelper {
     }
 
     static func cleanMeetingTitle(from body: String) -> String {
-        if let range = body.range(of: "Start a New Note? ") {
-            return String(body[range.upperBound...])
+        let prefix = "Start a New Note?"
+        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard trimmedBody.hasPrefix(prefix) else {
+            return trimmedBody
         }
-        if body.hasPrefix("Start a New Note?") && body.count < 30 {
+
+        let indexAfterPrefix = trimmedBody.index(trimmedBody.startIndex, offsetBy: prefix.count)
+        let remainder = trimmedBody[indexAfterPrefix...].trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if remainder.isEmpty && trimmedBody.count <= maxPromptOnlyBodyLength {
             return ""
         }
-        return body
+
+        return remainder.isEmpty ? trimmedBody : remainder
     }
 }

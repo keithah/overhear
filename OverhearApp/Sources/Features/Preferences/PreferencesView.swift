@@ -176,7 +176,7 @@ struct PreferencesView: View {
     private var notificationsTab: some View {
         Form {
             Section(header: Text("Meeting reminders")) {
-                Toggle("Enable meeting notifications", isOn: $preferences.meetingNotificationsEnabled)
+                Toggle("Enable meeting reminder notifications", isOn: $preferences.meetingNotificationsEnabled)
                 HStack {
                     Text("Notify minutes before")
                     Spacer()
@@ -192,7 +192,7 @@ struct PreferencesView: View {
 
             Section(header: Text("Auto recording")) {
                 Toggle("Auto start/stop when meeting window detected", isOn: $preferences.autoRecordingEnabled)
-                Text("Requires Accessibility + mic-in-use; currently supports Zoom, Teams, Webex, Meet in Safari/Chrome/Edge.")
+                Text("Requires Accessibility permission to detect meeting windows and an active microphone (you being in a call); auto-recording won't start if either is missing. Currently supports Zoom, Teams, Webex, and Meet in Safari/Chrome/Edge.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

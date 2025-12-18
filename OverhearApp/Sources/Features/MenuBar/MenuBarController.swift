@@ -264,4 +264,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             Task { await recordingCoordinator.startManualRecording() }
         }
     }
+
+    @MainActor deinit {
+        iconUpdateTimer?.invalidate()
+        minuteUpdateTimer?.invalidate()
+
+        dataCancellable?.cancel()
+        recordingCancellable?.cancel()
+        autoRecordingCancellable?.cancel()
+
+        if let observer = closePopoverObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
 }
