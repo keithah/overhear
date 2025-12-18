@@ -14,7 +14,7 @@ final class CalendarService: ObservableObject {
     private var didShowPermissionAlert = false
     private var accessRequestTask: Task<Bool, Never>?
 
-    func requestAccessIfNeeded() async -> Bool {
+    func requestAccessIfNeeded(retryCount: Int = 0) async -> Bool {
         let status = EKEventStore.authorizationStatus(for: .event)
         authorizationStatus = status
         log("Authorization status on entry: \(status.rawValue)")
@@ -30,14 +30,7 @@ final class CalendarService: ObservableObject {
         }
 
         let previousPolicy = NSApp.activationPolicy()
-        let shouldPromoteForPrompt = status == .notDetermined && previousPolicy == .accessory
-        if shouldPromoteForPrompt {
-            log("Promoting activation policy to regular to present permissions dialog")
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
-            // Give macOS a moment to surface the dialog
-            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
-        }
+        let promotedPolicy = await ensureAppIsReadyForPrompt(previousPolicy: previousPolicy, status: status)
         
         // If denied or restricted, bail early
         if status == .denied || status == .restricted {
@@ -54,12 +47,19 @@ final class CalendarService: ObservableObject {
         }
         
         let task = Task { @MainActor () -> Bool in
-            let granted = await performAccessRequestFlow(status: status, promotedPolicy: shouldPromoteForPrompt, previousPolicy: previousPolicy)
+            let granted = await performAccessRequestFlow(status: status, promotedPolicy: promotedPolicy, previousPolicy: previousPolicy)
             accessRequestTask = nil
             return granted
         }
         accessRequestTask = task
         let result = await task.value
+
+        if !result && authorizationStatus == .notDetermined && retryCount < 2 {
+            log("Authorization unsettled and prompt did not resolve (retry \(retryCount + 1))")
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            return await requestAccessIfNeeded(retryCount: retryCount + 1)
+        }
+
         return result
     }
 
@@ -128,6 +128,27 @@ final class CalendarService: ObservableObject {
         } else {
             log("Failed to construct System Settings URL")
         }
+    }
+
+    @MainActor
+    private func ensureAppIsReadyForPrompt(previousPolicy: NSApplication.ActivationPolicy, status: EKAuthorizationStatus) async -> Bool {
+        guard status == .notDetermined else {
+            return false
+        }
+
+        log("Current activation policy: \(previousPolicy.rawValue)")
+        if previousPolicy == .accessory {
+            log("Promoting activation policy to regular to present permissions dialog")
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            return true
+        }
+
+        log("Activating app to present permissions dialog")
+        NSApp.activate(ignoringOtherApps: true)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        return false
     }
 
     nonisolated private func log(_ message: String) {
@@ -217,8 +238,21 @@ final class CalendarService: ObservableObject {
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         log("Authorization status after request: \(authorizationStatus.rawValue)")
         if !granted {
-            openCalendarPrivacySettingsIfNeeded(force: true)
-            await presentOneTimePermissionReminder()
+            let shouldRemind: Bool
+            if #available(macOS 14.0, *) {
+                shouldRemind = authorizationStatus == .denied ||
+                    authorizationStatus == .restricted ||
+                    authorizationStatus == .writeOnly
+            } else {
+                shouldRemind = authorizationStatus == .denied || authorizationStatus == .restricted
+            }
+
+            if shouldRemind {
+                openCalendarPrivacySettingsIfNeeded(force: true)
+                await presentOneTimePermissionReminder()
+            } else {
+                log("Access unsettled (status \(authorizationStatus.rawValue)); waiting before prompting again")
+            }
         }
         if promotedPolicy {
             log("Restoring activation policy to accessory after permission attempt")

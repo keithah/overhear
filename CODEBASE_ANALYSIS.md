@@ -13,7 +13,7 @@ Sources/
 │
 └── Features/                     # Feature-driven organization
     ├── Audio/                   # Audio capture & transcription
-    │   ├── AudioCaptureService.swift       # AudioSpike CLI wrapper
+    │   ├── AudioCaptureService.swift       # AVAudioEngine capture service
     │   ├── MeetingRecordingManager.swift   # Recording orchestration
     │   └── TranscriptionService.swift      # Whisper.cpp wrapper
     ├── Calendar/                # Calendar access & meeting fetching
@@ -263,7 +263,7 @@ preferences.$daysAhead
 ---
 
 ### C. AUDIO CAPTURE SERVICE (AudioCaptureService.swift)
-**Responsibility**: Audio recording via AudioSpike CLI tool
+**Responsibility**: Audio capture via AVAudioEngine input tap
 
 **Key Method**:
 ```swift
@@ -271,12 +271,12 @@ func startCapture(duration: TimeInterval, outputURL: URL) async throws -> URL
 ```
 
 **Implementation**:
-- Wraps Process for CLI tool execution
-- Handles cancellation via Task.isCancellationHandler
-- Manages stdout/stderr pipes
-- Actor-based for thread safety
+- Installs an `AVAudioEngine` input node tap to stream audio into `AVAudioFile`
+- Writes captured PCM buffers directly from the tap to disk while remaining actor-safe
+- Uses `withCheckedContinuation` + `Task.sleep` for duration-based recording and cancellation
+- Cleans up taps, stops the engine, and cancels duration/background tasks before resuming continuations
 
-**Dependencies**: AudioSpike executable (external binary)
+**Dependencies**: AVFoundation, os.log (built-in frameworks)
 
 ---
 
@@ -589,4 +589,3 @@ MenuBarController
 | Number of Views | 6+ |
 | Frameworks Used | 8 |
 | External Dependencies | 0 (CLI tools only) |
-

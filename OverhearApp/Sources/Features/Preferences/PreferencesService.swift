@@ -142,6 +142,10 @@ final class PreferencesService: ObservableObject {
         }
     }
 
+    var allowedCalendars: Set<String> {
+        selectedCalendarIDs
+    }
+
     func openBehavior(for platform: MeetingPlatform) -> OpenBehavior {
         switch platform {
         case .zoom: return zoomOpenBehavior

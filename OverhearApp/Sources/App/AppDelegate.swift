@@ -23,7 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await requestCalendarAccessWithActivation(context: context, retryDelay: 1.0)
         }
 
-        let controller = MenuBarController(viewModel: context.meetingViewModel, preferencesWindowController: context.preferencesWindowController, preferences: context.preferencesService)
+        let controller = MenuBarController(viewModel: context.meetingViewModel,
+                                           preferencesWindowController: context.preferencesWindowController,
+                                           preferences: context.preferencesService,
+                                           recordingCoordinator: context.recordingCoordinator)
         controller.setup()
         context.menuBarController = controller
 
@@ -31,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         context.hotkeyManager = HotkeyManager(
             preferences: context.preferencesService,
             toggleAction: { controller.togglePopoverAction() },
-            joinNextAction: { context.meetingViewModel.joinNextUpcoming() }
+            joinNextAction: { Task { await context.meetingViewModel.joinNextUpcoming() } }
         )
 
         // Keep strong reference to controller

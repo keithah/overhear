@@ -14,6 +14,7 @@ struct Meeting: Identifiable, Hashable {
     let isAllDay: Bool
     let isMaybe: Bool
     let calendarName: String?
+    let isManual: Bool
 
     init?(event: EKEvent, includeEventsWithoutLinks: Bool, includeMaybe: Bool) {
         let isTentative = event.availability == .tentative || event.status == .tentative
@@ -36,6 +37,7 @@ struct Meeting: Identifiable, Hashable {
         self.isAllDay = event.isAllDay
         self.isMaybe = isTentative
         self.calendarName = event.calendar.title
+        self.isManual = false
     }
     
     /// Returns holiday info if this event is a holiday
@@ -74,6 +76,56 @@ struct Meeting: Identifiable, Hashable {
     /// Returns the emoji for holidays, empty string otherwise
     var holidayEmoji: String {
         holidayInfo.emoji
+    }
+}
+
+extension Meeting {
+    static func manualRecording(
+        id: String = "manual-\(UUID().uuidString)",
+        title: String = "Manual Recording",
+        startDate: Date,
+        endDate: Date? = nil
+    ) -> Meeting {
+        let resolvedEnd = endDate ?? startDate
+        return Meeting(
+            id: id,
+            title: title,
+            startDate: startDate,
+            endDate: resolvedEnd,
+            url: nil,
+            platform: .unknown,
+            calendarIdentifier: "manual-recording",
+            isAllDay: false,
+            isMaybe: false,
+            calendarName: "Manual Recording",
+            isManual: true
+        )
+    }
+
+    private init(
+        id: String,
+        title: String,
+        startDate: Date,
+        endDate: Date,
+        url: URL?,
+        platform: MeetingPlatform,
+        calendarIdentifier: String,
+        isAllDay: Bool,
+        isMaybe: Bool,
+        calendarName: String?,
+        isManual: Bool
+    ) {
+        self.id = id
+        self.title = title
+        self.startDate = startDate
+        self.endDate = endDate
+        self.url = url
+        self.platform = platform
+        self.calendarIdentifier = calendarIdentifier
+        self.isAllDay = isAllDay
+        self.isMaybe = isMaybe
+        self.calendarName = calendarName
+        self.isManual = isManual
     }
 }
 

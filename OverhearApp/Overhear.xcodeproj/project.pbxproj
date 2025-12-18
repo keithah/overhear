@@ -14,9 +14,11 @@
 	B1F0D0C1F1E2010000000012 /* AVAudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000002 /* AVAudioCaptureService.swift */; };
 	B1F0D0C1F1E2010000000013 /* MeetingRecordingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000003 /* MeetingRecordingManager.swift */; };
 	B1F0D0C1F1E2010000000014 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000004 /* TranscriptionService.swift */; };
+	B1F0D0C1F1E2010000000022 /* MeetingRecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000011 /* MeetingRecordingCoordinator.swift */; };
 	B1F0D0C1F1E2010000000015 /* HolidayDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000005 /* HolidayDetector.swift */; };
 	B1F0D0C1F1E2010000000016 /* PlatformIconProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000006 /* PlatformIconProvider.swift */; };
 	B1F0D0C1F1E2010000000017 /* SharedTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000007 /* SharedTypes.swift */; };
+	B1F0D0C1F1E2010000000021 /* FileLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000010 /* FileLogger.swift */; };
 	B1F0D0C1F1E201000000001B /* MeetingPlatform.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E201000000000B /* MeetingPlatform.swift */; };
 	B1F0D0C1F1E201000000001C /* MenuBarIconProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E201000000000C /* MenuBarIconProvider.swift */; };
 	B1F0D0C1F1E201000000001D /* PermissionsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E201000000000D /* PermissionsService.swift */; };
@@ -25,6 +27,7 @@
 	B1F0D0C1F1E201000000001A /* TranscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E201000000000A /* TranscriptionView.swift */; };
 	B1F0D0C1F1E201000000001E /* NotificationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E201000000000E /* NotificationHelper.swift */; };
 	B1F0D0C1F1E2010000000020 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E201000000000F /* HotkeyManager.swift */; };
+	5B3C1D4E6A9845A4B7F8C2DB /* TranscriptWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B3C1D4E6A9845A4B7F8C2DA /* TranscriptWindowController.swift */; };
 	B945B1D3B9C848E6AB2763E6CCC2C64C /* AudioModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93CC832006A740B8BAECB5CE64314F3B /* AudioModels.swift */; };
 	A2AA394AFCDD414AA6082028123BD864 /* DiarizationEngineFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92836CB09DD3497BBCB5A20B5D645F09 /* DiarizationEngineFactory.swift */; };
 	7361C4DA3E42422989068561EBA3080B /* DiarizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B740BF673544A594625D9ACC07BA8B /* DiarizationService.swift */; };
@@ -38,6 +41,7 @@
 	672895B9E03830086B5E32E1 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0467AC2803809ABEE6368BF8 /* PreferencesService.swift */; };
 	7B4976A61FDC8DF74F991A16 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6760441C0977FD19F2B6838 /* PreferencesView.swift */; };
 	B09ACBBF34AF004C83A0835A /* OverhearApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5563B52A06A54C980A22A14 /* OverhearApp.swift */; };
+	B6D0B2A219F53F31AD9C3EB3 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 8C1DE61BFEDC45A39B3A7D65 /* FluidAudio */; };
 	C2D5E6CE6C1B18A934FB6917 /* MenuBarContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12220410D1DBBF18A9BA1D0 /* MenuBarContentView.swift */; };
 	C3BAC7E2A8CDBF78BAB8A332 /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1126CA13260065D9BC095422 /* Meeting.swift */; };
 	EAF99761927E193EB588F6CA /* PreferencesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C268D5AFB48081C5B8477301 /* PreferencesWindowController.swift */; };
@@ -57,6 +61,7 @@
 	75B740BF673544A594625D9ACC07BA8B /* DiarizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiarizationService.swift; sourceTree = "<group>"; };
 	DF48982FAB834055A2AC3FAE79109395 /* FluidAudioAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidAudioAdapter.swift; sourceTree = "<group>"; };
 	A1F0D0C1F1E2010000000003 /* MeetingRecordingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingManager.swift; sourceTree = "<group>"; };
+	A1F0D0C1F1E2010000000011 /* MeetingRecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingCoordinator.swift; sourceTree = "<group>"; };
 	01B63EE76EDA4773903755A3F251FCA5 /* MeetingRecordingPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingPipeline.swift; sourceTree = "<group>"; };
 	94AEABBD11484B4C9905881B69F6E465 /* MLXAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXAdapter.swift; sourceTree = "<group>"; };
 	B31D9D453E9E4C2DA49DC1512163E0EB /* SummarizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizationService.swift; sourceTree = "<group>"; };
@@ -64,6 +69,7 @@
 	A1F0D0C1F1E2010000000005 /* HolidayDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HolidayDetector.swift; sourceTree = "<group>"; };
 	A1F0D0C1F1E2010000000006 /* PlatformIconProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformIconProvider.swift; sourceTree = "<group>"; };
 	A1F0D0C1F1E2010000000007 /* SharedTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTypes.swift; sourceTree = "<group>"; };
+	A1F0D0C1F1E2010000000010 /* FileLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLogger.swift; sourceTree = "<group>"; };
 	A1F0D0C1F1E201000000000E /* NotificationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationHelper.swift; sourceTree = "<group>"; };
 	A1F0D0C1F1E201000000000F /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
 	A1F0D0C1F1E2010000000008 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
@@ -85,6 +91,7 @@
 	E591C5A0CD919B0CBADE2347 /* MeetingListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingListViewModel.swift; sourceTree = "<group>"; };
 	E6760441C0977FD19F2B6838 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 	82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRowView.swift; sourceTree = "<group>"; };
+	5B3C1D4E6A9845A4B7F8C2DA /* TranscriptWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptWindowController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +99,7 @@
 		isa = PBXFrameworksBuildPhase;
 		buildActionMask = 2147483647;
 		files = (
+			B6D0B2A219F53F31AD9C3EB3 /* FluidAudio in Frameworks */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
@@ -193,6 +201,7 @@
 			75B740BF673544A594625D9ACC07BA8B /* DiarizationService.swift */,
 			DF48982FAB834055A2AC3FAE79109395 /* FluidAudioAdapter.swift */,
 			A1F0D0C1F1E2010000000003 /* MeetingRecordingManager.swift */,
+			A1F0D0C1F1E2010000000011 /* MeetingRecordingCoordinator.swift */,
 			01B63EE76EDA4773903755A3F251FCA5 /* MeetingRecordingPipeline.swift */,
 			94AEABBD11484B4C9905881B69F6E465 /* MLXAdapter.swift */,
 			B31D9D453E9E4C2DA49DC1512163E0EB /* SummarizationService.swift */,
@@ -205,6 +214,7 @@
 		isa = PBXGroup;
 		children = (
 			A1F0D0C1F1E2010000000007 /* SharedTypes.swift */,
+			A1F0D0C1F1E2010000000010 /* FileLogger.swift */,
 			A1F0D0C1F1E201000000000E /* NotificationHelper.swift */,
 			A1F0D0C1F1E201000000000F /* HotkeyManager.swift */,
 		);
@@ -217,6 +227,7 @@
 			A1F0D0C1F1E2010000000008 /* TranscriptStore.swift */,
 			A1F0D0C1F1E2010000000009 /* TranscriptSearchView.swift */,
 			A1F0D0C1F1E201000000000A /* TranscriptionView.swift */,
+			5B3C1D4E6A9845A4B7F8C2DA /* TranscriptWindowController.swift */,
 		);
 		path = Transcription;
 		sourceTree = "<group>";
@@ -283,6 +294,9 @@
 		);
 		mainGroup = 8C39F975C240A321E98F405C;
 		productRefGroup = D2B8E6BF76808FD739F37E61 /* Products */;
+		packageReferences = (
+			88C9F04FA24C42FB8A939657 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+		);
 		projectDirPath = "";
 		projectRoot = "";
 		targets = (
@@ -320,8 +334,10 @@
 			B1F0D0C1F1E2010000000016 /* PlatformIconProvider.swift in Sources */,
 			B1F0D0C1F1E201000000001C /* MenuBarIconProvider.swift in Sources */,
 			B1F0D0C1F1E2010000000017 /* SharedTypes.swift in Sources */,
+			B1F0D0C1F1E2010000000021 /* FileLogger.swift in Sources */,
 			B1F0D0C1F1E2010000000012 /* AVAudioCaptureService.swift in Sources */,
 			B1F0D0C1F1E2010000000013 /* MeetingRecordingManager.swift in Sources */,
+			B1F0D0C1F1E2010000000022 /* MeetingRecordingCoordinator.swift in Sources */,
 			B1F0D0C1F1E2010000000014 /* TranscriptionService.swift in Sources */,
 			B945B1D3B9C848E6AB2763E6CCC2C64C /* AudioModels.swift in Sources */,
 			A2AA394AFCDD414AA6082028123BD864 /* DiarizationEngineFactory.swift in Sources */,
@@ -333,6 +349,7 @@
 			B1F0D0C1F1E2010000000018 /* TranscriptStore.swift in Sources */,
 			B1F0D0C1F1E2010000000019 /* TranscriptSearchView.swift in Sources */,
 			B1F0D0C1F1E201000000001A /* TranscriptionView.swift in Sources */,
+			5B3C1D4E6A9845A4B7F8C2DB /* TranscriptWindowController.swift in Sources */,
 			553ADF43BEB23110DAFF4EBC /* CalendarService.swift in Sources */,
 			D735051D7A7D468EBDF47363AE10B0CD /* CalendarAccessHelper.swift in Sources */,
 			B1F0D0C1F1E201000000001E /* NotificationHelper.swift in Sources */,
@@ -531,6 +548,25 @@
 		defaultConfigurationName = Debug;
 	};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		88C9F04FA24C42FB8A939657 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/FluidInference/FluidAudio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.7.11;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		8C1DE61BFEDC45A39B3A7D65 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 88C9F04FA24C42FB8A939657 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 	};
 	rootObject = F5D72C8DB1660CE48CC2B4D9 /* Project object */;

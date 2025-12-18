@@ -66,4 +66,31 @@ enum NotificationHelper {
             }
         }
     }
+
+    static func scheduleManualRecordingReminder() {
+        let content = UNMutableNotificationContent()
+        content.title = "Manual recording active"
+        content.body = "Recording is still running. Tap to stop when you're done."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "com.overhear.notification.manualRecording",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 30 * 60, repeats: true)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule manual recording reminder: \(error.localizedDescription, privacy: .public)")
+            } else {
+                logger.info("Scheduled manual recording reminder")
+            }
+        }
+    }
+
+    static func cancelManualRecordingReminders() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [
+            "com.overhear.notification.manualRecording"
+        ])
+    }
 }

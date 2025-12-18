@@ -1,8 +1,10 @@
 import EventKit
 
 /// Small helper to keep authorization branching testable without hitting EventKit dialogs.
+/// Helper encapsulating macOS calendar authorization decisions for testability.
 enum CalendarAccessHelper {
-    /// Returns `true` when the OS signals the app has at least read access to calendars.
+    /// Returns `true` when the provided status includes at least read access to calendar data.
+    /// On macOS 14+, this is `fullAccess`; older systems still only use `.authorized`.
     static func isAuthorized(_ status: EKAuthorizationStatus) -> Bool {
         if #available(macOS 14.0, *) {
             return status == .fullAccess
@@ -11,7 +13,7 @@ enum CalendarAccessHelper {
         }
     }
 
-    /// Detects whether the status represents the macOS 14+ write-only authorization state.
+    /// Detects the macOS 14+ write-only authorization state that still limits calendar reads.
     static func isWriteOnly(_ status: EKAuthorizationStatus) -> Bool {
         if #available(macOS 14.0, *) {
             return status == .writeOnly
@@ -19,7 +21,7 @@ enum CalendarAccessHelper {
         return false
     }
 
-    /// Determines whether we should prompt the user for calendar access (only when still not determined).
+    /// Returns `true` when we should display the access prompt (status still `.notDetermined`).
     static func shouldPrompt(status: EKAuthorizationStatus) -> Bool {
         status == .notDetermined
     }

@@ -23,3 +23,7 @@ enum GenericMeetingType {
     case phone
     case generic
 }
+
+extension Notification.Name {
+    static let overhearTranscriptSaved = Notification.Name("OverhearTranscriptSavedNotification")
+}

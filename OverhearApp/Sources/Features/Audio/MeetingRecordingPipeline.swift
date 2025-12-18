@@ -39,30 +39,106 @@ actor MeetingRecordingPipeline {
         }
     }
 
-    func process(audioURL: URL, metadata: MeetingRecordingMetadata, duration: TimeInterval) async throws -> StoredTranscript {
-        let transcriptText = try await transcriptionEngine.transcribe(audioURL: audioURL)
-        let segments = await diarizationService.analyze(audioURL: audioURL)
-        let summary = await summarizationService.summarize(transcript: transcriptText, segments: segments)
-
+    func saveQuickTranscript(
+        transcriptText: String,
+        metadata: MeetingRecordingMetadata,
+        duration: TimeInterval,
+        transcriptID: String
+    ) async throws -> StoredTranscript {
+        FileLogger.log(
+            category: "MeetingRecordingPipeline",
+            message: "Quick transcript save started for \(metadata.meetingID)"
+        )
         let stored = StoredTranscript(
-            id: UUID().uuidString,
+            id: transcriptID,
             meetingID: metadata.meetingID,
             title: metadata.title,
             date: metadata.startDate,
             transcript: transcriptText,
+            duration: duration,
+            audioFilePath: nil,
+            segments: [],
+            summary: nil
+        )
+        try await persist(stored, meetingID: metadata.meetingID)
+        logger.info("Quick transcript saved for \(metadata.title, privacy: .public)")
+        FileLogger.log(
+            category: "MeetingRecordingPipeline",
+            message: "Quick transcript saved for \(metadata.meetingID)"
+        )
+        return stored
+    }
+
+    func process(
+        audioURL: URL,
+        metadata: MeetingRecordingMetadata,
+        duration: TimeInterval,
+        prefetchedTranscript: String? = nil,
+        overrideTranscriptID: String? = nil
+    ) async throws -> StoredTranscript {
+        let transcriptID = overrideTranscriptID ?? UUID().uuidString
+        var transcriptText: String? = nil
+        if let existing = prefetchedTranscript?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !existing.isEmpty {
+            logger.info("Using prefetched streaming transcript for \(metadata.title, privacy: .public)")
+            transcriptText = existing
+        }
+
+        if transcriptText == nil {
+            logger.info("Invoking transcription engine for \(metadata.title, privacy: .public)")
+            do {
+                transcriptText = try await transcriptionEngine.transcribe(audioURL: audioURL)
+            } catch {
+                logger.error("Transcription failed for \(metadata.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                if let prefetched = prefetchedTranscript, !prefetched.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    logger.info("Falling back to prefetched transcript for \(metadata.title, privacy: .public)")
+                    transcriptText = prefetched
+                } else {
+                    throw error
+                }
+            }
+        }
+
+        let transcriptValue = transcriptText ?? ""
+        let segments = await diarizationService.analyze(audioURL: audioURL)
+        let summary = await summarizationService.summarize(transcript: transcriptValue, segments: segments)
+
+        let stored = StoredTranscript(
+            id: transcriptID,
+            meetingID: metadata.meetingID,
+            title: metadata.title,
+            date: metadata.startDate,
+            transcript: transcriptValue,
             duration: duration,
             audioFilePath: audioURL.path,
             segments: segments,
             summary: summary
         )
 
-        do {
-            try await transcriptStore.save(stored)
-        } catch {
-            logger.error("Failed to persist transcript: \(error.localizedDescription, privacy: .public)")
-        }
-
+        try await persist(stored, meetingID: metadata.meetingID)
         logger.info("Recording pipeline completed for \(metadata.title, privacy: .public)")
         return stored
+    }
+
+    private func persist(_ transcript: StoredTranscript, meetingID: String) async throws {
+        do {
+            FileLogger.log(
+                category: "MeetingRecordingPipeline",
+                message: "Persist begin for \(meetingID) id=\(transcript.id)"
+            )
+            try await transcriptStore.save(transcript)
+            NotificationCenter.default.post(name: .overhearTranscriptSaved, object: nil, userInfo: ["meetingID": meetingID])
+            FileLogger.log(
+                category: "MeetingRecordingPipeline",
+                message: "Transcript persisted for \(meetingID) (id=\(transcript.id))"
+            )
+        } catch {
+            logger.error("Failed to persist transcript: \(error.localizedDescription, privacy: .public)")
+            FileLogger.log(
+                category: "MeetingRecordingPipeline",
+                message: "Persist failed for \(meetingID): \(error.localizedDescription)"
+            )
+            throw error
+        }
     }
 }

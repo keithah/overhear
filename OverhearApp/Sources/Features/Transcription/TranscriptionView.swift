@@ -26,7 +26,7 @@ struct TranscriptionView: View {
             
             // Transcript text area
             ScrollView {
-                Text(recordingManager.transcript.isEmpty ? "Waiting for audio..." : recordingManager.transcript)
+                Text(recordingManager.transcript.isEmpty ? "Transcription pending…" : recordingManager.transcript)
                     .font(.system(size: 12, design: .monospaced))
                     .lineLimit(nil)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -80,7 +80,7 @@ struct TranscriptionView: View {
             HStack(spacing: 4) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Recording...")
+                Text("Recording…")
                     .font(.system(size: 12))
             }
             .foregroundStyle(.blue)
@@ -88,7 +88,7 @@ struct TranscriptionView: View {
             HStack(spacing: 4) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Transcribing...")
+                Text("Transcribing…")
                     .font(.system(size: 12))
             }
             .foregroundStyle(.orange)

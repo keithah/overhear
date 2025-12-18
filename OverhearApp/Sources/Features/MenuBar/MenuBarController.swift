@@ -8,13 +8,16 @@ import os.log
 final class MenuBarController: NSObject, NSMenuDelegate {
      private var statusItem: NSStatusItem?
      private var popover = NSPopover()
-     private var iconUpdateTimer: Timer?
-     private var minuteUpdateTimer: Timer?
-     private var eventMonitor: Any?
-     private var dataCancellable: AnyCancellable?
+    private var iconUpdateTimer: Timer?
+    private var minuteUpdateTimer: Timer?
+    private var eventMonitor: Any?
+    private var closePopoverObserver: NSObjectProtocol?
+    private var dataCancellable: AnyCancellable?
+    private var recordingCancellable: AnyCancellable?
      private let viewModel: MeetingListViewModel
      private let preferencesWindowController: PreferencesWindowController
      private let preferences: PreferencesService
+     private let recordingCoordinator: MeetingRecordingCoordinator
      private let iconProvider = MenuBarIconProvider()
     private let logger = Logger(subsystem: "com.overhear.app", category: "MenuBar")
 
@@ -32,10 +35,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         return formatter
     }()
 
-    init(viewModel: MeetingListViewModel, preferencesWindowController: PreferencesWindowController, preferences: PreferencesService) {
+    init(viewModel: MeetingListViewModel,
+         preferencesWindowController: PreferencesWindowController,
+         preferences: PreferencesService,
+         recordingCoordinator: MeetingRecordingCoordinator) {
          self.viewModel = viewModel
          self.preferencesWindowController = preferencesWindowController
          self.preferences = preferences
+         self.recordingCoordinator = recordingCoordinator
          super.init()
      }
 
@@ -43,9 +50,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         iconUpdateTimer?.invalidate()
         minuteUpdateTimer?.invalidate()
         dataCancellable?.cancel()
+        recordingCancellable?.cancel()
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
         }
+        if let observer = closePopoverObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        NotificationCenter.default.removeObserver(self)
     }
 
      func setup() {
@@ -62,19 +74,40 @@ final class MenuBarController: NSObject, NSMenuDelegate {
          // Setup popover
          popover.behavior = .transient  // Close immediately when clicking outside
          popover.contentSize = NSSize(width: 380, height: 520)
-         popover.contentViewController = NSHostingController(rootView: MenuBarContentView(viewModel: viewModel, preferences: preferences) {
-             self.showPreferences()
-         })
+         popover.contentViewController = NSHostingController(rootView: MenuBarContentView(
+             viewModel: viewModel,
+             preferences: preferences,
+             recordingCoordinator: recordingCoordinator,
+             openPreferences: { self.showPreferences() },
+             onToggleRecording: { [weak self] in self?.handleRecordingToggle() }
+         ))
          
          // Store status item (must be retained)
          statusItem = item
          
-         // Update whenever meeting data changes so we don't wait for the minute timer
-         dataCancellable = viewModel.$upcomingSections
-             .receive(on: RunLoop.main)
-             .sink { [weak self] _ in
-                 self?.updateStatusItemIcon()
-             }
+        // Update whenever meeting data changes so we don't wait for the minute timer
+        dataCancellable = viewModel.$upcomingSections
+           .receive(on: RunLoop.main)
+           .sink { [weak self] _ in
+               self?.updateStatusItemIcon()
+           }
+
+        closePopoverObserver = NotificationCenter.default.addObserver(
+            forName: .closeMenuPopover,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            FileLogger.log(category: "MenuBarController", message: "Received closeMenuPopover notification; closing popover")
+            self?.closePopover()
+        }
+        FileLogger.log(category: "MenuBarController", message: "Registered closeMenuPopover observer")
+        
+        // Update when recording state changes (so icon badge can appear)
+        recordingCancellable = recordingCoordinator.$status
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateStatusItemIcon()
+            }
         
          // Update menubar icon immediately (will update again when data loads)
          Task { @MainActor in
@@ -153,7 +186,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     
     func closePopover() {
         if popover.isShown {
+            FileLogger.log(category: "MenuBarController", message: "Closing popover")
             popover.performClose(nil)
+        } else {
+            FileLogger.log(category: "MenuBarController", message: "Popover already closed; ignoring close request")
         }
     }
     
@@ -172,7 +208,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
              return
          }
 
-        let icon = iconProvider.makeMenuBarIcon()
+        let icon = iconProvider.makeMenuBarIcon(recordingIndicator: recordingCoordinator.isRecording)
         icon.isTemplate = false
         button.image = icon
         button.imagePosition = .imageLeft
@@ -182,9 +218,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
              .flatMap { $0.meetings }
          
          let now = Date()
-         let nextEvent = allMeetings
+         let currentEvent = allMeetings
+             .filter { !$0.isAllDay && $0.startDate <= now && $0.endDate.addingTimeInterval(5 * 60) >= now }
+             .max { $0.startDate < $1.startDate }
+         let upcomingEvent = allMeetings
              .filter { !$0.isAllDay && $0.startDate > now }  // Exclude all-day events
              .min { $0.startDate < $1.startDate }
+         let nextEvent = currentEvent ?? upcomingEvent
          
         logger.debug("[MenuBar] updateStatusItemIcon: found \(allMeetings.count) total meetings, next event: \(nextEvent?.title ?? "none"), countdown enabled: \(self.preferences.countdownEnabled)")
 
@@ -219,5 +259,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         iconUpdateTimer = Timer(fireAt: nextMidnight, interval: 0, target: self, selector: #selector(iconUpdateTimerFired), userInfo: nil, repeats: false)
         RunLoop.main.add(iconUpdateTimer!, forMode: .common)
+    }
+
+    private func handleRecordingToggle() {
+        if recordingCoordinator.isRecording {
+            Task { await recordingCoordinator.stopRecording() }
+        } else {
+            Task { await recordingCoordinator.startManualRecording() }
+        }
     }
 }
