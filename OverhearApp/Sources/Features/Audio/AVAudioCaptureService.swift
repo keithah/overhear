@@ -56,7 +56,8 @@ actor AVAudioCaptureService {
         try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
 
-        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+        // Use a smaller buffer to reduce latency for streaming transcripts.
+        engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
             guard let self else { return }
 
             do {
