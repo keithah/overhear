@@ -56,11 +56,14 @@ actor AVAudioCaptureService {
         try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
 
-        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+            guard let self else { return }
+
             do {
                 try file.write(from: buffer)
-                Task { [weak self] in
-                    await self?.notifyBufferObservers(buffer: buffer)
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    await self.notifyBufferObservers(buffer: buffer)
                 }
             } catch {
                 Task { [weak self] in

@@ -398,7 +398,7 @@ private extension MeetingRecordingManager {
 
             streamingObserverToken = await captureService.registerBufferObserver { [weak manager] buffer in
                 guard let manager else { return }
-                Task {
+                Task { @MainActor in
                     await manager.streamAudio(buffer)
                 }
             }
