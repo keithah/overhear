@@ -56,19 +56,25 @@ final class CallDetectionService {
         guard preferencesAllowNotifications else { return }
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier else {
+            autoCoordinator?.onNoDetection()
             return
         }
 
         guard supportedMeetingBundles.contains(bundleID) else {
             lastNotifiedApp = nil
             lastNotifiedTitle = nil
+            autoCoordinator?.onNoDetection()
             return
         }
 
         // Require mic-in-use to reduce false positives.
-        guard isMicActive else { return }
+        guard isMicActive else {
+            autoCoordinator?.onNoDetection()
+            return
+        }
 
         guard let titleInfo = activeWindowTitle(for: app) else {
+            autoCoordinator?.onNoDetection()
             return
         }
 
@@ -87,6 +93,8 @@ final class CallDetectionService {
         }
         if preferences?.autoRecordingEnabled == true {
             autoCoordinator?.onDetection(appName: appName, meetingTitle: body)
+        } else {
+            autoCoordinator?.onNoDetection()
         }
         logger.info("Detected meeting window for \(appName, privacy: .public) title=\(body, privacy: .public)")
     }
