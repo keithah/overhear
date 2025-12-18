@@ -7,6 +7,7 @@ final class AppContext: ObservableObject {
     let calendarService: CalendarService
     let meetingViewModel: MeetingListViewModel
     let preferencesWindowController: PreferencesWindowController
+    let callDetectionService: CallDetectionService
     var menuBarController: MenuBarController?
     var hotkeyManager: HotkeyManager?
 
@@ -19,5 +20,6 @@ final class AppContext: ObservableObject {
         self.calendarService = calendar
         self.meetingViewModel = MeetingListViewModel(calendarService: calendar, preferences: preferences)
         self.preferencesWindowController = PreferencesWindowController(preferences: preferences, calendarService: calendar)
+        self.callDetectionService = CallDetectionService()
     }
 }

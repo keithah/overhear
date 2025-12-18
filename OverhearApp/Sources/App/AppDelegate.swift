@@ -37,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Keep strong reference to controller
         self.menuBarController = controller
 
+        // Lightweight meeting window detection for notifications (requires Accessibility)
+        context.callDetectionService.start()
+
         // Keep windows hidden but present for proper event delivery to menubar
         DispatchQueue.main.async {
             NSApp.windows.forEach { $0.orderOut(nil) }
