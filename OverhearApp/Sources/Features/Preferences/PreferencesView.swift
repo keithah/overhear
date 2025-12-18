@@ -176,6 +176,7 @@ struct PreferencesView: View {
     private var notificationsTab: some View {
         Form {
             Section(header: Text("Meeting reminders")) {
+                Toggle("Enable meeting notifications", isOn: $preferences.meetingNotificationsEnabled)
                 HStack {
                     Text("Notify minutes before")
                     Spacer()
@@ -185,6 +186,13 @@ struct PreferencesView: View {
                         .frame(minWidth: 20, alignment: .trailing)
                 }
                 Text("Notifications fire before your next meeting; countdown appears in the menu bar if enabled.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Text("Auto recording")) {
+                Toggle("Auto start/stop when meeting window detected", isOn: $preferences.autoRecordingEnabled)
+                Text("Requires Accessibility + mic-in-use; currently supports Zoom, Teams, Webex, Meet in Safari/Chrome/Edge.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

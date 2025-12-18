@@ -10,6 +10,7 @@ final class CallDetectionService {
     private let micMonitor = MicUsageMonitor()
     private var isMicActive = false
     private weak var autoCoordinator: AutoRecordingCoordinator?
+    private weak var preferences: PreferencesService?
 
     // Known meeting bundle IDs (native apps) and browsers used for Meet.
     private let supportedMeetingBundles: Set<String> = [
@@ -23,9 +24,10 @@ final class CallDetectionService {
         "com.microsoft.edgemac"
     ]
 
-    func start(autoCoordinator: AutoRecordingCoordinator?) {
+    func start(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {
         guard pollTimer == nil else { return }
         self.autoCoordinator = autoCoordinator
+        self.preferences = preferences
         micMonitor.onChange = { [weak self] active in
             Task { @MainActor [weak self] in
                 self?.isMicActive = active
@@ -51,6 +53,7 @@ final class CallDetectionService {
     }
 
     private func pollFrontmostApp() async {
+        guard preferencesAllowNotifications else { return }
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier else {
             return
@@ -79,8 +82,12 @@ final class CallDetectionService {
 
         let appName = app.localizedName ?? bundleID
         let body = titleInfo.urlDescription ?? titleInfo.displayTitle
-        NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: body)
-        autoCoordinator?.onDetection(appName: appName, meetingTitle: body)
+        if preferences?.meetingNotificationsEnabled != false {
+            NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: body)
+        }
+        if preferences?.autoRecordingEnabled == true {
+            autoCoordinator?.onDetection(appName: appName, meetingTitle: body)
+        }
         logger.info("Detected meeting window for \(appName, privacy: .public) title=\(body, privacy: .public)")
     }
 
@@ -129,5 +136,9 @@ final class CallDetectionService {
             return urlString
         }
         return nil
+    }
+
+    private var preferencesAllowNotifications: Bool {
+        preferences?.meetingNotificationsEnabled != false || preferences?.autoRecordingEnabled == true
     }
 }

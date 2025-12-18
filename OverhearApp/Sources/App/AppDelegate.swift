@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.menuBarController = controller
 
         // Meeting window detection for notifications + auto-record (requires Accessibility)
-        context.callDetectionService.start(autoCoordinator: context.autoRecordingCoordinator)
+        context.callDetectionService.start(autoCoordinator: context.autoRecordingCoordinator, preferences: context.preferencesService)
 
         // Keep windows hidden but present for proper event delivery to menubar
         DispatchQueue.main.async {
