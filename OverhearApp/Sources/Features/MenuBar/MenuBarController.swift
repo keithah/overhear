@@ -98,9 +98,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             queue: .main
         ) { [weak self] _ in
             FileLogger.log(category: "MenuBarController", message: "Received closeMenuPopover notification; closing popover")
-            Task { @MainActor [weak self] in
-                self?.closePopover()
-            }
+            self?.closePopover()
         }
         FileLogger.log(category: "MenuBarController", message: "Registered closeMenuPopover observer")
         
