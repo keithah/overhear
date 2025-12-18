@@ -120,7 +120,7 @@ final class CallDetectionService {
 
         // For browsers, try to extract the URL to distinguish Meet.
         var urlDescription: String?
-        if let safariURL = copyURLAttribute(window: window, key: kAXURLAttribute) {
+        if let safariURL = copyURLAttribute(window: window, key: kAXURLAttribute as CFString) {
             urlDescription = safariURL
         } else if let chromeURL = copyURLAttribute(window: window, key: "AXDocument" as CFString) {
             urlDescription = chromeURL

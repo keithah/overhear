@@ -50,47 +50,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
          super.init()
      }
 
-    deinit {
-        // Ensure cleanup on the main actor to avoid Sendable isolation issues.
-        Task { @MainActor [iconUpdateTimer,
-                          minuteUpdateTimer,
-                          dataCancellable,
-                          recordingCancellable,
-                          eventMonitor,
-                          closePopoverObserver,
-                          weakSelf = self] in
-            weakSelf?.cleanupResources(
-                iconUpdateTimer: iconUpdateTimer,
-                minuteUpdateTimer: minuteUpdateTimer,
-                dataCancellable: dataCancellable,
-                recordingCancellable: recordingCancellable,
-                eventMonitor: eventMonitor,
-                closePopoverObserver: closePopoverObserver
-            )
-        }
-    }
-
-    @MainActor
-    private func cleanupResources(iconUpdateTimer: Timer?,
-                                  minuteUpdateTimer: Timer?,
-                                  dataCancellable: AnyCancellable?,
-                                  recordingCancellable: AnyCancellable?,
-                                  eventMonitor: Any?,
-                                  closePopoverObserver: NSObjectProtocol?) {
-        iconUpdateTimer?.invalidate()
-        minuteUpdateTimer?.invalidate()
-        dataCancellable?.cancel()
-        recordingCancellable?.cancel()
-        autoRecordingCancellable?.cancel()
-        if let monitor = eventMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
-        if let observer = closePopoverObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        NotificationCenter.default.removeObserver(self)
-    }
-
      func setup() {
          let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
          
