@@ -47,6 +47,12 @@
 	EAF99761927E193EB588F6CA /* PreferencesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C268D5AFB48081C5B8477301 /* PreferencesWindowController.swift */; };
 	EDF853AFF500BEEA7B7EB51C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01606FEE32B43E2DE0C9D8E /* AppDelegate.swift */; };
 	016A546E4C2C7638A8013832 /* AppContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0753D3EBF878CDDA7278CF7 /* AppContext.swift */; };
+
+		FD7D27912BBF20D900A5CB6F /* AutoRecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27902BBF20D900A5CB6F /* AutoRecordingCoordinator.swift */; };
+		FD7D27932BBF20EA00A5CB6F /* CallDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27922BBF20EA00A5CB6F /* CallDetectionService.swift */; };
+		FD7D27952BBF20F500A5CB6F /* MicUsageMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27942BBF20F500A5CB6F /* MicUsageMonitor.swift */; };
+		FD7D27972BBF20FE00A5CB6F /* RecordingStateIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27962BBF20FE00A5CB6F /* RecordingStateIndicator.swift */; };
+
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -92,6 +98,12 @@
 	E6760441C0977FD19F2B6838 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 	82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRowView.swift; sourceTree = "<group>"; };
 	5B3C1D4E6A9845A4B7F8C2DA /* TranscriptWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptWindowController.swift; sourceTree = "<group>"; };
+
+		FD7D27902BBF20D900A5CB6F /* AutoRecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoRecordingCoordinator.swift; sourceTree = "<group>"; };
+		FD7D27922BBF20EA00A5CB6F /* CallDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDetectionService.swift; sourceTree = "<group>"; };
+		FD7D27942BBF20F500A5CB6F /* MicUsageMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicUsageMonitor.swift; sourceTree = "<group>"; };
+		FD7D27962BBF20FE00A5CB6F /* RecordingStateIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateIndicator.swift; sourceTree = "<group>"; };
+
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -359,6 +371,10 @@
 			EAF99761927E193EB588F6CA /* PreferencesWindowController.swift in Sources */,
 			B1F0D0C1F1E201000000001D /* PermissionsService.swift in Sources */,
 			B1F0D0C1F1E2010000000011 /* Types.swift in Sources */,
+								FD7D27912BBF20D900A5CB6F /* AutoRecordingCoordinator.swift in Sources */,
+								FD7D27932BBF20EA00A5CB6F /* CallDetectionService.swift in Sources */,
+								FD7D27952BBF20F500A5CB6F /* MicUsageMonitor.swift in Sources */,
+								FD7D27972BBF20FE00A5CB6F /* RecordingStateIndicator.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
