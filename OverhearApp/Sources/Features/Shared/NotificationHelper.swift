@@ -94,3 +94,28 @@ enum NotificationHelper {
         ])
     }
 }
+
+extension NotificationHelper {
+    static func sendMeetingPrompt(appName: String, meetingTitle: String?) {
+        let content = UNMutableNotificationContent()
+        content.title = "Meeting window detected (\(appName))"
+        if let meetingTitle, !meetingTitle.isEmpty {
+            content.body = "Start a New Note? \(meetingTitle)"
+        } else {
+            content.body = "Start a New Note for this meeting?"
+        }
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "com.overhear.notification.meeting-detected.\(UUID().uuidString)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule meeting prompt notification: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+}
