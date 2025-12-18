@@ -4,7 +4,6 @@ import Combine
 import Foundation
 import os.log
 
-@MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
      private var statusItem: NSStatusItem?
      private var popover = NSPopover()
@@ -47,6 +46,32 @@ final class MenuBarController: NSObject, NSMenuDelegate {
      }
 
     deinit {
+        // Ensure cleanup on the main actor to avoid Sendable isolation issues.
+        Task { @MainActor [iconUpdateTimer,
+                          minuteUpdateTimer,
+                          dataCancellable,
+                          recordingCancellable,
+                          eventMonitor,
+                          closePopoverObserver,
+                          weakSelf = self] in
+            weakSelf?.cleanupResources(
+                iconUpdateTimer: iconUpdateTimer,
+                minuteUpdateTimer: minuteUpdateTimer,
+                dataCancellable: dataCancellable,
+                recordingCancellable: recordingCancellable,
+                eventMonitor: eventMonitor,
+                closePopoverObserver: closePopoverObserver
+            )
+        }
+    }
+
+    @MainActor
+    private func cleanupResources(iconUpdateTimer: Timer?,
+                                  minuteUpdateTimer: Timer?,
+                                  dataCancellable: AnyCancellable?,
+                                  recordingCancellable: AnyCancellable?,
+                                  eventMonitor: Any?,
+                                  closePopoverObserver: NSObjectProtocol?) {
         iconUpdateTimer?.invalidate()
         minuteUpdateTimer?.invalidate()
         dataCancellable?.cancel()
