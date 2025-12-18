@@ -26,7 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = MenuBarController(viewModel: context.meetingViewModel,
                                            preferencesWindowController: context.preferencesWindowController,
                                            preferences: context.preferencesService,
-                                           recordingCoordinator: context.recordingCoordinator)
+                                           recordingCoordinator: context.recordingCoordinator,
+                                           autoRecordingCoordinator: context.autoRecordingCoordinator)
         controller.setup()
         context.menuBarController = controller
 
@@ -79,6 +80,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Default to disabled unless explicitly opted-in.
         if defaults.object(forKey: "overhear.enableFileLogs") == nil {
             defaults.set(false, forKey: "overhear.enableFileLogs")
+        }
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard let context = context else { return }
+        let id = response.actionIdentifier
+        let content = response.notification.request.content
+        let appName = (content.userInfo["appName"] as? String) ?? content.title
+            .replacingOccurrences(of: "Meeting window detected (", with: "")
+            .replacingOccurrences(of: ")", with: "")
+        let meetingTitle = (content.userInfo["meetingTitle"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? content.body
+
+        if id == "com.overhear.notification.start" {
+            context.autoRecordingCoordinator.onDetection(appName: appName, meetingTitle: meetingTitle)
+        } else if id == "com.overhear.notification.dismiss" {
+            context.autoRecordingCoordinator.onNoDetection()
         }
     }
 }

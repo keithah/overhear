@@ -7,10 +7,8 @@ final class AutoRecordingCoordinator {
     private var activeManager: MeetingRecordingManager?
     private var stopWorkItem: DispatchWorkItem?
     private let stopGracePeriod: TimeInterval = 8.0
-
-    var isRecording: Bool {
-        activeManager != nil
-    }
+    private var activeTitle: String?
+    @Published private(set) var isRecording: Bool = false
 
     func onDetection(appName: String, meetingTitle: String?) {
         // Cancel any pending stop since we have a fresh detection.
@@ -18,6 +16,7 @@ final class AutoRecordingCoordinator {
         stopWorkItem = nil
 
         if activeManager != nil {
+            isRecording = true
             return // Already recording; keep going.
         }
 
@@ -41,6 +40,7 @@ final class AutoRecordingCoordinator {
     private func startRecording(appName: String, meetingTitle: String?) {
         let id = "detected-\(Int(Date().timeIntervalSince1970))"
         let title = meetingTitle?.isEmpty == false ? meetingTitle! : appName
+        activeTitle = title
 
         do {
             let manager = try MeetingRecordingManager(
@@ -48,6 +48,7 @@ final class AutoRecordingCoordinator {
                 meetingTitle: title
             )
             activeManager = manager
+            isRecording = true
             logger.info("Auto-record start for \(title, privacy: .public)")
             Task {
                 await manager.startRecording(duration: 3600)
@@ -64,5 +65,11 @@ final class AutoRecordingCoordinator {
         logger.info("Auto-record stopping")
         await manager.stopRecording()
         activeManager = nil
+        activeTitle = nil
+        isRecording = false
+    }
+
+    func currentRecordingTitle() -> String? {
+        activeTitle
     }
 }
