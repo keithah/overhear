@@ -1,0 +1,82 @@
+import CoreAudio
+import os.log
+
+@MainActor
+final class MicUsageMonitor {
+    private let logger = Logger(subsystem: "com.overhear.app", category: "MicUsageMonitor")
+    private var listenerAdded = false
+    private var isActive = false {
+        didSet {
+            if oldValue != isActive {
+                onChange?(isActive)
+            }
+        }
+    }
+
+    var onChange: ((Bool) -> Void)?
+
+    func start() {
+        guard !listenerAdded else { return }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+            mScope: kAudioObjectPropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            Task { @MainActor in
+                await self?.refreshState()
+            }
+            return noErr
+        }
+
+        let defaultDevice = kAudioObjectSystemObject
+        let status = AudioObjectAddPropertyListenerBlock(defaultDevice, &address, DispatchQueue.main, block)
+        if status == noErr {
+            listenerAdded = true
+            logger.info("Mic usage listener added")
+            Task { @MainActor in
+                await refreshState()
+            }
+        } else {
+            logger.error("Failed to add mic usage listener: \(status)")
+        }
+    }
+
+    func stop() {
+        guard listenerAdded else { return }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+            mScope: kAudioObjectPropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let defaultDevice = kAudioObjectSystemObject
+        AudioObjectRemovePropertyListenerBlock(defaultDevice, &address, DispatchQueue.main, { _, _ in noErr })
+        listenerAdded = false
+        isActive = false
+    }
+
+    private func refreshState() async {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+            mScope: kAudioObjectPropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value: UInt32 = 0
+        var dataSize = UInt32(MemoryLayout<UInt32>.size)
+        let status = AudioObjectGetPropertyData(
+            kAudioObjectSystemObject,
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &value
+        )
+
+        if status == noErr {
+            isActive = (value != 0)
+        } else {
+            logger.error("Mic usage query failed: \(status)")
+        }
+    }
+}
