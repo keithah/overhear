@@ -5,6 +5,7 @@ import os.log
 final class CallDetectionService {
     private let logger = Logger(subsystem: "com.overhear.app", category: "CallDetectionService")
     private var activationObserver: NSObjectProtocol?
+    private var pollTimer: Timer?
     private var lastNotifiedApp: String?
     private var lastNotifiedTitle: String?
     private let micMonitor = MicUsageMonitor()
@@ -25,7 +26,7 @@ final class CallDetectionService {
     ]
 
     func start(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {
-        guard activationObserver == nil else { return }
+        guard activationObserver == nil, pollTimer == nil else { return }
         self.autoCoordinator = autoCoordinator
         self.preferences = preferences
         micMonitor.onChange = { [weak self] active in
@@ -46,6 +47,14 @@ final class CallDetectionService {
         Task { @MainActor in
             await self.pollFrontmostApp()
         }
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.pollFrontmostApp()
+            }
+        }
+        if let pollTimer {
+            RunLoop.main.add(pollTimer, forMode: .common)
+        }
         logger.info("Call detection started with activation observer")
     }
 
@@ -54,6 +63,8 @@ final class CallDetectionService {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
             activationObserver = nil
         }
+        pollTimer?.invalidate()
+        pollTimer = nil
         lastNotifiedApp = nil
         lastNotifiedTitle = nil
         micMonitor.stop()
@@ -129,7 +140,7 @@ final class CallDetectionService {
               CFGetTypeID(window) == AXUIElementGetTypeID() else {
             return nil
         }
-        let axWindow = unsafeBitCast(window, to: AXUIElement.self)
+        let axWindow = unsafeDowncast(window, to: AXUIElement.self)
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleValue)

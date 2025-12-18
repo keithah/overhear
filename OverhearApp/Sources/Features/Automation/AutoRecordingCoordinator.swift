@@ -8,6 +8,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     private var stopWorkItem: DispatchWorkItem?
     private let stopGracePeriod: TimeInterval = 8.0
     private var activeTitle: String?
+    private var monitorTask: Task<Void, Never>?
     @Published private(set) var isRecording: Bool = false
     var onCompleted: (() -> Void)?
     var onStatusUpdate: ((String, Bool) -> Void)?
@@ -67,19 +68,18 @@ final class AutoRecordingCoordinator: ObservableObject {
     private func startAndMonitor(manager: MeetingRecordingManager) async {
         await manager.startRecording(duration: 3600)
         // Watch until it completes/fails, then clear state.
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { [weak self] in
-                // Simple polling; MeetingRecordingManager doesn't expose a delegate.
-                await self?.monitorStatus()
-            }
-            await group.waitForAll()
+        monitorTask = Task { [weak self, weak manager] in
+            guard let manager else { return }
+            await self?.monitorStatus(manager: manager)
         }
+        await monitorTask?.value
     }
 
-    private func monitorStatus() async {
-        guard let manager = activeManager else { return await clearState(transcriptReady: false) }
+    private func monitorStatus(manager: MeetingRecordingManager) async {
+        guard let current = activeManager, current === manager else { return }
         while !Task.isCancelled {
-            let status = manager.status
+            guard let currentManager = activeManager, currentManager === manager else { return }
+            let status = currentManager.status
             switch status {
             case .capturing, .transcribing:
                 try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
@@ -93,6 +93,8 @@ final class AutoRecordingCoordinator: ObservableObject {
     }
 
     private func clearState(transcriptReady: Bool = false) async {
+        monitorTask?.cancel()
+        monitorTask = nil
         stopWorkItem?.cancel()
         stopWorkItem = nil
         let endedTitle = activeTitle
