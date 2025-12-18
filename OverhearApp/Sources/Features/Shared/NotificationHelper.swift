@@ -102,6 +102,10 @@ extension NotificationHelper {
             content.body = "Start a New Note for this meeting?"
         }
         content.sound = .default
+        content.userInfo = [
+            "appName": appName,
+            "meetingTitle": meetingTitle ?? ""
+        ]
 
         // Add action buttons
         let startAction = UNNotificationAction(
