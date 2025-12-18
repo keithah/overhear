@@ -69,6 +69,25 @@ enum NotificationHelper {
 }
 
 extension NotificationHelper {
+    static func sendRecordingCompleted(title: String, transcriptReady: Bool) {
+        let content = UNMutableNotificationContent()
+        content.title = "New Note \(transcriptReady ? "ready" : "stopped")"
+        content.body = transcriptReady ? "\(title) transcript is ready." : "\(title) recording stopped."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "com.overhear.notification.recording-complete.\(UUID().uuidString)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule completion notification: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
     static func sendMeetingPrompt(appName: String, meetingTitle: String?) {
         let content = UNMutableNotificationContent()
         content.title = "Meeting window detected (\(appName))"
