@@ -9,6 +9,7 @@ final class AutoRecordingCoordinator {
     private let stopGracePeriod: TimeInterval = 8.0
     private var activeTitle: String?
     @Published private(set) var isRecording: Bool = false
+    var onCompleted: (() -> Void)?
 
     func onDetection(appName: String, meetingTitle: String?) {
         // Cancel any pending stop since we have a fresh detection.
@@ -51,11 +52,45 @@ final class AutoRecordingCoordinator {
             isRecording = true
             logger.info("Auto-record start for \(title, privacy: .public)")
             Task {
-                await manager.startRecording(duration: 3600)
+                await self.startAndMonitor(manager: manager)
             }
         } catch {
             logger.error("Failed to start auto recording: \(error.localizedDescription, privacy: .public)")
+            activeManager = nil
+            activeTitle = nil
+            isRecording = false
         }
+    }
+
+    private func startAndMonitor(manager: MeetingRecordingManager) async {
+        await manager.startRecording(duration: 3600)
+        // Watch until it completes/fails, then clear state.
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { [weak self] in
+                // Simple polling; MeetingRecordingManager doesn't expose a delegate.
+                while let status = await self?.activeManager?.status {
+                    switch status {
+                    case .capturing, .transcribing:
+                        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
+                        continue
+                    case .completed, .failed, .idle:
+                        await self?.clearState()
+                        return
+                    }
+                }
+                await self?.clearState()
+            }
+            await group.waitForAll()
+        }
+    }
+
+    private func clearState() async {
+        stopWorkItem?.cancel()
+        stopWorkItem = nil
+        activeManager = nil
+        activeTitle = nil
+        isRecording = false
+        onCompleted?()
     }
 
     func stopRecording() async {
@@ -64,9 +99,7 @@ final class AutoRecordingCoordinator {
         guard let manager = activeManager else { return }
         logger.info("Auto-record stopping")
         await manager.stopRecording()
-        activeManager = nil
-        activeTitle = nil
-        isRecording = false
+        await clearState()
     }
 
     func currentRecordingTitle() -> String? {

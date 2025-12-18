@@ -5,6 +5,7 @@ import os.log
 final class MicUsageMonitor {
     private let logger = Logger(subsystem: "com.overhear.app", category: "MicUsageMonitor")
     private var listenerAdded = false
+    private var listenerBlock: AudioObjectPropertyListenerBlock?
     private var isActive = false {
         didSet {
             if oldValue != isActive {
@@ -29,6 +30,7 @@ final class MicUsageMonitor {
             }
             return noErr
         }
+        listenerBlock = block
 
         let defaultDevice = kAudioObjectSystemObject
         let status = AudioObjectAddPropertyListenerBlock(defaultDevice, &address, DispatchQueue.main, block)
@@ -51,8 +53,11 @@ final class MicUsageMonitor {
             mElement: kAudioObjectPropertyElementMain
         )
         let defaultDevice = kAudioObjectSystemObject
-        AudioObjectRemovePropertyListenerBlock(defaultDevice, &address, DispatchQueue.main, { _, _ in noErr })
+        if let block = listenerBlock {
+            AudioObjectRemovePropertyListenerBlock(defaultDevice, &address, DispatchQueue.main, block)
+        }
         listenerAdded = false
+        listenerBlock = nil
         isActive = false
     }
 
