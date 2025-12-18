@@ -11,8 +11,15 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    - name: Select Xcode 16.2 (Swift 6.2)
-      run: sudo xcode-select -s /Applications/Xcode_16.2.app
+    - name: Select latest Xcode 16.x
+      run: |
+        # Prefer Xcode 16.x if available on the runner; fall back to the default.
+        for XCODE in /Applications/Xcode_16.*.app /Applications/Xcode_16.app; do
+          if [ -d "$XCODE" ]; then
+            sudo xcode-select -s "$XCODE"
+            break
+          fi
+        done
 
     - uses: actions/checkout@v3
     - name: SwiftPM tests
