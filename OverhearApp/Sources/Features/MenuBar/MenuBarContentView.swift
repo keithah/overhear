@@ -408,7 +408,7 @@ struct LiveTranscriptList: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
             }
-            .onChange(of: segments.count) { _ in
+            .onChange(of: segments.count) { _, _ in
                 if let last = segments.last {
                     withAnimation {
                         proxy.scrollTo(last.id, anchor: .bottom)

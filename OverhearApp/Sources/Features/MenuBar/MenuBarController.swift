@@ -46,7 +46,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
          super.init()
      }
 
-    @MainActor deinit {
+    deinit {
         iconUpdateTimer?.invalidate()
         minuteUpdateTimer?.invalidate()
         dataCancellable?.cancel()
@@ -98,7 +98,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             queue: .main
         ) { [weak self] _ in
             FileLogger.log(category: "MenuBarController", message: "Received closeMenuPopover notification; closing popover")
-            self?.closePopover()
+            Task { @MainActor [weak self] in
+                self?.closePopover()
+            }
         }
         FileLogger.log(category: "MenuBarController", message: "Registered closeMenuPopover observer")
         

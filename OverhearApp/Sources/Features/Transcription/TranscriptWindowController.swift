@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Presents a transcript in a detached floating panel so the menu bar popover stays responsive.
+@MainActor
 final class TranscriptWindowController {
     static let shared = TranscriptWindowController()
 
