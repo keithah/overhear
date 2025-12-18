@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var menuBarController: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
         bootstrapFileLoggingFlag()
 
         // Default to accessory menubar mode; CalendarService will temporarily promote if needed.
