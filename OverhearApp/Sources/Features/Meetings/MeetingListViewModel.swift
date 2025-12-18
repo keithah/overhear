@@ -82,7 +82,9 @@ final class MeetingListViewModel: ObservableObject {
             .debounce(for: .seconds(1), scheduler: RunLoop.main)
             .sink { [weak self] _ in
                 self?.log("EKEventStoreChanged received; triggering reload")
-                Task { await self?.reload() }
+                Task { [weak self] in
+                    await self?.reload()
+                }
             }
             .store(in: &cancellables)
 

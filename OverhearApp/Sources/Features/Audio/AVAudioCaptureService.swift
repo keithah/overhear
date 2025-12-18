@@ -46,7 +46,7 @@ actor AVAudioCaptureService {
     private var captureStartDate: Date?
     private var requestedDuration: TimeInterval = 0
    
-    typealias AudioBufferObserver = (AVAudioPCMBuffer) -> Void
+    typealias AudioBufferObserver = @Sendable (AVAudioPCMBuffer) -> Void
 
     func startCapture(duration: TimeInterval, outputURL: URL) async throws -> CaptureResult {
         guard !isRecording else { throw Error.alreadyRecording }
@@ -60,11 +60,14 @@ actor AVAudioCaptureService {
         engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
             guard let self else { return }
 
+            // Work with a copy so we don't share task-isolated buffers across actors.
+            guard let bufferCopy = buffer.cloned() else { return }
+
             do {
                 try file.write(from: buffer)
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    await self.notifyBufferObservers(buffer: buffer)
+                    await self.notifyBufferObservers(buffer: bufferCopy)
                 }
             } catch {
                 Task { [weak self] in
