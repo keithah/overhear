@@ -204,6 +204,10 @@ final class MeetingRecordingManager: ObservableObject {
         status = .completed
     }
 
+    var displayTitle: String {
+        meetingTitle
+    }
+
     func regenerateSummary() async {
         guard !isRegeneratingSummary else { return }
         isRegeneratingSummary = true

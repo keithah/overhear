@@ -617,6 +617,348 @@ struct LiveNotesView: View {
     }
 }
 
+struct LiveNotesManagerView: View {
+    @ObservedObject var manager: MeetingRecordingManager
+    @State private var searchText: String = ""
+    @State private var showTranscript = true
+    @State private var showNotes = true
+    @State private var showAI = true
+    @State private var isRegenerating = false
+    @State private var liveNotes: String = ""
+    var onHide: () -> Void
+
+    private var statusText: String {
+        switch manager.status {
+        case .capturing, .transcribing: return "Recording…"
+        case .completed: return "Completed"
+        case .failed: return "Failed"
+        case .idle: return "Idle"
+        }
+    }
+
+    private var statusColor: Color {
+        switch manager.status {
+        case .capturing, .transcribing: return .green
+        case .completed: return .blue
+        case .failed: return .red
+        case .idle: return .secondary
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            header
+            consentNotice
+            if showTranscript { transcriptSection }
+            if showNotes { notesSection }
+            if showAI { aiSection }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(nsColor: .windowBackgroundColor))
+                .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 10)
+        )
+        .frame(minWidth: 460, minHeight: 500)
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.blue.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "mic.fill")
+                    .foregroundColor(.blue)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("New Note")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Text(manager.displayTitle)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+            }
+            Spacer()
+            Text(statusText)
+                .font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(statusColor.opacity(0.15)))
+                .foregroundColor(statusColor)
+            Button(action: onHide) {
+                Image(systemName: "minus.rectangle.fill")
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Hide window")
+            Menu {
+                Button("Open Sound settings…") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Button("Troubleshoot transcription issues") {
+                    if let url = URL(string: "https://help.granola.ai/article/transcription") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Divider()
+                Button(showTranscript ? "Hide transcript" : "Show transcript") {
+                    showTranscript.toggle()
+                }
+                Button(showNotes ? "Hide notes" : "Show notes") {
+                    showNotes.toggle()
+                }
+                Button(showAI ? "Hide AI bullets" : "Show AI bullets") {
+                    showAI.toggle()
+                }
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .foregroundColor(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+        }
+    }
+
+    private var consentNotice: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock.shield.fill")
+                .foregroundColor(.secondary)
+            Text("Always get consent when transcribing others.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+    }
+
+    private var transcriptSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Live transcript")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    TextField("Find in transcript…", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .frame(width: 180)
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+            }
+            LiveTranscriptList(segments: manager.liveSegments, searchText: searchText)
+        }
+    }
+
+    private var notesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Notes")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Button {
+                    copyNotes()
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy notes")
+                Button {
+                    prependBullet()
+                } label: {
+                    Image(systemName: "list.bullet")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Insert bullet")
+            }
+            ZStack(alignment: .topLeading) {
+                if liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Write notes…")
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 8)
+                }
+                TextEditor(text: $liveNotes)
+                    .font(.system(size: 13))
+                    .padding(6)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
+                    .frame(minHeight: 120)
+            }
+        }
+    }
+
+    private var aiSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("AI-enhanced bullets")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                if manager.summary != nil {
+                    Text("Ready")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.green)
+                } else {
+                    Text("Generates after recording")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Button {
+                    Task { await regenerateSummary() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Regenerate with latest transcript")
+                .disabled(isRegenerating || manager.liveTranscript.isEmpty)
+                Button {
+                    copySummary()
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy AI bullets")
+                Button {
+                    exportSummary()
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Export summary/notes")
+            }
+            if let summary = manager.summary {
+                VStack(alignment: .leading, spacing: 10) {
+                    if !summary.summary.isEmpty {
+                        Text(summary.summary)
+                            .font(.system(size: 12))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if !summary.highlights.isEmpty {
+                        Divider()
+                        Text("Highlights")
+                            .font(.system(size: 12, weight: .semibold))
+                        ForEach(summary.highlights, id: \.self) { highlight in
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "circle.fill")
+                                    .font(.system(size: 6))
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 4)
+                                Text(highlight)
+                                    .font(.system(size: 12))
+                            }
+                        }
+                    }
+                    if !summary.actionItems.isEmpty {
+                        Divider()
+                        Text("Action items")
+                            .font(.system(size: 12, weight: .semibold))
+                        ForEach(summary.actionItems, id: \.self) { item in
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "checkmark.circle")
+                                    .foregroundColor(.green)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.description)
+                                        .font(.system(size: 12))
+                                    if let owner = item.owner, !owner.isEmpty {
+                                        Text("Owner: \(owner)")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+            } else {
+                Text("AI-enhanced bullets will appear here once the note finishes processing.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+            }
+        }
+    }
+
+    private func prependBullet() {
+        if liveNotes.isEmpty {
+            liveNotes = "- "
+        } else if !liveNotes.hasSuffix("\n") {
+            liveNotes += "\n- "
+        } else {
+            liveNotes += "- "
+        }
+    }
+
+    private func copyNotes() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(liveNotes, forType: .string)
+    }
+
+    private func copySummary() {
+        guard let summary = manager.summary else { return }
+        let bullets = (summary.summary.isEmpty ? [] : [summary.summary])
+            + summary.highlights
+            + summary.actionItems.map { "Action: \($0.description)\( ($0.owner?.isEmpty == false) ? " [\($0.owner!)]" : "")" }
+        let text = bullets.joined(separator: "\n")
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
+    private func regenerateSummary() async {
+        guard !isRegenerating else { return }
+        isRegenerating = true
+        await manager.regenerateSummary()
+        isRegenerating = false
+    }
+
+    private func exportSummary() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "NewNote.md"
+        panel.allowedContentTypes = [.plainText, .text, .init(filenameExtension: "md")!]
+        panel.canCreateDirectories = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let title = manager.displayTitle
+            var lines: [String] = ["# \(title)"]
+            if let summary = manager.summary {
+                if !summary.summary.isEmpty {
+                    lines.append("\n## Summary\n\(summary.summary)")
+                }
+                if !summary.highlights.isEmpty {
+                    lines.append("\n## Highlights")
+                    summary.highlights.forEach { lines.append("- \($0)") }
+                }
+                if !summary.actionItems.isEmpty {
+                    lines.append("\n## Action Items")
+                    summary.actionItems.forEach { item in
+                        let owner = (item.owner?.isEmpty == false) ? " [\(item.owner!)]" : ""
+                        lines.append("- \(item.description)\(owner)")
+                    }
+                }
+            }
+            if !liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                lines.append("\n## Notes")
+                lines.append(liveNotes)
+            }
+            let text = lines.joined(separator: "\n")
+            try? text.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+}
+
 struct RecordingBannerView: View {
     @ObservedObject var recordingCoordinator: MeetingRecordingCoordinator
     var openLiveNotes: () -> Void
@@ -742,6 +1084,7 @@ final class LiveNotesWindowController {
 
     private var window: NSWindow?
     private var hostingController: NSHostingController<LiveNotesView>?
+    private var autoHostingController: NSHostingController<LiveNotesManagerView>?
 
     func show(with coordinator: MeetingRecordingCoordinator) {
         if let hosting = hostingController {
@@ -774,5 +1117,34 @@ final class LiveNotesWindowController {
 
     func hide() {
         window?.orderOut(nil)
+    }
+
+    func show(autoManager: MeetingRecordingManager) {
+        if let controller = autoHostingController {
+            controller.rootView = LiveNotesManagerView(manager: autoManager, onHide: { [weak self] in
+                self?.hide()
+            })
+            window?.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let view = LiveNotesManagerView(manager: autoManager, onHide: { [weak self] in
+            self?.hide()
+        })
+        let controller = NSHostingController(rootView: view)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 420),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.center()
+        window.title = "Live Notes"
+        window.contentView = controller.view
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+
+        self.window = window
+        self.autoHostingController = controller
     }
 }

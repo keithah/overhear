@@ -107,6 +107,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             .sink { [weak self] _ in
                 self?.updateStatusItemIcon()
             }
+        autoRecordingCoordinator.onManagerUpdate = { manager in
+            if let manager {
+                LiveNotesWindowController.shared.show(autoManager: manager)
+            }
+        }
         
          // Update menubar icon immediately (will update again when data loads)
          Task { @MainActor in

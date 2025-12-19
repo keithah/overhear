@@ -20,6 +20,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     private var activeTitle: String?
     private var monitorTask: Task<Void, Never>?
     @Published private(set) var isRecording: Bool = false
+    var onManagerUpdate: ((MeetingRecordingManager?) -> Void)?
     var onCompleted: (() -> Void)?
     var onStatusUpdate: ((String, Bool) -> Void)?
 
@@ -66,6 +67,7 @@ final class AutoRecordingCoordinator: ObservableObject {
                 meetingTitle: title
             )
             activeManager = manager
+            onManagerUpdate?(manager)
             isRecording = true
             logger.info("Auto-record start for \(title, privacy: .public)")
             onStatusUpdate?(title, true)
@@ -112,9 +114,13 @@ final class AutoRecordingCoordinator: ObservableObject {
         stopWorkItem?.cancel()
         stopWorkItem = nil
         let endedTitle = activeTitle
+        let endedManager = activeManager
         activeManager = nil
         activeTitle = nil
         isRecording = false
+        if endedManager != nil {
+            onManagerUpdate?(nil)
+        }
         if let endedTitle {
             onStatusUpdate?(endedTitle, false)
             NotificationHelper.sendRecordingCompleted(title: endedTitle, transcriptReady: transcriptReady)

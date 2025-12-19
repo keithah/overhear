@@ -39,6 +39,20 @@ struct Meeting: Identifiable, Hashable {
         self.calendarName = event.calendar.title
         self.isManual = false
     }
+
+    init(manualTitle: String, startDate: Date = Date(), endDate: Date? = nil) {
+        self.id = UUID().uuidString
+        self.title = manualTitle
+        self.startDate = startDate
+        self.endDate = endDate ?? startDate.addingTimeInterval(60 * 30)
+        self.url = nil
+        self.platform = .unknown
+        self.calendarIdentifier = ""
+        self.isAllDay = false
+        self.isMaybe = false
+        self.calendarName = nil
+        self.isManual = true
+    }
     
     /// Returns holiday info if this event is a holiday
     var holidayInfo: HolidayInfo {
