@@ -293,6 +293,7 @@ struct LiveNotesView: View {
     @State private var showNotes = true
     @State private var showAI = true
     @State private var isRegenerating = false
+    @State private var notesPrefilled = false
     var onHide: () -> Void
 
     private var statusText: String {
@@ -318,6 +319,9 @@ struct LiveNotesView: View {
                 .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 10)
         )
         .frame(minWidth: 460, minHeight: 500)
+        .onAppear {
+            Task { await prefillNotesIfNeeded() }
+        }
     }
 
     private var header: some View {
@@ -447,6 +451,10 @@ struct LiveNotesView: View {
                     .background(Color(nsColor: .textBackgroundColor))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
+                    .onChange(of: coordinator.liveNotes) { _, newValue in
+                        // Manual notes persistence best-effort
+                        Task { await coordinator.saveNotes(newValue) }
+                    }
             }
         }
     }
@@ -466,14 +474,21 @@ struct LiveNotesView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
-                Button {
-                    Task { await regenerateSummary() }
+                Menu {
+                    Button("Regenerate (default prompt)") {
+                        Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
+                    }
+                    Divider()
+                    ForEach(PromptTemplate.allTemplates, id: \.id) { template in
+                        Button("Regenerate with \(template.title)") {
+                            Task { await regenerateSummary(template: template) }
+                        }
+                    }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .foregroundColor(.secondary)
                 }
-                .buttonStyle(.plain)
-                .help("Regenerate with latest transcript")
+                .menuStyle(.borderlessButton)
                 .disabled(isRegenerating || coordinator.liveTranscript.isEmpty)
                 Button {
                     copySummary()
@@ -575,11 +590,41 @@ struct LiveNotesView: View {
         pasteboard.setString(text, forType: .string)
     }
 
-    private func regenerateSummary() async {
+    private func regenerateSummary(template: PromptTemplate? = nil) async {
         guard !isRegenerating else { return }
         isRegenerating = true
-        await coordinator.regenerateSummary()
+        await coordinator.regenerateSummary(template: template)
         isRegenerating = false
+    }
+
+    private func prefillNotesIfNeeded() async {
+        let shouldPrefill = await MainActor.run { () -> Bool in
+            guard !notesPrefilled else { return false }
+            guard coordinator.liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                notesPrefilled = true
+                return false
+            }
+            return true
+        }
+        guard shouldPrefill else { return }
+        guard let transcriptID = coordinator.transcriptID else {
+            await MainActor.run { notesPrefilled = true }
+            return
+        }
+        do {
+            let store = try TranscriptStore()
+            let stored = try await store.retrieve(id: transcriptID)
+            if let notes = stored.notes, !notes.isEmpty {
+                await MainActor.run {
+                    coordinator.liveNotes = notes
+                }
+            }
+        } catch {
+            // best-effort; ignore errors
+        }
+        await MainActor.run {
+            notesPrefilled = true
+        }
     }
 
     private func exportSummary() {
@@ -939,6 +984,22 @@ struct LiveNotesManagerView: View {
         isRegenerating = true
         await manager.regenerateSummary(template: template)
         isRegenerating = false
+    }
+
+    private func prefillNotesIfNeeded() async {
+        guard liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard let transcriptID = manager.transcriptID else { return }
+        do {
+            let store = try TranscriptStore()
+            let stored = try await store.retrieve(id: transcriptID)
+            if let notes = stored.notes, !notes.isEmpty {
+                await MainActor.run {
+                    self.liveNotes = notes
+                }
+            }
+        } catch {
+            // best-effort
+        }
     }
 
     private func exportSummary() {

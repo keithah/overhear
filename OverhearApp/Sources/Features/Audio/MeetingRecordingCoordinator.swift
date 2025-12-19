@@ -33,6 +33,10 @@ final class MeetingRecordingCoordinator: ObservableObject {
         }
     }
 
+    var transcriptID: String? {
+        recordingManager?.transcriptID
+    }
+
     var manualRecordingCompletionPublisher: AnyPublisher<Meeting, Never> {
         manualRecordingSubject.eraseToAnyPublisher()
     }
@@ -140,8 +144,12 @@ final class MeetingRecordingCoordinator: ObservableObject {
         emitManualRecordingIfNeeded(reason: "stop")
     }
 
-    func regenerateSummary() async {
-        await recordingManager?.regenerateSummary()
+    func regenerateSummary(template: PromptTemplate? = nil) async {
+        await recordingManager?.regenerateSummary(template: template)
+    }
+
+    func saveNotes(_ notes: String) async {
+        await recordingManager?.saveNotes(notes)
     }
 
     private func cleanupAfterRecordingIfNeeded() {
