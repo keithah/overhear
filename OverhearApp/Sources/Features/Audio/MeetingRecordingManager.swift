@@ -591,6 +591,10 @@ private extension MeetingRecordingManager {
                 message: "Streaming live update: confirmed=\(streamingConfirmedSegments.count) hypLength=\(last.text.count)"
             )
         }
+        // If diarization is already available, label streaming segments as we go.
+        if !speakerSegments.isEmpty {
+            applySpeakerLabelsIfPossible()
+        }
     }
 }
 #else

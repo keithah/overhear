@@ -1039,9 +1039,14 @@ struct LiveTranscriptList: View {
                         ForEach(filteredSegments) { segment in
                             VStack(alignment: .leading, spacing: 4) {
                                 if let speaker = segment.speaker {
-                                    Text(speaker)
-                                        .font(.caption.bold())
-                                        .foregroundColor(color(for: speaker))
+                                    HStack(spacing: 6) {
+                                        Circle()
+                                            .fill(color(for: speaker))
+                                            .frame(width: 8, height: 8)
+                                        Text(speaker)
+                                            .font(.caption.bold())
+                                            .foregroundColor(color(for: speaker))
+                                    }
                                 }
                                 Text(segment.text)
                                     .font(.system(size: 13, weight: .regular, design: .monospaced))
