@@ -289,6 +289,10 @@ private let dateIdentifierFormatter: DateFormatter = {
 struct LiveNotesView: View {
     @ObservedObject var coordinator: MeetingRecordingCoordinator
     @State private var searchText: String = ""
+    @State private var showTranscript = true
+    @State private var showNotes = true
+    @State private var showAI = true
+    var onHide: () -> Void
 
     private var statusText: String {
         coordinator.isRecording ? "Recording…" : "Stopped"
@@ -302,9 +306,9 @@ struct LiveNotesView: View {
         VStack(spacing: 14) {
             header
             consentNotice
-            transcriptSection
-            notesSection
-            aiSection
+            if showTranscript { transcriptSection }
+            if showNotes { notesSection }
+            if showAI { aiSection }
         }
         .padding(16)
         .background(
@@ -339,6 +343,12 @@ struct LiveNotesView: View {
                 .padding(.vertical, 6)
                 .background(Capsule().fill(statusColor.opacity(0.15)))
                 .foregroundColor(statusColor)
+            Button(action: onHide) {
+                Image(systemName: "minus.rectangle.fill")
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Hide window")
             Menu {
                 Button("Open Sound settings…") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
@@ -349,6 +359,16 @@ struct LiveNotesView: View {
                     if let url = URL(string: "https://help.granola.ai/article/transcription") {
                         NSWorkspace.shared.open(url)
                     }
+                }
+                Divider()
+                Button(showTranscript ? "Hide transcript" : "Show transcript") {
+                    showTranscript.toggle()
+                }
+                Button(showNotes ? "Hide notes" : "Show notes") {
+                    showNotes.toggle()
+                }
+                Button(showAI ? "Hide AI bullets" : "Show AI bullets") {
+                    showAI.toggle()
                 }
             } label: {
                 Image(systemName: "gearshape.fill")
@@ -397,6 +417,14 @@ struct LiveNotesView: View {
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 Button {
+                    copyNotes()
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy notes")
+                Button {
                     prependBullet()
                 } label: {
                     Image(systemName: "list.bullet")
@@ -437,6 +465,14 @@ struct LiveNotesView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
+                Button {
+                    copySummary()
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy AI bullets")
             }
             if let summary = coordinator.summary {
                 VStack(alignment: .leading, spacing: 10) {
@@ -502,6 +538,23 @@ struct LiveNotesView: View {
         } else {
             coordinator.liveNotes += "- "
         }
+    }
+
+    private func copyNotes() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(coordinator.liveNotes, forType: .string)
+    }
+
+    private func copySummary() {
+        guard let summary = coordinator.summary else { return }
+        let bullets = (summary.summary.isEmpty ? [] : [summary.summary])
+            + summary.highlights
+            + summary.actionItems.map { "Action: \($0.description)\( ($0.owner?.isEmpty == false) ? " [\($0.owner!)]" : "")" }
+        let text = bullets.joined(separator: "\n")
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 }
 
@@ -633,12 +686,16 @@ final class LiveNotesWindowController {
 
     func show(with coordinator: MeetingRecordingCoordinator) {
         if let hosting = hostingController {
-            hosting.rootView = LiveNotesView(coordinator: coordinator)
+            hosting.rootView = LiveNotesView(coordinator: coordinator, onHide: { [weak self] in
+                self?.hide()
+            })
             window?.makeKeyAndOrderFront(nil)
             return
         }
 
-        let view = LiveNotesView(coordinator: coordinator)
+        let view = LiveNotesView(coordinator: coordinator, onHide: { [weak self] in
+            self?.hide()
+        })
         let controller = NSHostingController(rootView: view)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 420, height: 420),
@@ -654,5 +711,9 @@ final class LiveNotesWindowController {
 
         self.window = window
         self.hostingController = controller
+    }
+
+    func hide() {
+        window?.orderOut(nil)
     }
 }
