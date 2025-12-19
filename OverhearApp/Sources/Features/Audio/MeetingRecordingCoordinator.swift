@@ -9,6 +9,7 @@ final class MeetingRecordingCoordinator: ObservableObject {
     @Published private(set) var liveTranscript: String = ""
     @Published private(set) var liveSegments: [LiveTranscriptSegment] = []
     @Published var liveNotes: String = ""
+    @Published private(set) var summary: MeetingSummary?
 
     private var recordingManager: MeetingRecordingManager?
     private var recordingTask: Task<Void, Never>?
@@ -86,6 +87,10 @@ final class MeetingRecordingCoordinator: ObservableObject {
                 .receive(on: RunLoop.main)
                 .sink { [weak self] in self?.liveSegments = $0 }
                 .store(in: &cancellables)
+            manager.$summary
+                .receive(on: RunLoop.main)
+                .sink { [weak self] in self?.summary = $0 }
+                .store(in: &cancellables)
 
             status = manager.status
 
@@ -143,6 +148,7 @@ final class MeetingRecordingCoordinator: ObservableObject {
         transcriptSubscription?.cancel()
         transcriptSubscription = nil
         liveSegments = []
+        summary = nil
     }
 
     private func completeManualRecordingIfNeeded() {

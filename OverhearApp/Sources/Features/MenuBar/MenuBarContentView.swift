@@ -13,6 +13,7 @@ struct MenuBarContentView: View {
      @ObservedObject var autoRecordingCoordinator: AutoRecordingCoordinator
      var openPreferences: () -> Void
      var onToggleRecording: () -> Void
+    @State private var didAutoShowLiveNotes = false
 
      var body: some View {
         VStack(spacing: 0) {
@@ -172,6 +173,15 @@ if viewModel.isLoading {
             .padding(.vertical, 6)
         }
         .frame(width: preferences.viewMode == .minimalist ? 360 : 360, height: calculateHeight())
+        .onChange(of: recordingCoordinator.isRecording) { _, newValue in
+            if newValue && !didAutoShowLiveNotes {
+                LiveNotesWindowController.shared.show(with: recordingCoordinator)
+                didAutoShowLiveNotes = true
+            }
+            if !newValue {
+                didAutoShowLiveNotes = false
+            }
+        }
     }
     
     private var allMeetings: [Meeting] {
@@ -278,42 +288,220 @@ private let dateIdentifierFormatter: DateFormatter = {
 // which is beyond SwiftUI's simple API.
 struct LiveNotesView: View {
     @ObservedObject var coordinator: MeetingRecordingCoordinator
+    @State private var searchText: String = ""
+
+    private var statusText: String {
+        coordinator.isRecording ? "Recording…" : "Stopped"
+    }
+
+    private var statusColor: Color {
+        coordinator.isRecording ? .green : .secondary
+    }
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "mic.fill")
-                    .foregroundColor(.blue)
-                Text(coordinator.activeMeeting?.title ?? "Manual Recording")
-                    .font(.headline)
-                Spacer()
-                Text(coordinator.isRecording ? "Recording…" : "Idle")
-                    .font(.subheadline)
-                    .foregroundColor(coordinator.isRecording ? .green : .secondary)
-            }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Live transcript")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-
-                LiveTranscriptList(segments: coordinator.liveSegments)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Label("Notes", systemImage: "pencil")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                TextEditor(text: $coordinator.liveNotes)
-                    .font(.system(size: 13))
-                    .frame(minHeight: 120)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
-            }
+        VStack(spacing: 14) {
+            header
+            consentNotice
+            transcriptSection
+            notesSection
+            aiSection
         }
         .padding(16)
-        .frame(minWidth: 400, minHeight: 360)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(nsColor: .windowBackgroundColor))
+                .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 10)
+        )
+        .frame(minWidth: 460, minHeight: 500)
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.blue.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "mic.fill")
+                    .foregroundColor(.blue)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("New Note")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Text(coordinator.activeMeeting?.title ?? "Manual Recording")
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+            }
+            Spacer()
+            Text(statusText)
+                .font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(statusColor.opacity(0.15)))
+                .foregroundColor(statusColor)
+            Menu {
+                Button("Open Sound settings…") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Button("Troubleshoot transcription issues") {
+                    if let url = URL(string: "https://help.granola.ai/article/transcription") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .foregroundColor(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+        }
+    }
+
+    private var consentNotice: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock.shield.fill")
+                .foregroundColor(.secondary)
+            Text("Always get consent when transcribing others.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+    }
+
+    private var transcriptSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Live transcript")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    TextField("Find in transcript…", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .frame(width: 180)
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+            }
+            LiveTranscriptList(segments: coordinator.liveSegments, searchText: searchText)
+        }
+    }
+
+    private var notesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Notes")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Button {
+                    prependBullet()
+                } label: {
+                    Image(systemName: "list.bullet")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Insert bullet")
+            }
+            ZStack(alignment: .topLeading) {
+                if coordinator.liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Write notes…")
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 8)
+                }
+                TextEditor(text: $coordinator.liveNotes)
+                    .font(.system(size: 13))
+                    .padding(6)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
+                    .frame(minHeight: 120)
+            }
+        }
+    }
+
+    private var aiSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("AI-enhanced bullets")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                if coordinator.summary != nil {
+                    Text("Ready")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.green)
+                } else {
+                    Text("Generates after recording")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            if let summary = coordinator.summary {
+                VStack(alignment: .leading, spacing: 10) {
+                    if !summary.summary.isEmpty {
+                        Text(summary.summary)
+                            .font(.system(size: 12))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if !summary.highlights.isEmpty {
+                        Divider()
+                        Text("Highlights")
+                            .font(.system(size: 12, weight: .semibold))
+                        ForEach(summary.highlights, id: \.self) { highlight in
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "circle.fill")
+                                    .font(.system(size: 6))
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 4)
+                                Text(highlight)
+                                    .font(.system(size: 12))
+                            }
+                        }
+                    }
+                    if !summary.actionItems.isEmpty {
+                        Divider()
+                        Text("Action items")
+                            .font(.system(size: 12, weight: .semibold))
+                        ForEach(summary.actionItems, id: \.self) { item in
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "checkmark.circle")
+                                    .foregroundColor(.green)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.description)
+                                        .font(.system(size: 12))
+                                    if let owner = item.owner, !owner.isEmpty {
+                                        Text("Owner: \(owner)")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+            } else {
+                Text("AI-enhanced bullets will appear here once the note finishes processing.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+            }
+        }
+    }
+
+    private func prependBullet() {
+        if coordinator.liveNotes.isEmpty {
+            coordinator.liveNotes = "- "
+        } else if !coordinator.liveNotes.hasSuffix("\n") {
+            coordinator.liveNotes += "\n- "
+        } else {
+            coordinator.liveNotes += "- "
+        }
     }
 }
 
@@ -366,6 +554,7 @@ struct RecordingBannerView: View {
 
 struct LiveTranscriptList: View {
     let segments: [LiveTranscriptSegment]
+    var searchText: String = ""
     private let palette: [Color] = [
         .blue, .purple, .green, .orange, .pink, .teal, .indigo, .brown
     ]
@@ -375,17 +564,25 @@ struct LiveTranscriptList: View {
         return palette[hash % palette.count]
     }
 
+    private var filteredSegments: [LiveTranscriptSegment] {
+        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return segments
+        }
+        let term = searchText.lowercased()
+        return segments.filter { $0.text.lowercased().contains(term) || ($0.speaker?.lowercased().contains(term) ?? false) }
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    if segments.isEmpty {
+                    if filteredSegments.isEmpty {
                         Text("Waiting for audio…")
                             .font(.system(size: 13, weight: .regular, design: .monospaced))
                             .foregroundColor(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
-                        ForEach(segments) { segment in
+                        ForEach(filteredSegments) { segment in
                             VStack(alignment: .leading, spacing: 4) {
                                 if let speaker = segment.speaker {
                                     Text(speaker)
@@ -412,8 +609,8 @@ struct LiveTranscriptList: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
             }
-            .onChange(of: segments.count) { _, _ in
-                if let last = segments.last {
+            .onChange(of: filteredSegments.count) { _, _ in
+                if let last = filteredSegments.last {
                     withAnimation {
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
