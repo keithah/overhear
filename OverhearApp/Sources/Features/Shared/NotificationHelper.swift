@@ -8,6 +8,8 @@ enum NotificationHelper {
     // Maximum length at which a notification body that starts with the prompt is
     // still considered to be just the prompt text without a meeting title.
     private static let maxPromptOnlyBodyLength = 30
+    private static let accessibilityWarningKey = "com.overhear.notification.accessibilityWarningShown"
+    private static let browserUrlWarningKey = "com.overhear.notification.browserUrlWarningShown"
 
     static func requestPermission() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -96,6 +98,58 @@ enum NotificationHelper {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [
             "com.overhear.notification.manualRecording"
         ])
+    }
+}
+
+extension NotificationHelper {
+    static func sendAccessibilityPermissionNeededIfNeeded() {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: accessibilityWarningKey) {
+            return
+        }
+        defaults.set(true, forKey: accessibilityWarningKey)
+
+        let content = UNMutableNotificationContent()
+        content.title = "Allow Accessibility for meeting detection"
+        content.body = "Enable Overhear in System Settings > Privacy & Security > Accessibility to detect meeting windows."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "com.overhear.notification.accessibility-permission",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule accessibility warning: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    static func sendBrowserUrlMissingIfNeeded() {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: browserUrlWarningKey) {
+            return
+        }
+        defaults.set(true, forKey: browserUrlWarningKey)
+
+        let content = UNMutableNotificationContent()
+        content.title = "Unable to detect meeting tab"
+        content.body = "Switch to the active Meet tab or refresh the page so Overhear can detect the meeting window."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "com.overhear.notification.browser-url-missing",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule browser URL warning: \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 }
 

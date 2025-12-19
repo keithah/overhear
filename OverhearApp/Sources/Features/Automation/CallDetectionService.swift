@@ -81,6 +81,7 @@ final class CallDetectionService {
         guard preferencesAllowNotifications else { return }
         guard AXIsProcessTrusted() else {
             logger.error("Accessibility not granted; skipping detection")
+            NotificationHelper.sendAccessibilityPermissionNeededIfNeeded()
             return
         }
         guard let app = NSWorkspace.shared.frontmostApplication,
@@ -131,6 +132,10 @@ final class CallDetectionService {
             guard let urlDescription = titleInfo.urlDescription,
                   let host = URL(string: urlDescription)?.host,
                   host == "meet.google.com" else {
+                if titleInfo.urlDescription == nil {
+                    logger.info("Skipped browser detection: missing URL attribute; ensure Meet tab is active")
+                    NotificationHelper.sendBrowserUrlMissingIfNeeded()
+                }
                 autoCoordinator?.onNoDetection()
                 return
             }
