@@ -127,6 +127,15 @@ final class CallDetectionService {
         let shouldAutoRecord = preferences.autoRecordingEnabled
 
         // For browser-based Meet, require meet.google.com to reduce false positives.
+        if isBrowser(bundleID) {
+            guard let urlDescription = titleInfo.urlDescription,
+                  let host = URL(string: urlDescription)?.host,
+                  host == "meet.google.com" else {
+                autoCoordinator?.onNoDetection()
+                return
+            }
+        }
+
         if isBrowser(bundleID),
            let urlDescription = titleInfo.urlDescription,
            let host = URL(string: urlDescription)?.host,
