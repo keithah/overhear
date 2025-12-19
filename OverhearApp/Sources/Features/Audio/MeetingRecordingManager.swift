@@ -378,13 +378,13 @@ private extension MeetingRecordingManager {
     /// Streaming configuration tuned for balanced accuracy/latency for live transcripts.
     private var streamingConfig: StreamingAsrConfig {
         StreamingAsrConfig(
-            // Bias toward lower latency for first tokens and confirmations.
-            chunkSeconds: 3.5,
-            hypothesisChunkSeconds: 0.5,
-            leftContextSeconds: 0.7,
-            rightContextSeconds: 0.5,
-            minContextForConfirmation: 1.6,
-            confirmationThreshold: 0.55
+            // Bias toward lower latency for first tokens and confirmations; shorter chunks.
+            chunkSeconds: 2.5,
+            hypothesisChunkSeconds: 0.35,
+            leftContextSeconds: 0.6,
+            rightContextSeconds: 0.35,
+            minContextForConfirmation: 1.2,
+            confirmationThreshold: 0.5
         )
     }
 
@@ -414,6 +414,7 @@ private extension MeetingRecordingManager {
                             category: "MeetingRecordingManager",
                             message: String(format: "First streaming update after %.2fs", delta)
                         )
+                        logger.info("Streaming first token latency: \(delta, privacy: .public)s")
                     }
                     await self.handleStreamingUpdate(update)
                 }
@@ -583,6 +584,13 @@ private extension MeetingRecordingManager {
             combined.append(hyp)
         }
         liveSegments = combined
+        if let last = combined.last {
+            liveTranscript = combined.map(\.text).joined(separator: "\n")
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Streaming live update: confirmed=\(streamingConfirmedSegments.count) hypLength=\(last.text.count)"
+            )
+        }
     }
 }
 #else
