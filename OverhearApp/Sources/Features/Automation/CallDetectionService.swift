@@ -27,6 +27,11 @@ final class CallDetectionService {
         "com.google.Chrome",
         "com.microsoft.edgemac"
     ]
+    private let browserBundles: Set<String> = [
+        "com.apple.Safari",
+        "com.google.Chrome",
+        "com.microsoft.edgemac"
+    ]
 
     func start(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {
         guard activationObserver == nil, pollTimer == nil else { return }
@@ -121,6 +126,15 @@ final class CallDetectionService {
         let shouldNotify = preferences.meetingNotificationsEnabled
         let shouldAutoRecord = preferences.autoRecordingEnabled
 
+        // For browser-based Meet, require meet.google.com to reduce false positives.
+        if isBrowser(bundleID),
+           let urlDescription = titleInfo.urlDescription,
+           let host = URL(string: urlDescription)?.host,
+           host != "meet.google.com" {
+            autoCoordinator?.onNoDetection()
+            return
+        }
+
         let cleanTitle = NotificationHelper.cleanMeetingTitle(from: meetingInfo)
         if shouldNotify {
             NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
@@ -195,6 +209,10 @@ final class CallDetectionService {
     private var preferencesAllowNotifications: Bool {
         guard let preferences else { return false }
         return (preferences.meetingNotificationsEnabled || preferences.autoRecordingEnabled)
+    }
+
+    private func isBrowser(_ bundleID: String) -> Bool {
+        browserBundles.contains(bundleID)
     }
 
 }
