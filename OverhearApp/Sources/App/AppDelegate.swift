@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        menuBarController?.tearDown()
         context?.callDetectionService.stop()
     }
 

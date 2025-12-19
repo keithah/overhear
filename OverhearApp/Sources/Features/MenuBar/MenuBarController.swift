@@ -1,6 +1,7 @@
+@preconcurrency import AppKit
+@preconcurrency import Combine
 import AppKit
 import SwiftUI
-import Combine
 import Foundation
 import os.log
 
@@ -265,7 +266,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
 
-    @MainActor deinit {
+    @MainActor
+    func tearDown() {
         iconUpdateTimer?.invalidate()
         minuteUpdateTimer?.invalidate()
 
