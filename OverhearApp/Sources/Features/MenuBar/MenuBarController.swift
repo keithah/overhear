@@ -1,6 +1,7 @@
+@preconcurrency import AppKit
+@preconcurrency import Combine
 import AppKit
 import SwiftUI
-import Combine
 import Foundation
 import os.log
 
@@ -14,10 +15,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private var closePopoverObserver: NSObjectProtocol?
     private var dataCancellable: AnyCancellable?
     private var recordingCancellable: AnyCancellable?
+    private var autoRecordingCancellable: AnyCancellable?
      private let viewModel: MeetingListViewModel
      private let preferencesWindowController: PreferencesWindowController
      private let preferences: PreferencesService
      private let recordingCoordinator: MeetingRecordingCoordinator
+    private let autoRecordingCoordinator: AutoRecordingCoordinator
      private let iconProvider = MenuBarIconProvider()
     private let logger = Logger(subsystem: "com.overhear.app", category: "MenuBar")
 
@@ -38,53 +41,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     init(viewModel: MeetingListViewModel,
          preferencesWindowController: PreferencesWindowController,
          preferences: PreferencesService,
-         recordingCoordinator: MeetingRecordingCoordinator) {
+         recordingCoordinator: MeetingRecordingCoordinator,
+         autoRecordingCoordinator: AutoRecordingCoordinator) {
          self.viewModel = viewModel
          self.preferencesWindowController = preferencesWindowController
          self.preferences = preferences
          self.recordingCoordinator = recordingCoordinator
+        self.autoRecordingCoordinator = autoRecordingCoordinator
          super.init()
      }
-
-    deinit {
-        // Ensure cleanup on the main actor to avoid Sendable isolation issues.
-        Task { @MainActor [iconUpdateTimer,
-                          minuteUpdateTimer,
-                          dataCancellable,
-                          recordingCancellable,
-                          eventMonitor,
-                          closePopoverObserver,
-                          weakSelf = self] in
-            weakSelf?.cleanupResources(
-                iconUpdateTimer: iconUpdateTimer,
-                minuteUpdateTimer: minuteUpdateTimer,
-                dataCancellable: dataCancellable,
-                recordingCancellable: recordingCancellable,
-                eventMonitor: eventMonitor,
-                closePopoverObserver: closePopoverObserver
-            )
-        }
-    }
-
-    @MainActor
-    private func cleanupResources(iconUpdateTimer: Timer?,
-                                  minuteUpdateTimer: Timer?,
-                                  dataCancellable: AnyCancellable?,
-                                  recordingCancellable: AnyCancellable?,
-                                  eventMonitor: Any?,
-                                  closePopoverObserver: NSObjectProtocol?) {
-        iconUpdateTimer?.invalidate()
-        minuteUpdateTimer?.invalidate()
-        dataCancellable?.cancel()
-        recordingCancellable?.cancel()
-        if let monitor = eventMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
-        if let observer = closePopoverObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        NotificationCenter.default.removeObserver(self)
-    }
 
      func setup() {
          let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -104,6 +69,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
              viewModel: viewModel,
              preferences: preferences,
              recordingCoordinator: recordingCoordinator,
+            autoRecordingCoordinator: autoRecordingCoordinator,
              openPreferences: { self.showPreferences() },
              onToggleRecording: { [weak self] in self?.handleRecordingToggle() }
          ))
@@ -132,6 +98,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         
         // Update when recording state changes (so icon badge can appear)
         recordingCancellable = recordingCoordinator.$status
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateStatusItemIcon()
+            }
+        autoRecordingCancellable = autoRecordingCoordinator.$isRecording
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.updateStatusItemIcon()
@@ -234,7 +205,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
              return
          }
 
-        let icon = iconProvider.makeMenuBarIcon(recordingIndicator: recordingCoordinator.isRecording)
+        let icon = iconProvider.makeMenuBarIcon(recordingIndicator: recordingCoordinator.isRecording || autoRecordingCoordinator.isRecording)
         icon.isTemplate = false
         button.image = icon
         button.imagePosition = .imageLeft
@@ -292,6 +263,24 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             Task { await recordingCoordinator.stopRecording() }
         } else {
             Task { await recordingCoordinator.startManualRecording() }
+        }
+    }
+
+    @MainActor
+    func tearDown() {
+        iconUpdateTimer?.invalidate()
+        minuteUpdateTimer?.invalidate()
+
+        dataCancellable?.cancel()
+        recordingCancellable?.cancel()
+        autoRecordingCancellable?.cancel()
+
+        if let observer = closePopoverObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
         }
     }
 }

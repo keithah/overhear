@@ -10,16 +10,21 @@ struct MenuBarContentView: View {
      @ObservedObject var viewModel: MeetingListViewModel
      @ObservedObject var preferences: PreferencesService
      @ObservedObject var recordingCoordinator: MeetingRecordingCoordinator
+     @ObservedObject var autoRecordingCoordinator: AutoRecordingCoordinator
      var openPreferences: () -> Void
      var onToggleRecording: () -> Void
-    
-     
-     
-     
-     
 
-      var body: some View {
+     var body: some View {
         VStack(spacing: 0) {
+            if autoRecordingCoordinator.isRecording, let title = autoRecordingCoordinator.currentRecordingTitle() {
+                RecordingStateIndicator(title: title) {
+                    Task { @MainActor in
+                        await autoRecordingCoordinator.stopRecording()
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+            }
             if recordingCoordinator.isRecording {
                 RecordingBannerView(
                     recordingCoordinator: recordingCoordinator,
@@ -28,7 +33,7 @@ struct MenuBarContentView: View {
                     },
                     stopRecording: {
                         Task { await recordingCoordinator.stopRecording() }
-                    }
+                    },
                 )
             }
             // Meetings list
@@ -271,7 +276,6 @@ private let dateIdentifierFormatter: DateFormatter = {
 // The scroll behavior will naturally slow down as you scroll up into the past.
 // To further customize scroll physics on macOS would require NSScrollView wrapper,
 // which is beyond SwiftUI's simple API.
-
 struct LiveNotesView: View {
     @ObservedObject var coordinator: MeetingRecordingCoordinator
 
@@ -455,4 +459,3 @@ final class LiveNotesWindowController {
         self.hostingController = controller
     }
 }
- 

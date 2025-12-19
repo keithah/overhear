@@ -200,6 +200,7 @@ final class MeetingRecordingManager: ObservableObject {
         if case .transcribing = status {
             transcriptionTask?.cancel()
         }
+        status = .completed
     }
     
     // MARK: - Private

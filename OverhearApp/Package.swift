@@ -16,7 +16,15 @@ let package = Package(
                 .product(name: "FluidAudio", package: "FluidAudio")
             ],
             path: ".",
-            exclude: ["Overhear.xcodeproj", "Resources/Info.plist", "Tests"],
+            exclude: [
+                "Overhear.xcodeproj",
+                "DerivedData",
+                "build",
+                ".build",
+                "Tests",
+                "Tools",
+                "Resources/Info.plist"
+            ],
             resources: [
                 .process("Resources")
             ]
