@@ -70,7 +70,7 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var audioFileURL: URL?
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     @Published private(set) var summary: MeetingSummary?
-    private var transcriptID: String?
+    private(set) var transcriptID: String?
 
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline

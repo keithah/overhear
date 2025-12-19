@@ -794,6 +794,13 @@ struct LiveNotesManagerView: View {
                     }
             }
         }
+        .onAppear {
+            Task {
+                if liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    await loadStoredNotes()
+                }
+            }
+        }
     }
 
     private var aiSection: some View {
@@ -965,6 +972,21 @@ struct LiveNotesManagerView: View {
             }
             let text = lines.joined(separator: "\n")
             try? text.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    private func loadStoredNotes() async {
+        guard let transcriptID = manager.transcriptID else { return }
+        do {
+            let store = try TranscriptStore()
+            let stored = try await store.retrieve(id: transcriptID)
+            if let notes = stored.notes, !notes.isEmpty {
+                await MainActor.run {
+                    self.liveNotes = notes
+                }
+            }
+        } catch {
+            // Ignore; notes are optional best-effort.
         }
     }
 }
