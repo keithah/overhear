@@ -141,4 +141,8 @@ actor MeetingRecordingPipeline {
             throw error
         }
     }
+
+    func regenerateSummary(transcript: String, segments: [SpeakerSegment]) async -> MeetingSummary {
+        await summarizationService.summarize(transcript: transcript, segments: segments)
+    }
 }

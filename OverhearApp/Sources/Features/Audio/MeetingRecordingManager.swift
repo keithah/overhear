@@ -91,6 +91,7 @@ final class MeetingRecordingManager: ObservableObject {
     private var consecutiveEmptyStreamingUpdates = 0
     private var streamingStartDate: Date?
     private var loggedFirstStreamingToken = false
+    private var isRegeneratingSummary = false
 
     private var isStreamingEnabled: Bool {
         FluidAudioAdapter.isEnabled
@@ -201,6 +202,18 @@ final class MeetingRecordingManager: ObservableObject {
             transcriptionTask?.cancel()
         }
         status = .completed
+    }
+
+    func regenerateSummary() async {
+        guard !isRegeneratingSummary else { return }
+        isRegeneratingSummary = true
+        let transcriptValue = transcript
+        let segmentsValue = speakerSegments
+        let summaryResult = await pipeline.regenerateSummary(transcript: transcriptValue, segments: segmentsValue)
+        await MainActor.run {
+            self.summary = summaryResult
+        }
+        isRegeneratingSummary = false
     }
     
     // MARK: - Private

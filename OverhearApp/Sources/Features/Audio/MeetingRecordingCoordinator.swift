@@ -140,6 +140,10 @@ final class MeetingRecordingCoordinator: ObservableObject {
         emitManualRecordingIfNeeded(reason: "stop")
     }
 
+    func regenerateSummary() async {
+        await recordingManager?.regenerateSummary()
+    }
+
     private func cleanupAfterRecordingIfNeeded() {
         recordingManager = nil
         recordingTask = nil

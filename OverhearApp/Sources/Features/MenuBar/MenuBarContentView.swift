@@ -292,6 +292,7 @@ struct LiveNotesView: View {
     @State private var showTranscript = true
     @State private var showNotes = true
     @State private var showAI = true
+    @State private var isRegenerating = false
     var onHide: () -> Void
 
     private var statusText: String {
@@ -466,6 +467,15 @@ struct LiveNotesView: View {
                         .foregroundColor(.secondary)
                 }
                 Button {
+                    Task { await regenerateSummary() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Regenerate with latest transcript")
+                .disabled(isRegenerating || coordinator.liveTranscript.isEmpty)
+                Button {
                     copySummary()
                 } label: {
                     Image(systemName: "square.and.arrow.up")
@@ -473,6 +483,14 @@ struct LiveNotesView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Copy AI bullets")
+                Button {
+                    exportSummary()
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Export summary/notes")
             }
             if let summary = coordinator.summary {
                 VStack(alignment: .leading, spacing: 10) {
@@ -555,6 +573,47 @@ struct LiveNotesView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+
+    private func regenerateSummary() async {
+        guard !isRegenerating else { return }
+        isRegenerating = true
+        await coordinator.regenerateSummary()
+        isRegenerating = false
+    }
+
+    private func exportSummary() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "NewNote.md"
+        panel.allowedContentTypes = [.plainText, .text, .init(filenameExtension: "md")!]
+        panel.canCreateDirectories = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let title = coordinator.activeMeeting?.title ?? "New Note"
+            var lines: [String] = ["# \(title)"]
+            if let summary = coordinator.summary {
+                if !summary.summary.isEmpty {
+                    lines.append("\n## Summary\n\(summary.summary)")
+                }
+                if !summary.highlights.isEmpty {
+                    lines.append("\n## Highlights")
+                    summary.highlights.forEach { lines.append("- \($0)") }
+                }
+                if !summary.actionItems.isEmpty {
+                    lines.append("\n## Action Items")
+                    summary.actionItems.forEach { item in
+                        let owner = (item.owner?.isEmpty == false) ? " [\(item.owner!)]" : ""
+                        lines.append("- \(item.description)\(owner)")
+                    }
+                }
+            }
+            if !coordinator.liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                lines.append("\n## Notes")
+                lines.append(coordinator.liveNotes)
+            }
+            let text = lines.joined(separator: "\n")
+            try? text.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
 }
 
