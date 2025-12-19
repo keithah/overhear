@@ -1089,6 +1089,7 @@ final class LiveNotesWindowController {
 
     private var window: NSWindow?
     private var hostingController: NSHostingController<LiveNotesView>?
+    private var autoWindow: NSWindow?
     private var autoHostingController: NSHostingController<LiveNotesManagerView>?
 
     func show(with coordinator: MeetingRecordingCoordinator) {
@@ -1127,14 +1128,14 @@ final class LiveNotesWindowController {
     func show(autoManager: MeetingRecordingManager) {
         if let controller = autoHostingController {
             controller.rootView = LiveNotesManagerView(manager: autoManager, onHide: { [weak self] in
-                self?.hide()
+                self?.hideAuto()
             })
-            window?.makeKeyAndOrderFront(nil)
+            autoWindow?.makeKeyAndOrderFront(nil)
             return
         }
 
         let view = LiveNotesManagerView(manager: autoManager, onHide: { [weak self] in
-            self?.hide()
+            self?.hideAuto()
         })
         let controller = NSHostingController(rootView: view)
         let window = NSWindow(
@@ -1149,7 +1150,11 @@ final class LiveNotesWindowController {
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
 
-        self.window = window
+        self.autoWindow = window
         self.autoHostingController = controller
+    }
+
+    func hideAuto() {
+        autoWindow?.orderOut(nil)
     }
 }

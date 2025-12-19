@@ -145,4 +145,8 @@ actor MeetingRecordingPipeline {
     func regenerateSummary(transcript: String, segments: [SpeakerSegment]) async -> MeetingSummary {
         await summarizationService.summarize(transcript: transcript, segments: segments)
     }
+
+    func updateTranscript(id: String, transform: @Sendable (StoredTranscript) -> StoredTranscript) async throws {
+        try await transcriptStore.update(id: id, transform: transform)
+    }
 }

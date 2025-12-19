@@ -150,6 +150,13 @@ actor TranscriptStore {
         let data = try Data(contentsOf: fileURL)
         return try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
     }
+
+    /// Update an existing transcript by applying a transform; persists the updated record.
+    func update(id: String, transform: @Sendable (StoredTranscript) -> StoredTranscript) async throws {
+        var transcript = try await retrieve(id: id)
+        transcript = transform(transcript)
+        try await save(transcript)
+    }
     
     /// Get all stored transcripts (decrypted)
     func allTranscripts() async throws -> [StoredTranscript] {

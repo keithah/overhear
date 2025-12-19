@@ -70,6 +70,7 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var audioFileURL: URL?
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     @Published private(set) var summary: MeetingSummary?
+    private var transcriptID: String?
 
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline
@@ -218,6 +219,7 @@ final class MeetingRecordingManager: ObservableObject {
             self.summary = summaryResult
         }
         isRegeneratingSummary = false
+        await persistRegeneratedSummary(summaryResult)
     }
     
     // MARK: - Private
@@ -248,6 +250,7 @@ final class MeetingRecordingManager: ObservableObject {
         }
 
         let transcriptID = UUID().uuidString
+        self.transcriptID = transcriptID
         // Save immediately using best-effort text (or a placeholder) so UI can flip to Ready.
         let quickTextToSave = bestEffortText.isEmpty ? "Transcription pending…" : bestEffortText
         do {
@@ -594,6 +597,28 @@ private extension MeetingRecordingManager {
         // If diarization is already available, label streaming segments as we go.
         if !speakerSegments.isEmpty {
             applySpeakerLabelsIfPossible()
+        }
+    }
+
+    private func persistRegeneratedSummary(_ summary: MeetingSummary) async {
+        guard let transcriptID else { return }
+        do {
+            try await pipeline.updateTranscript(id: transcriptID) { stored in
+                StoredTranscript(
+                    id: stored.id,
+                    meetingID: stored.meetingID,
+                    title: stored.title,
+                    date: stored.date,
+                    transcript: stored.transcript,
+                    duration: stored.duration,
+                    audioFilePath: stored.audioFilePath,
+                    segments: stored.segments,
+                    summary: summary
+                )
+            }
+            FileLogger.log(category: "MeetingRecordingManager", message: "Persisted regenerated summary for \(transcriptID)")
+        } catch {
+            FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist regenerated summary: \(error.localizedDescription)")
         }
     }
 }
