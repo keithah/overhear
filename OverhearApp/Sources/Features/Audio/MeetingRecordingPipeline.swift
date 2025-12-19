@@ -58,7 +58,8 @@ actor MeetingRecordingPipeline {
             duration: duration,
             audioFilePath: nil,
             segments: [],
-            summary: nil
+            summary: nil,
+            notes: nil
         )
         try await persist(stored, meetingID: metadata.meetingID)
         logger.info("Quick transcript saved for \(metadata.title, privacy: .public)")
@@ -112,7 +113,8 @@ actor MeetingRecordingPipeline {
             duration: duration,
             audioFilePath: audioURL.path,
             segments: segments,
-            summary: summary
+            summary: summary,
+            notes: nil
         )
 
         try await persist(stored, meetingID: metadata.meetingID)
@@ -142,8 +144,8 @@ actor MeetingRecordingPipeline {
         }
     }
 
-    func regenerateSummary(transcript: String, segments: [SpeakerSegment]) async -> MeetingSummary {
-        await summarizationService.summarize(transcript: transcript, segments: segments)
+    func regenerateSummary(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async -> MeetingSummary {
+        await summarizationService.summarize(transcript: transcript, segments: segments, template: template)
     }
 
     func updateTranscript(id: String, transform: @Sendable (StoredTranscript) -> StoredTranscript) async throws {

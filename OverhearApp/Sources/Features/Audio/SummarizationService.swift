@@ -4,7 +4,7 @@ import os.log
 private let summaryLogger = Logger(subsystem: "com.overhear.app", category: "SummarizationService")
 
 protocol SummarizationEngine: Sendable {
-    func summarize(transcript: String, segments: [SpeakerSegment]) async throws -> MeetingSummary
+    func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async throws -> MeetingSummary
 }
 
 enum SummarizationEngineFactory {
@@ -24,9 +24,9 @@ actor SummarizationService {
         self.engine = engine
     }
 
-    func summarize(transcript: String, segments: [SpeakerSegment]) async -> MeetingSummary {
+    func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate? = nil) async -> MeetingSummary {
         do {
-            let summary = try await engine.summarize(transcript: transcript, segments: segments)
+            let summary = try await engine.summarize(transcript: transcript, segments: segments, template: template)
             summaryLogger.info("Generated meeting summary")
             return summary
         } catch {
@@ -39,7 +39,7 @@ actor SummarizationService {
 }
 
 private struct LegacySummarizationEngine: SummarizationEngine {
-    func summarize(transcript: String, segments: [SpeakerSegment]) async throws -> MeetingSummary {
+    func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async throws -> MeetingSummary {
         let summaryText = String(transcript.prefix(160))
         let highlights = segments.prefix(2).map { "\($0.speaker): \($0.duration.formatted())s" }
         let actionItems = segments.prefix(1).map { _ in ActionItem(owner: nil, description: "Review key takeaways", dueDate: nil) }
@@ -49,7 +49,7 @@ private struct LegacySummarizationEngine: SummarizationEngine {
 
 private struct MLXSummarizationEngine: SummarizationEngine {
     let mlx: MLXClient
-    func summarize(transcript: String, segments: [SpeakerSegment]) async throws -> MeetingSummary {
-        try await mlx.summarize(transcript: transcript, segments: segments)
+    func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async throws -> MeetingSummary {
+        try await mlx.summarize(transcript: transcript, segments: segments, template: template)
     }
 }

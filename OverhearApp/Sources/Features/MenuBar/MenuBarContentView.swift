@@ -789,6 +789,9 @@ struct LiveNotesManagerView: View {
                     .background(Color(nsColor: .textBackgroundColor))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
+                    .onChange(of: liveNotes) { _, newValue in
+                        Task { await manager.saveNotes(newValue) }
+                    }
             }
         }
     }
@@ -808,14 +811,21 @@ struct LiveNotesManagerView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
-                Button {
-                    Task { await regenerateSummary() }
+                Menu {
+                    Button("Regenerate (default prompt)") {
+                        Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
+                    }
+                    Divider()
+                    ForEach(PromptTemplate.allTemplates, id: \.id) { template in
+                        Button("Regenerate with \(template.title)") {
+                            Task { await regenerateSummary(template: template) }
+                        }
+                    }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .foregroundColor(.secondary)
                 }
-                .buttonStyle(.plain)
-                .help("Regenerate with latest transcript")
+                .menuStyle(.borderlessButton)
                 .disabled(isRegenerating || manager.liveTranscript.isEmpty)
                 Button {
                     copySummary()
@@ -917,10 +927,10 @@ struct LiveNotesManagerView: View {
         pasteboard.setString(text, forType: .string)
     }
 
-    private func regenerateSummary() async {
+    private func regenerateSummary(template: PromptTemplate? = nil) async {
         guard !isRegenerating else { return }
         isRegenerating = true
-        await manager.regenerateSummary()
+        await manager.regenerateSummary(template: template)
         isRegenerating = false
     }
 

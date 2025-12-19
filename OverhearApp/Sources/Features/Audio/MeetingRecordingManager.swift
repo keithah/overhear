@@ -209,17 +209,40 @@ final class MeetingRecordingManager: ObservableObject {
         meetingTitle
     }
 
-    func regenerateSummary() async {
+    func regenerateSummary(template: PromptTemplate? = nil) async {
         guard !isRegeneratingSummary else { return }
         isRegeneratingSummary = true
         let transcriptValue = transcript
         let segmentsValue = speakerSegments
-        let summaryResult = await pipeline.regenerateSummary(transcript: transcriptValue, segments: segmentsValue)
+        let summaryResult = await pipeline.regenerateSummary(transcript: transcriptValue, segments: segmentsValue, template: template)
         await MainActor.run {
             self.summary = summaryResult
         }
         isRegeneratingSummary = false
         await persistRegeneratedSummary(summaryResult)
+    }
+
+    func saveNotes(_ notes: String) async {
+        guard let transcriptID else { return }
+        do {
+            try await pipeline.updateTranscript(id: transcriptID) { stored in
+                StoredTranscript(
+                    id: stored.id,
+                    meetingID: stored.meetingID,
+                    title: stored.title,
+                    date: stored.date,
+                    transcript: stored.transcript,
+                    duration: stored.duration,
+                    audioFilePath: stored.audioFilePath,
+                    segments: stored.segments,
+                    summary: stored.summary,
+                    notes: notes
+                )
+            }
+            FileLogger.log(category: "MeetingRecordingManager", message: "Persisted notes for \(transcriptID)")
+        } catch {
+            FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes: \(error.localizedDescription)")
+        }
     }
     
     // MARK: - Private
@@ -613,7 +636,8 @@ private extension MeetingRecordingManager {
                     duration: stored.duration,
                     audioFilePath: stored.audioFilePath,
                     segments: stored.segments,
-                    summary: summary
+                    summary: summary,
+                    notes: stored.notes
                 )
             }
             FileLogger.log(category: "MeetingRecordingManager", message: "Persisted regenerated summary for \(transcriptID)")

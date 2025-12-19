@@ -1,7 +1,7 @@
 import Foundation
 
 protocol MLXClient: Sendable {
-    func summarize(transcript: String, segments: [SpeakerSegment]) async throws -> MeetingSummary
+    func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async throws -> MeetingSummary
 }
 
 enum MLXAdapter {
@@ -18,8 +18,8 @@ enum MLXAdapter {
 import MLX
 
 private struct RealMLXClient: MLXClient {
-    func summarize(transcript: String, segments: [SpeakerSegment]) async throws -> MeetingSummary {
-        try await MLX.summarizeTranscript(transcript, segments: segments)
+    func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async throws -> MeetingSummary {
+        try await MLX.summarizeTranscript(transcript, segments: segments, template: template)
     }
 }
 #endif

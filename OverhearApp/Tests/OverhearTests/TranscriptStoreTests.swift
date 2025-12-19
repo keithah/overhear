@@ -80,7 +80,8 @@ final class TranscriptStoreTests: XCTestCase {
             duration: 300,
             audioFilePath: nil,
             segments: segments,
-            summary: summary
+            summary: summary,
+            notes: nil
         )
     }
 }
