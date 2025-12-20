@@ -21,15 +21,20 @@ import MLXLLM
 @preconcurrency import MLXLMCommon
 
 private struct RealMLXClient: MLXClient {
-    private let modelID: String = ProcessInfo.processInfo.environment["OVERHEAR_MLX_MODEL_ID"]
-        ?? "mlx-community/SmolLM2-1.7B-Instruct-4bit"
+    private var modelID: String {
+        MLXPreferences.modelID()
+    }
     fileprivate actor Cache {
         private var container: ModelContainer?
         private var session: ChatSession?
-
-        func store(container: ModelContainer) { self.container = container }
+        private var cachedModelID: String?
 
         func respond(prompt: String, systemPrompt: String?, modelID: String, progress: (@Sendable (Double) -> Void)?) async throws -> String {
+            if cachedModelID != modelID {
+                container = nil
+                session = nil
+                cachedModelID = nil
+            }
             let container: ModelContainer
             if let existing = self.container {
                 container = existing
@@ -39,6 +44,7 @@ private struct RealMLXClient: MLXClient {
                     progressHandler: { prog in progress?(prog.fractionCompleted) }
                 )
                 self.container = container
+                self.cachedModelID = modelID
             }
 
             if session == nil {

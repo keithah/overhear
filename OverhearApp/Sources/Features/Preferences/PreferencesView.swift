@@ -258,12 +258,16 @@ struct PreferencesView: View {
                 HStack(spacing: 12) {
                     Button("Request permission") {
                         NotificationHelper.requestPermission {
-                            refreshNotificationStatus()
+                            Task { @MainActor in
+                                refreshNotificationStatus()
+                            }
                         }
                     }
                     Button("Send test notification") {
                         NotificationHelper.sendTestNotification {
-                            refreshNotificationStatus()
+                            Task { @MainActor in
+                                refreshNotificationStatus()
+                            }
                         }
                     }
                     Button("Open System Settings") {

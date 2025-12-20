@@ -19,16 +19,15 @@ actor LocalLLMPipeline {
     private let client: MLXClient?
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
     private(set) var state: State
-    private let modelInfo: MLXModelManager.ModelInfo?
+    private var modelInfo: MLXModelManager.ModelInfo {
+        MLXModelManager.ModelInfo(
+            version: MLXPreferences.modelID(),
+            path: nil
+        )
+    }
 
     init(client: MLXClient?) {
         self.client = client
-        let defaultInfo = MLXModelManager.ModelInfo(
-            version: ProcessInfo.processInfo.environment["OVERHEAR_MLX_MODEL_ID"]
-                ?? "mlx-community/SmolLM2-1.7B-Instruct-4bit",
-            path: nil
-        )
-        self.modelInfo = defaultInfo
         if client == nil {
             state = .unavailable("MLX client not available")
         } else {
@@ -49,7 +48,7 @@ actor LocalLLMPipeline {
             })
             state = .warming
             state = .ready(modelInfo)
-            logger.info("MLX warmup completed (model=\(self.modelInfo?.version ?? "unknown", privacy: .public))")
+            logger.info("MLX warmup completed (model=\(self.modelInfo.version, privacy: .public))")
         } catch {
             state = .unavailable("Warmup failed: \(error.localizedDescription)")
             logger.error("MLX warmup failed: \(error.localizedDescription, privacy: .public)")

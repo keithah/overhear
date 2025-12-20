@@ -11,7 +11,7 @@ enum NotificationHelper {
     private static let accessibilityWarningKey = "com.overhear.notification.accessibilityWarningShown"
     private static let browserUrlWarningKey = "com.overhear.notification.browserUrlWarningShown"
 
-    static func requestPermission(completion: (() -> Void)? = nil) {
+    static func requestPermission(completion: (@Sendable () -> Void)? = nil) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
@@ -32,7 +32,7 @@ enum NotificationHelper {
         }
     }
     
-    static func sendTestNotification(completion: (() -> Void)? = nil) {
+    static func sendTestNotification(completion: (@Sendable () -> Void)? = nil) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
