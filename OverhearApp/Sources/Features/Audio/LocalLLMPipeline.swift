@@ -8,17 +8,22 @@ actor LocalLLMPipeline {
         case unavailable(String)
         case idle
         case warming
-        case ready
+        case ready(MLXModelManager.ModelInfo?)
     }
 
-    static let shared = LocalLLMPipeline(client: MLXAdapter.makeClient())
+    static let shared = LocalLLMPipeline(
+        client: MLXAdapter.makeClient(),
+        modelManager: MLXModelManager()
+    )
 
     private let client: MLXClient?
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
+    private let modelManager: MLXModelManager
     private(set) var state: State
 
-    init(client: MLXClient?) {
+    init(client: MLXClient?, modelManager: MLXModelManager) {
         self.client = client
+        self.modelManager = modelManager
         if client == nil {
             state = .unavailable("MLX client not available")
         } else {
@@ -32,9 +37,10 @@ actor LocalLLMPipeline {
         guard case .idle = state else { return }
         state = .warming
         do {
+            let modelInfo = await modelManager.ensureModel()
             try await client.warmup()
-            state = .ready
-            logger.info("MLX warmup completed")
+            state = .ready(modelInfo)
+            logger.info("MLX warmup completed (model=\(modelInfo?.version ?? "unknown", privacy: .public))")
         } catch {
             state = .unavailable("Warmup failed: \(error.localizedDescription)")
             logger.error("MLX warmup failed: \(error.localizedDescription, privacy: .public)")
@@ -118,5 +124,9 @@ actor LocalLLMPipeline {
         }
         sections.append("Respond concisely using the instructions above.")
         return sections.joined(separator: "\n\n")
+    }
+
+    func currentState() -> State {
+        state
     }
 }

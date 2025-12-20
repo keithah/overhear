@@ -294,6 +294,7 @@ struct LiveNotesView: View {
     @State private var showAI = true
     @State private var isRegenerating = false
     @State private var notesPrefilled = false
+    @State private var llmStateDescription: String = "Checking…"
     var onHide: () -> Void
 
     private var statusText: String {
@@ -321,6 +322,7 @@ struct LiveNotesView: View {
         .frame(minWidth: 460, minHeight: 500)
         .onAppear {
             Task { await prefillNotesIfNeeded() }
+            Task { await refreshLLMState() }
         }
     }
 
@@ -474,6 +476,9 @@ struct LiveNotesView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
+                Text(llmStateDescription)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
                 Menu {
                     Button("Regenerate (default prompt)") {
                         Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
@@ -593,6 +598,7 @@ struct LiveNotesView: View {
     private func regenerateSummary(template: PromptTemplate? = nil) async {
         guard !isRegenerating else { return }
         isRegenerating = true
+        await refreshLLMState()
         await coordinator.regenerateSummary(template: template)
         isRegenerating = false
     }
@@ -624,6 +630,26 @@ struct LiveNotesView: View {
         }
         await MainActor.run {
             notesPrefilled = true
+        }
+    }
+
+    private func refreshLLMState() async {
+        let state = await LocalLLMPipeline.shared.currentState()
+        await MainActor.run {
+            switch state {
+            case .unavailable(let reason):
+                llmStateDescription = "LLM unavailable (\(reason))"
+            case .idle:
+                llmStateDescription = "LLM idle"
+            case .warming:
+                llmStateDescription = "LLM warming…"
+            case .ready(let info):
+                if let info {
+                    llmStateDescription = "LLM ready (\(info.version))"
+                } else {
+                    llmStateDescription = "LLM ready"
+                }
+            }
         }
     }
 
@@ -670,6 +696,7 @@ struct LiveNotesManagerView: View {
     @State private var showAI = true
     @State private var isRegenerating = false
     @State private var liveNotes: String = ""
+    @State private var llmStateDescription: String = "Checking…"
     var onHide: () -> Void
 
     private var statusText: String {
@@ -705,6 +732,9 @@ struct LiveNotesManagerView: View {
                 .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 10)
         )
         .frame(minWidth: 460, minHeight: 500)
+        .onAppear {
+            Task { await refreshLLMState() }
+        }
     }
 
     private var header: some View {
@@ -863,6 +893,9 @@ struct LiveNotesManagerView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
+                Text(llmStateDescription)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
                 Menu {
                     Button("Regenerate (default prompt)") {
                         Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
@@ -982,6 +1015,7 @@ struct LiveNotesManagerView: View {
     private func regenerateSummary(template: PromptTemplate? = nil) async {
         guard !isRegenerating else { return }
         isRegenerating = true
+        await refreshLLMState()
         await manager.regenerateSummary(template: template)
         isRegenerating = false
     }
@@ -1048,6 +1082,26 @@ struct LiveNotesManagerView: View {
             }
         } catch {
             // Ignore; notes are optional best-effort.
+        }
+    }
+
+    private func refreshLLMState() async {
+        let state = await LocalLLMPipeline.shared.currentState()
+        await MainActor.run {
+            switch state {
+            case .unavailable(let reason):
+                llmStateDescription = "LLM unavailable (\(reason))"
+            case .idle:
+                llmStateDescription = "LLM idle"
+            case .warming:
+                llmStateDescription = "LLM warming…"
+            case .ready(let info):
+                if let info {
+                    llmStateDescription = "LLM ready (\(info.version))"
+                } else {
+                    llmStateDescription = "LLM ready"
+                }
+            }
         }
     }
 }
