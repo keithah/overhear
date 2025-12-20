@@ -1,7 +1,7 @@
 import Foundation
 
 protocol MLXClient: Sendable {
-    func warmup() async throws
+    func warmup(modelPath: URL?) async throws
     func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async throws -> MeetingSummary
     func generate(prompt: String, systemPrompt: String?, maxTokens: Int) async throws -> String
 }
@@ -20,8 +20,9 @@ enum MLXAdapter {
 import MLX
 
 private struct RealMLXClient: MLXClient {
-    func warmup() async throws {
+    func warmup(modelPath: URL?) async throws {
         // If the MLX package exposes a warmup API, call it; otherwise treat as a no-op.
+        _ = modelPath // reserved for future real MLX loading
     }
 
     func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async throws -> MeetingSummary {

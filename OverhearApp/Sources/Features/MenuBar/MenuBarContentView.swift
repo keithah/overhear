@@ -641,6 +641,8 @@ struct LiveNotesView: View {
                 llmStateDescription = "LLM unavailable (\(reason))"
             case .idle:
                 llmStateDescription = "LLM idle"
+            case .downloading:
+                llmStateDescription = "LLM downloading model…"
             case .warming:
                 llmStateDescription = "LLM warming…"
             case .ready(let info):
@@ -1093,6 +1095,8 @@ struct LiveNotesManagerView: View {
                 llmStateDescription = "LLM unavailable (\(reason))"
             case .idle:
                 llmStateDescription = "LLM idle"
+            case .downloading:
+                llmStateDescription = "LLM downloading model…"
             case .warming:
                 llmStateDescription = "LLM warming…"
             case .ready(let info):

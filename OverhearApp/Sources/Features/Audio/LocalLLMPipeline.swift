@@ -7,6 +7,7 @@ actor LocalLLMPipeline {
     enum State: Equatable {
         case unavailable(String)
         case idle
+        case downloading
         case warming
         case ready(MLXModelManager.ModelInfo?)
     }
@@ -35,10 +36,12 @@ actor LocalLLMPipeline {
     func warmup() async {
         guard let client else { return }
         guard case .idle = state else { return }
-        state = .warming
+        state = .downloading
         do {
             let modelInfo = await modelManager.ensureModel()
-            try await client.warmup()
+            state = .warming
+            let modelPath = modelInfo?.path
+            try await client.warmup(modelPath: modelPath)
             state = .ready(modelInfo)
             logger.info("MLX warmup completed (model=\(modelInfo?.version ?? "unknown", privacy: .public))")
         } catch {
@@ -83,6 +86,8 @@ actor LocalLLMPipeline {
         switch state {
         case .idle:
             await warmup()
+        case .downloading, .warming:
+            break
         default:
             break
         }
