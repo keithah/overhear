@@ -20,6 +20,8 @@ permissions:
 jobs:
   request-claude:
     runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ inputs.pr }}
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
