@@ -7,24 +7,28 @@ actor LocalLLMPipeline {
     enum State: Equatable {
         case unavailable(String)
         case idle
-        case downloading
+        case downloading(Double)
         case warming
         case ready(MLXModelManager.ModelInfo?)
     }
 
     static let shared = LocalLLMPipeline(
-        client: MLXAdapter.makeClient(),
-        modelManager: MLXModelManager()
+        client: MLXAdapter.makeClient()
     )
 
     private let client: MLXClient?
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
-    private let modelManager: MLXModelManager
     private(set) var state: State
+    private let modelInfo: MLXModelManager.ModelInfo?
 
-    init(client: MLXClient?, modelManager: MLXModelManager) {
+    init(client: MLXClient?) {
         self.client = client
-        self.modelManager = modelManager
+        let defaultInfo = MLXModelManager.ModelInfo(
+            version: ProcessInfo.processInfo.environment["OVERHEAR_MLX_MODEL_ID"]
+                ?? "mlx-community/SmolLM2-1.7B-Instruct-4bit",
+            path: nil
+        )
+        self.modelInfo = defaultInfo
         if client == nil {
             state = .unavailable("MLX client not available")
         } else {
@@ -36,18 +40,24 @@ actor LocalLLMPipeline {
     func warmup() async {
         guard let client else { return }
         guard case .idle = state else { return }
-        state = .downloading
+        state = .downloading(0)
         do {
-            let modelInfo = await modelManager.ensureModel()
+            try await client.warmup(progress: { [weak self] progress in
+                Task { [weak self] in
+                    await self?.setDownloading(progress)
+                }
+            })
             state = .warming
-            let modelPath = modelInfo?.path
-            try await client.warmup(modelPath: modelPath)
             state = .ready(modelInfo)
-            logger.info("MLX warmup completed (model=\(modelInfo?.version ?? "unknown", privacy: .public))")
+            logger.info("MLX warmup completed (model=\(self.modelInfo?.version ?? "unknown", privacy: .public))")
         } catch {
             state = .unavailable("Warmup failed: \(error.localizedDescription)")
             logger.error("MLX warmup failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private func setDownloading(_ progress: Double) {
+        state = .downloading(progress)
     }
 
     /// Summaries/action items using the local LLM when available.

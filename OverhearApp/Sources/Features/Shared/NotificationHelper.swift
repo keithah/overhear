@@ -11,7 +11,7 @@ enum NotificationHelper {
     private static let accessibilityWarningKey = "com.overhear.notification.accessibilityWarningShown"
     private static let browserUrlWarningKey = "com.overhear.notification.browserUrlWarningShown"
 
-    static func requestPermission() {
+    static func requestPermission(completion: (() -> Void)? = nil) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
@@ -21,22 +21,25 @@ enum NotificationHelper {
                     } else {
                         logger.info("Notification permissions granted: \(granted, privacy: .public)")
                     }
+                    DispatchQueue.main.async { completion?() }
                 }
             case .denied:
                 logger.info("Notifications denied; open System Settings > Notifications to enable.")
+                DispatchQueue.main.async { completion?() }
             default:
-                break
+                DispatchQueue.main.async { completion?() }
             }
         }
     }
     
-    static func sendTestNotification() {
+    static func sendTestNotification(completion: (() -> Void)? = nil) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     if let error {
                         logger.error("Notification permission error during test: \(error.localizedDescription, privacy: .public)")
+                        DispatchQueue.main.async { completion?() }
                         return
                     }
                     
@@ -45,11 +48,14 @@ enum NotificationHelper {
                     } else {
                         logger.info("Notifications denied during test prompt; cannot show test notification.")
                     }
+                    DispatchQueue.main.async { completion?() }
                 }
             case .denied:
                 logger.info("Notifications denied; cannot show test notification.")
+                DispatchQueue.main.async { completion?() }
             default:
                 scheduleTestNotification()
+                DispatchQueue.main.async { completion?() }
             }
         }
     }

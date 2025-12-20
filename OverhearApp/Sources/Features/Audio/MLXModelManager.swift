@@ -5,12 +5,12 @@ import os.log
 actor MLXModelManager {
     struct ModelInfo: Equatable {
         let version: String
-        let path: URL
+        let path: URL?
     }
 
     enum State: Equatable {
         case idle
-        case downloading
+        case downloading(Double) // 0...1
         case ready(ModelInfo)
         case unavailable(String)
     }
@@ -69,13 +69,35 @@ actor MLXModelManager {
             return nil
         }
 
-        state = .downloading
+        state = .downloading(0)
         do {
-            let (tmpURL, _) = try await URLSession.shared.download(from: downloadURL)
+            let (bytes, response) = try await URLSession.shared.bytes(from: downloadURL)
+            let expectedLength = response.expectedContentLength
             let destination = target.appendingPathComponent(downloadURL.lastPathComponent)
             // Remove any existing file to avoid conflicts.
             try? FileManager.default.removeItem(at: destination)
-            try FileManager.default.moveItem(at: tmpURL, to: destination)
+
+            let stream = OutputStream(url: destination, append: false)!
+            stream.open()
+            defer { stream.close() }
+
+            var received: Int64 = 0
+            for try await byte in bytes {
+                var value = byte
+                let wrote = withUnsafeBytes(of: &value) { ptr -> Int in
+                    guard let base = ptr.bindMemory(to: UInt8.self).baseAddress else { return 0 }
+                    return stream.write(base, maxLength: 1)
+                }
+                if wrote < 0 {
+                    throw stream.streamError ?? URLError(.cannotWriteToFile)
+                }
+                received += 1
+                if expectedLength > 0 {
+                    let progress = min(1.0, Double(received) / Double(expectedLength))
+                    state = .downloading(progress)
+                }
+            }
+
             try Data().write(to: marker)
             let info = ModelInfo(version: modelVersion, path: target)
             state = .ready(info)

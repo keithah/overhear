@@ -104,15 +104,19 @@ if viewModel.isLoading {
                      .padding(.vertical, 4)
                   }
 .onAppear {
-                       // Scroll to today when view appears
+                       // Scroll to today (or nearest upcoming/past) when view appears
                        withAnimation {
-                           proxy.scrollTo(dateIdentifier(todayDate), anchor: .top)
+                           if let target = scrollTargetDate() {
+                               proxy.scrollTo(dateIdentifier(target), anchor: .top)
+                           }
                        }
                    }
                    .onReceive(NotificationCenter.default.publisher(for: .scrollToToday)) { _ in
                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                           withAnimation {
-                               proxy.scrollTo(dateIdentifier(todayDate), anchor: .top)
+                           if let target = scrollTargetDate() {
+                               withAnimation {
+                                   proxy.scrollTo(dateIdentifier(target), anchor: .top)
+                               }
                            }
                        }
                    }
@@ -233,9 +237,21 @@ private let dateIdentifierFormatter: DateFormatter = {
     private func dateIdentifier(_ date: Date) -> String {
         return dateIdentifierFormatter.string(from: date)
     }
-    
+
     private func formattedDate(_ date: Date) -> String {
         return formattedDateFormatter.string(from: date)
+    }
+
+    /// Returns today if present; otherwise the next upcoming date; otherwise the last available date.
+    private func scrollTargetDate() -> Date? {
+        let today = todayDate
+        if let exact = groupedMeetings.first(where: { Calendar.current.isDate($0.date, inSameDayAs: today) }) {
+            return exact.date
+        }
+        if let upcoming = groupedMeetings.first(where: { $0.date > today }) {
+            return upcoming.date
+        }
+        return groupedMeetings.last?.date
     }
     
     private func scrollToToday() {
@@ -649,8 +665,9 @@ struct LiveNotesView: View {
                 llmStateDescription = "LLM unavailable (\(reason))"
             case .idle:
                 llmStateDescription = "LLM idle"
-            case .downloading:
-                llmStateDescription = "LLM downloading model…"
+            case .downloading(let progress):
+                let pct = Int((progress * 100).rounded())
+                llmStateDescription = "LLM downloading… \(pct)%"
             case .warming:
                 llmStateDescription = "LLM warming…"
             case .ready(let info):

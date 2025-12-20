@@ -5,7 +5,9 @@ import AppKit
 
 struct PreferencesView: View {
     @ObservedObject var preferences: PreferencesService
+    @State private var mlxModelID: String = MLXPreferences.modelID()
     @ObservedObject var calendarService: CalendarService
+    @State private var accessibilityTrusted: Bool = AccessibilityHelper.isTrusted()
 
     @State private var calendarsBySource: [(source: EKSource, calendars: [EKCalendar])] = []
     @State private var isLoadingCalendars = false
@@ -197,7 +199,56 @@ struct PreferencesView: View {
                     .foregroundColor(.secondary)
             }
 
+            Section(header: Text("On-device LLM (MLX)")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Model ID (e.g. mlx-community/SmolLM2-1.7B-Instruct-4bit)", text: $mlxModelID)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 420)
+                    HStack(spacing: 12) {
+                        Button("Save model ID") {
+                            MLXPreferences.setModelID(mlxModelID)
+                        }
+                        Button("Clear cached models") {
+                            MLXPreferences.clearModelCache()
+                        }
+                    }
+                    .controlSize(.small)
+                    Text("Used for on-device summaries and prompt templates. Point to any MLX-compatible model ID; clearing cache removes downloaded weights so they can re-download.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             Section(header: Text("Permissions")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Accessibility")
+                        Spacer()
+                        Text(accessibilityStatusText)
+                            .foregroundColor(.secondary)
+                    }
+                    HStack(spacing: 12) {
+                        Button("Request accessibility") {
+                            Task { @MainActor in
+                                let trusted = await AccessibilityHelper.requestPermissionPrompt()
+                                await refreshAccessibilityStatus()
+                                if !trusted {
+                                    AccessibilityHelper.openSystemSettings()
+                                    AccessibilityHelper.revealCurrentApp()
+                                }
+                            }
+                        }
+                        Button("Open Accessibility Settings") {
+                            AccessibilityHelper.openSystemSettings()
+                        }
+                        Button("Reveal app in Finder") {
+                            AccessibilityHelper.revealCurrentApp()
+                        }
+                    }
+                    .controlSize(.small)
+                }
+
                 HStack {
                     Text("Status")
                     Spacer()
@@ -206,10 +257,14 @@ struct PreferencesView: View {
                 }
                 HStack(spacing: 12) {
                     Button("Request permission") {
-                        NotificationHelper.requestPermission()
+                        NotificationHelper.requestPermission {
+                            refreshNotificationStatus()
+                        }
                     }
                     Button("Send test notification") {
-                        NotificationHelper.sendTestNotification()
+                        NotificationHelper.sendTestNotification {
+                            refreshNotificationStatus()
+                        }
                     }
                     Button("Open System Settings") {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
@@ -221,6 +276,7 @@ struct PreferencesView: View {
             }
             .onAppear { refreshNotificationStatus() }
         }
+        .formStyle(.grouped)
     }
 
     private var advancedTab: some View {
@@ -268,6 +324,7 @@ struct PreferencesView: View {
                 }
             }
         }
+        .formStyle(.grouped)
     }
 
     private var aboutTab: some View {
@@ -361,6 +418,17 @@ struct PreferencesView: View {
                 self.notificationStatus = status
             }
         }
+    }
+
+    private var accessibilityStatusText: String {
+        accessibilityTrusted ? "Allowed" : "Not granted"
+    }
+
+    @MainActor
+    private func refreshAccessibilityStatus() async {
+        // The system prompt is async; check again after a short delay.
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        accessibilityTrusted = AccessibilityHelper.isTrusted()
     }
 }
 
