@@ -295,6 +295,7 @@ struct LiveNotesView: View {
     @State private var isRegenerating = false
     @State private var notesPrefilled = false
     @State private var llmStateDescription: String = "Checking…"
+    @State private var isWarmingLLM = false
     var onHide: () -> Void
 
     private var statusText: String {
@@ -479,6 +480,13 @@ struct LiveNotesView: View {
                 Text(llmStateDescription)
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
+                Button {
+                    Task { await warmLLM() }
+                } label: {
+                    Text(isWarmingLLM ? "Warming…" : "Warm up LLM")
+                }
+                .disabled(isWarmingLLM)
+                .controlSize(.mini)
                 Menu {
                     Button("Regenerate (default prompt)") {
                         Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
@@ -655,6 +663,14 @@ struct LiveNotesView: View {
         }
     }
 
+    private func warmLLM() async {
+        guard !isWarmingLLM else { return }
+        isWarmingLLM = true
+        await LocalLLMPipeline.shared.warmup()
+        await refreshLLMState()
+        isWarmingLLM = false
+    }
+
     private func exportSummary() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "NewNote.md"
@@ -699,6 +715,7 @@ struct LiveNotesManagerView: View {
     @State private var isRegenerating = false
     @State private var liveNotes: String = ""
     @State private var llmStateDescription: String = "Checking…"
+    @State private var isWarmingLLM = false
     var onHide: () -> Void
 
     private var statusText: String {
@@ -1107,6 +1124,14 @@ struct LiveNotesManagerView: View {
                 }
             }
         }
+    }
+
+    private func warmLLM() async {
+        guard !isWarmingLLM else { return }
+        isWarmingLLM = true
+        await LocalLLMPipeline.shared.warmup()
+        await refreshLLMState()
+        isWarmingLLM = false
     }
 }
 
