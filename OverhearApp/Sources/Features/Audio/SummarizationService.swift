@@ -10,8 +10,8 @@ protocol SummarizationEngine: Sendable {
 enum SummarizationEngineFactory {
     static func makeEngine() -> any SummarizationEngine {
         let useMLX = ProcessInfo.processInfo.environment["OVERHEAR_USE_MLX"] == "1"
-        if useMLX, let client = MLXAdapter.makeClient() {
-            return MLXSummarizationEngine(mlx: client)
+        if useMLX {
+            return MLXPipelinedEngine(pipeline: LocalLLMPipeline.shared)
         }
         return LegacySummarizationEngine()
     }
@@ -47,9 +47,9 @@ private struct LegacySummarizationEngine: SummarizationEngine {
     }
 }
 
-private struct MLXSummarizationEngine: SummarizationEngine {
-    let mlx: MLXClient
+private struct MLXPipelinedEngine: SummarizationEngine {
+    let pipeline: LocalLLMPipeline
     func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async throws -> MeetingSummary {
-        try await mlx.summarize(transcript: transcript, segments: segments, template: template)
+        await pipeline.summarize(transcript: transcript, segments: segments, template: template)
     }
 }
