@@ -22,8 +22,15 @@ actor MLXModelManager {
     private(set) var state: State = .idle
 
     init(
-        modelVersion: String = "v1",
-        downloadURL: URL? = URL(string: ProcessInfo.processInfo.environment["OVERHEAR_MLX_MODEL_URL"] ?? ""),
+        modelVersion: String = ProcessInfo.processInfo.environment["OVERHEAR_MLX_MODEL_VERSION"]
+            ?? "smol2-1.7b-instruct-4bit",
+        downloadURL: URL? = {
+            if let env = ProcessInfo.processInfo.environment["OVERHEAR_MLX_MODEL_URL"], let url = URL(string: env) {
+                return url
+            }
+            // Default to a small instruction-tuned model packaged for MLX.
+            return URL(string: "https://huggingface.co/mlx-community/SmolLM2-1.7B-Instruct-4bit-mlx/resolve/main/model.safetensors")
+        }(),
         baseDirectory: URL? = nil
     ) {
         self.modelVersion = modelVersion
