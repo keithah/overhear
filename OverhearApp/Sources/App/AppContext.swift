@@ -13,11 +13,14 @@ final class AppContext: ObservableObject {
     var menuBarController: MenuBarController?
     var hotkeyManager: HotkeyManager?
 
-    init() {
-        let permissions = PermissionsService()
-        let preferences = PreferencesService()
-        let calendar = CalendarService()
-        let recordingCoordinator = MeetingRecordingCoordinator()
+    init(
+        permissions: PermissionsService = PermissionsService(),
+        preferences: PreferencesService = PreferencesService(),
+        calendar: CalendarService = CalendarService(),
+        recordingCoordinator: MeetingRecordingCoordinator = MeetingRecordingCoordinator(),
+        callDetectionService: CallDetectionService = CallDetectionService(),
+        autoRecordingCoordinator: AutoRecordingCoordinator = AutoRecordingCoordinator()
+    ) {
         self.permissionsService = permissions
         self.preferencesService = preferences
         self.calendarService = calendar
@@ -26,7 +29,7 @@ final class AppContext: ObservableObject {
                                                       recordingCoordinator: recordingCoordinator)
         self.recordingCoordinator = recordingCoordinator
         self.preferencesWindowController = PreferencesWindowController(preferences: preferences, calendarService: calendar)
-        self.callDetectionService = CallDetectionService()
-        self.autoRecordingCoordinator = AutoRecordingCoordinator()
+        self.callDetectionService = callDetectionService
+        self.autoRecordingCoordinator = autoRecordingCoordinator
     }
 }

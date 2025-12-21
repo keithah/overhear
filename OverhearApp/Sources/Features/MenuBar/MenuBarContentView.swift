@@ -718,7 +718,11 @@ struct LiveNotesView: View {
                 lines.append(coordinator.liveNotes)
             }
             let text = lines.joined(separator: "\n")
-            try? text.write(to: url, atomically: true, encoding: .utf8)
+            do {
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                FileLogger.log(category: "LiveNotesView", message: "Failed to export summary: \(error.localizedDescription)")
+            }
         }
     }
 }
@@ -1102,7 +1106,11 @@ struct LiveNotesManagerView: View {
                 lines.append(liveNotes)
             }
             let text = lines.joined(separator: "\n")
-            try? text.write(to: url, atomically: true, encoding: .utf8)
+            do {
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                FileLogger.log(category: "LiveNotesManagerView", message: "Failed to export summary: \(error.localizedDescription)")
+            }
         }
     }
 

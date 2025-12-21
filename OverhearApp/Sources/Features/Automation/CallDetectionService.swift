@@ -35,6 +35,11 @@ final class CallDetectionService {
 
     func start(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {
         guard activationObserver == nil, pollTimer == nil else { return }
+        guard AXIsProcessTrusted() else {
+            logger.error("Accessibility not granted; call detection will not start.")
+            NotificationHelper.sendAccessibilityPermissionNeededIfNeeded()
+            return
+        }
         self.autoCoordinator = autoCoordinator
         self.preferences = preferences
         micMonitor.onChange = { [weak self] active in
@@ -79,11 +84,6 @@ final class CallDetectionService {
 
     private func pollFrontmostApp() async {
         guard preferencesAllowNotifications else { return }
-        guard AXIsProcessTrusted() else {
-            logger.error("Accessibility not granted; skipping detection")
-            NotificationHelper.sendAccessibilityPermissionNeededIfNeeded()
-            return
-        }
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier else {
             autoCoordinator?.onNoDetection()
