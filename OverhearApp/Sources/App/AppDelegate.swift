@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Request notification permissions
         NotificationHelper.requestPermission()
 
-        let context = AppContext()
+        let context = AppContext.makeDefault()
         self.context = context
 
         // Proactively warm the MLX model if enabled so summaries/prompts are ready sooner.

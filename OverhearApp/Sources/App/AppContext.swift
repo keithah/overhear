@@ -13,13 +13,25 @@ final class AppContext: ObservableObject {
     var menuBarController: MenuBarController?
     var hotkeyManager: HotkeyManager?
 
+    @MainActor
+    static func makeDefault() -> AppContext {
+        AppContext(
+            permissions: PermissionsService(),
+            preferences: PreferencesService(),
+            calendar: CalendarService(),
+            recordingCoordinator: MeetingRecordingCoordinator(),
+            callDetectionService: CallDetectionService(),
+            autoRecordingCoordinator: AutoRecordingCoordinator()
+        )
+    }
+
     init(
-        permissions: PermissionsService = PermissionsService(),
-        preferences: PreferencesService = PreferencesService(),
-        calendar: CalendarService = CalendarService(),
-        recordingCoordinator: MeetingRecordingCoordinator = MeetingRecordingCoordinator(),
-        callDetectionService: CallDetectionService = CallDetectionService(),
-        autoRecordingCoordinator: AutoRecordingCoordinator = AutoRecordingCoordinator()
+        permissions: PermissionsService,
+        preferences: PreferencesService,
+        calendar: CalendarService,
+        recordingCoordinator: MeetingRecordingCoordinator,
+        callDetectionService: CallDetectionService,
+        autoRecordingCoordinator: AutoRecordingCoordinator
     ) {
         self.permissionsService = permissions
         self.preferencesService = preferences
