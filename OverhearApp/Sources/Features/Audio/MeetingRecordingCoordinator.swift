@@ -23,6 +23,7 @@ final class MeetingRecordingCoordinator: ObservableObject {
     private var hasRecordedOnce = false
 
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingCoordinator")
+    weak var autoRecordingCoordinator: AutoRecordingCoordinator?
 
     var isRecording: Bool {
         switch status {
@@ -68,6 +69,13 @@ final class MeetingRecordingCoordinator: ObservableObject {
 
     private func startRecordingInternal(for meeting: Meeting) async {
         logger.debug("Starting recording for \(meeting.title, privacy: .public)")
+
+        // Stop auto-recording if active - manual recording takes precedence
+        if autoRecordingCoordinator?.isRecording == true {
+            logger.info("Stopping auto-recording to start manual recording")
+            await autoRecordingCoordinator?.stopRecording()
+        }
+
         await stopRecordingInternal()
         liveTranscript = ""
         liveSegments = []

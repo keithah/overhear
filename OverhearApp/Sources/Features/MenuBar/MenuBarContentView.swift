@@ -671,9 +671,9 @@ struct LiveNotesView: View {
                 llmStateDescription = "LLM downloading… \(pct)%"
             case .warming:
                 llmStateDescription = "LLM warming…"
-            case .ready(let info):
-                if let info {
-                    llmStateDescription = "LLM ready (\(info.version))"
+            case .ready(let modelID):
+                if let modelID {
+                    llmStateDescription = "LLM ready (\(modelID))"
                 } else {
                     llmStateDescription = "LLM ready"
                 }
@@ -1142,9 +1142,9 @@ struct LiveNotesManagerView: View {
                 llmStateDescription = "LLM downloading model…"
             case .warming:
                 llmStateDescription = "LLM warming…"
-            case .ready(let info):
-                if let info {
-                    llmStateDescription = "LLM ready (\(info.version))"
+            case .ready(let modelID):
+                if let modelID {
+                    llmStateDescription = "LLM ready (\(modelID))"
                 } else {
                     llmStateDescription = "LLM ready"
                 }

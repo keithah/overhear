@@ -23,8 +23,15 @@ final class AutoRecordingCoordinator: ObservableObject {
     var onManagerUpdate: ((MeetingRecordingManager?) -> Void)?
     var onCompleted: (() -> Void)?
     var onStatusUpdate: ((String, Bool) -> Void)?
+    weak var manualRecordingCoordinator: MeetingRecordingCoordinator?
 
     func onDetection(appName: String, meetingTitle: String?) {
+        // Skip if manual recording is active - don't interfere with user-initiated sessions
+        if manualRecordingCoordinator?.isRecording == true {
+            logger.info("Skipping auto-record detection; manual recording active")
+            return
+        }
+
         // Cancel any pending stop since we have a fresh detection.
         stopWorkItem?.cancel()
         stopWorkItem = nil

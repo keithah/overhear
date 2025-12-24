@@ -25,12 +25,18 @@ final class CallDetectionService {
         "com.cisco.webexmeetings",
         "com.apple.Safari",
         "com.google.Chrome",
-        "com.microsoft.edgemac"
+        "com.microsoft.edgemac",
+        "company.thebrowser.Browser",  // Arc Browser
+        "org.mozilla.firefox",          // Firefox
+        "com.brave.Browser"              // Brave Browser
     ]
     private let browserBundles: Set<String> = [
         "com.apple.Safari",
         "com.google.Chrome",
-        "com.microsoft.edgemac"
+        "com.microsoft.edgemac",
+        "company.thebrowser.Browser",
+        "org.mozilla.firefox",
+        "com.brave.Browser"
     ]
 
     func start(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {

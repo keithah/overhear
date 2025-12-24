@@ -31,5 +31,9 @@ final class AppContext: ObservableObject {
         self.preferencesWindowController = PreferencesWindowController(preferences: preferences, calendarService: calendar)
         self.callDetectionService = callDetectionService
         self.autoRecordingCoordinator = autoRecordingCoordinator
+
+        // Wire coordinators to prevent conflicts
+        recordingCoordinator.autoRecordingCoordinator = autoRecordingCoordinator
+        autoRecordingCoordinator.manualRecordingCoordinator = recordingCoordinator
     }
 }

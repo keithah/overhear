@@ -54,7 +54,6 @@
 		FD7D27952BBF20F500A5CB6F /* MicUsageMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27942BBF20F500A5CB6F /* MicUsageMonitor.swift */; };
 		FD7D27972BBF20FE00A5CB6F /* RecordingStateIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27962BBF20FE00A5CB6F /* RecordingStateIndicator.swift */; };
 	F1F5B2D21D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D11D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift */; };
-	F1F5B2D41D0A4FC3A5E1C0D1 /* MLXModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D31D0A4FC3A5E1C0D1 /* MLXModelManager.swift */; };
 	F1F5B2D61D0A4FC3A5E1C0D1 /* MLXPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D51D0A4FC3A5E1C0D1 /* MLXPreferences.swift */; };
 	F1F5B2D81D0A4FC3A5E1C0D1 /* PromptTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D71D0A4FC3A5E1C0D1 /* PromptTemplate.swift */; };
 	F1F5B2DA1D0A4FC3A5E1C0D1 /* PromptTemplateRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D91D0A4FC3A5E1C0D1 /* PromptTemplateRunner.swift */; };
@@ -111,7 +110,6 @@
 		FD7D27942BBF20F500A5CB6F /* MicUsageMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/MicUsageMonitor.swift; sourceTree = "<group>"; };
 		FD7D27962BBF20FE00A5CB6F /* RecordingStateIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/RecordingStateIndicator.swift; sourceTree = "<group>"; };
 	F1F5B2D11D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMPipeline.swift; sourceTree = "<group>"; };
-	F1F5B2D31D0A4FC3A5E1C0D1 /* MLXModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXModelManager.swift; sourceTree = "<group>"; };
 	F1F5B2D51D0A4FC3A5E1C0D1 /* MLXPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXPreferences.swift; sourceTree = "<group>"; };
 	F1F5B2D71D0A4FC3A5E1C0D1 /* PromptTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplate.swift; sourceTree = "<group>"; };
 	F1F5B2D91D0A4FC3A5E1C0D1 /* PromptTemplateRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplateRunner.swift; sourceTree = "<group>"; };
@@ -229,7 +227,6 @@
 			A1F0D0C1F1E2010000000011 /* MeetingRecordingCoordinator.swift */,
 			01B63EE76EDA4773903755A3F251FCA5 /* MeetingRecordingPipeline.swift */,
 			94AEABBD11484B4C9905881B69F6E465 /* MLXAdapter.swift */,
-			F1F5B2D31D0A4FC3A5E1C0D1 /* MLXModelManager.swift */,
 			F1F5B2D11D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift */,
 			F1F5B2D71D0A4FC3A5E1C0D1 /* PromptTemplate.swift */,
 			F1F5B2D91D0A4FC3A5E1C0D1 /* PromptTemplateRunner.swift */,
@@ -375,7 +372,6 @@
 			80FE5CAE940E4AD9869D8CE173ED4A23 /* FluidAudioAdapter.swift in Sources */,
 			41F4A9477D1C4FA381E8935A8D269DDF /* MeetingRecordingPipeline.swift in Sources */,
 			27CC46306D09405BBBB43617C1B33461 /* MLXAdapter.swift in Sources */,
-			F1F5B2D41D0A4FC3A5E1C0D1 /* MLXModelManager.swift in Sources */,
 			F1F5B2D21D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift in Sources */,
 			F1F5B2D81D0A4FC3A5E1C0D1 /* PromptTemplate.swift in Sources */,
 			F1F5B2DA1D0A4FC3A5E1C0D1 /* PromptTemplateRunner.swift in Sources */,
