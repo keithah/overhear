@@ -16,12 +16,12 @@ permissions:
   contents: read
   issues: write
   pull-requests: write
-  id-token: write
-  actions: read # Required for Claude to read CI results on PRs
 
 jobs:
-  claude-review:
+  request-claude:
     runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ inputs.pr }}
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
@@ -29,31 +29,40 @@ jobs:
        contains(github.event.comment.body, '@claude review')) ||
       github.event_name == 'workflow_dispatch'
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Trigger Claude review comment
+        uses: actions/github-script@v7
         with:
-          fetch-depth: 1
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const number = context.eventName === 'workflow_dispatch'
+              ? Number(process.env.PR_NUMBER || core.getInput('pr'))
+              : context.issue.number;
+            const desiredBody = "@claude review";
 
-      - name: Run Claude Code Review
-        id: claude-review
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: number, per_page: 100 }
+            );
+            const alreadyPosted = comments.some(
+              (comment) =>
+                comment.user?.login === "github-actions[bot]" &&
+                comment.body?.trim() === desiredBody
+            );
 
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            if (alreadyPosted) {
+              core.info("Claude review comment already present; skipping.");
+              return;
+            }
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
-
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
-
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://docs.claude.com/en/docs/claude-code/cli-reference for available options
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: number,
+              body: desiredBody,
+            });
+            core.info("Posted Claude review comment.");
