@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 extension NSNotification.Name {
     static let scrollToToday = NSNotification.Name("ScrollToToday")
@@ -691,7 +692,7 @@ struct LiveNotesView: View {
     private func exportSummary() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "NewNote.md"
-        panel.allowedContentTypes = [.plainText, .text, .init(filenameExtension: "md")!]
+        panel.allowedContentTypes = [.plainText, .text, UTType(filenameExtension: "md") ?? .plainText]
         panel.canCreateDirectories = true
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
@@ -1079,7 +1080,7 @@ struct LiveNotesManagerView: View {
     private func exportSummary() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "NewNote.md"
-        panel.allowedContentTypes = [.plainText, .text, .init(filenameExtension: "md")!]
+        panel.allowedContentTypes = [.plainText, .text, UTType(filenameExtension: "md") ?? .plainText]
         panel.canCreateDirectories = true
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }

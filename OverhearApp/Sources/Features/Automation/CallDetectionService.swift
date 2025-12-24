@@ -58,14 +58,13 @@ final class CallDetectionService {
         Task { @MainActor in
             await self.pollFrontmostApp()
         }
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.pollFrontmostApp()
             }
         }
-        if let pollTimer {
-            RunLoop.main.add(pollTimer, forMode: .common)
-        }
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
         logger.info("Call detection started with activation observer")
     }
 

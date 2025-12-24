@@ -47,10 +47,14 @@ private struct RealMLXClient: MLXClient {
                 self.cachedModelID = modelID
             }
 
-            if session == nil {
-                session = ChatSession(container, instructions: systemPrompt)
+            let chatSession: ChatSession
+            if let existing = session {
+                chatSession = existing
+            } else {
+                chatSession = ChatSession(container, instructions: systemPrompt)
+                session = chatSession
             }
-            return try await session!.respond(to: prompt)
+            return try await chatSession.respond(to: prompt)
         }
     }
     private let cache = Cache()

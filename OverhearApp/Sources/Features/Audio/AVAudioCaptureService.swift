@@ -186,7 +186,7 @@ actor AVAudioCaptureService {
 // because buffers are never shared mutably across actors: every observer
 // receives a freshly cloned buffer (`notifyBufferObservers`), and the capture
 // actor owns the original buffer lifetime.
-extension AVAudioPCMBuffer: @unchecked Sendable {}
+extension AVAudioPCMBuffer: @retroactive @unchecked Sendable {}
 
 extension AVAudioPCMBuffer {
     func cloned() -> AVAudioPCMBuffer? {
