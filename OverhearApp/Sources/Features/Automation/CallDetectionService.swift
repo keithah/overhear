@@ -38,6 +38,7 @@ final class CallDetectionService {
         "org.mozilla.firefox",
         "com.brave.Browser"
     ]
+    private lazy var nativeMeetingBundles: Set<String> = supportedMeetingBundles.subtracting(browserBundles)
 
     func start(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {
         guard activationObserver == nil, pollTimer == nil else { return }
@@ -91,6 +92,7 @@ final class CallDetectionService {
         guard preferencesAllowNotifications else { return }
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier else {
+            if handleBackgroundDetection(excluding: nil) { return }
             autoCoordinator?.onNoDetection()
             return
         }
@@ -98,17 +100,20 @@ final class CallDetectionService {
         guard supportedMeetingBundles.contains(bundleID) else {
             lastNotifiedApp = nil
             lastNotifiedTitle = nil
+            if handleBackgroundDetection(excluding: bundleID) { return }
             autoCoordinator?.onNoDetection()
             return
         }
 
         // Require mic-in-use to reduce false positives.
         guard isMicActive else {
+            if handleBackgroundDetection(excluding: bundleID) { return }
             autoCoordinator?.onNoDetection()
             return
         }
 
         guard let titleInfo = activeWindowTitle(for: app) else {
+            if handleBackgroundDetection(excluding: bundleID) { return }
             autoCoordinator?.onNoDetection()
             return
         }
@@ -164,6 +169,48 @@ final class CallDetectionService {
             autoCoordinator?.onNoDetection()
         }
         logger.info("Detected meeting window for \(appName, privacy: .public) title=\(cleanTitle, privacy: .private)")
+    }
+
+    /// Fall back to detecting native meeting apps when they are running in the background
+    /// (non-frontmost) but the microphone is active. This helps catch minimized/behind other
+    /// windows sessions without relying on browser URL heuristics.
+    private func handleBackgroundDetection(excluding bundleID: String?) -> Bool {
+        guard isMicActive else { return false }
+        guard let preferences else { return false }
+
+        let candidate = NSWorkspace.shared.runningApplications.first { app in
+            guard let bid = app.bundleIdentifier else { return false }
+            if let bundleID, bid == bundleID { return false }
+            return nativeMeetingBundles.contains(bid) && !app.isHidden && !app.isTerminated
+        }
+
+        guard let meetingApp = candidate, let detectedBundle = meetingApp.bundleIdentifier else {
+            return false
+        }
+
+        let titleInfo = activeWindowTitle(for: meetingApp)
+        let appName = meetingApp.localizedName ?? detectedBundle
+        let meetingInfo = titleInfo?.displayTitle ?? appName
+        let cleanTitle = NotificationHelper.cleanMeetingTitle(from: meetingInfo)
+
+        // Avoid spamming the same detection repeatedly.
+        if lastNotifiedApp == detectedBundle && lastNotifiedTitle == cleanTitle {
+            return true
+        }
+
+        lastNotifiedApp = detectedBundle
+        lastNotifiedTitle = cleanTitle
+
+        if preferences.meetingNotificationsEnabled {
+            NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
+        }
+        if preferences.autoRecordingEnabled {
+            autoCoordinator?.onDetection(appName: appName, meetingTitle: cleanTitle)
+        } else {
+            autoCoordinator?.onNoDetection()
+        }
+        logger.info("Background meeting detection triggered for \(appName, privacy: .public) title=\(cleanTitle, privacy: .private)")
+        return true
     }
 
     private func activeWindowTitle(for app: NSRunningApplication) -> (displayTitle: String, urlDescription: String?)? {

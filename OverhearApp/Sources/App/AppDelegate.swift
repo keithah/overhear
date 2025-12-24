@@ -1,10 +1,12 @@
 import AppKit
 import UserNotifications
 import Foundation
+import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var context: AppContext?
     var menuBarController: MenuBarController?
+    let recordingOverlay = RecordingOverlayController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
@@ -51,6 +53,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Meeting window detection for notifications + auto-record (requires Accessibility)
         context.callDetectionService.start(autoCoordinator: context.autoRecordingCoordinator, preferences: context.preferencesService)
+
+        // Recording overlay to surface in-meeting status
+        context.recordingCoordinator.onRecordingStatusChange = { [weak self, weak context] isRecording, title in
+            guard let self else { return }
+            if isRecording {
+                recordingOverlay.show(title: title ?? "Recording", mode: "Manual recording")
+            } else if context?.autoRecordingCoordinator.isRecording != true {
+                recordingOverlay.hide()
+            }
+        }
+        context.autoRecordingCoordinator.onStatusUpdate = { [weak self, weak context] title, active in
+            guard let self else { return }
+            if active {
+                recordingOverlay.show(title: title, mode: "Auto recording")
+            } else if context?.recordingCoordinator.isRecording != true {
+                recordingOverlay.hide()
+            }
+        }
 
         // Keep windows hidden but present for proper event delivery to menubar
         DispatchQueue.main.async {
@@ -120,5 +140,99 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         } else if actionIdentifier == "com.overhear.notification.dismiss" {
             await context.autoRecordingCoordinator.onNoDetection()
         }
+    }
+}
+
+// MARK: - Recording overlay (in-meeting indicator)
+
+@MainActor
+final class RecordingOverlayController {
+    private var panel: NSPanel?
+    private var hosting: NSHostingController<RecordingOverlayView>?
+
+    func show(title: String, mode: String) {
+        let panel = ensurePanel()
+        hosting?.rootView = RecordingOverlayView(title: title, mode: mode)
+        position(panel: panel)
+        panel.orderFrontRegardless()
+    }
+
+    func hide() {
+        panel?.orderOut(nil)
+    }
+
+    private func ensurePanel() -> NSPanel {
+        if let panel { return panel }
+
+        let content = RecordingOverlayView(title: "Recording", mode: "Status")
+        let hosting = NSHostingController(rootView: content)
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 260, height: 96),
+            styleMask: [.nonactivatingPanel, .hudWindow],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isFloatingPanel = true
+        panel.level = .statusBar
+        panel.hasShadow = true
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.titleVisibility = .hidden
+        panel.standardWindowButton(.closeButton)?.isHidden = true
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
+        panel.contentView = hosting.view
+        panel.isMovableByWindowBackground = false
+
+        self.panel = panel
+        self.hosting = hosting
+        return panel
+    }
+
+    private func position(panel: NSPanel) {
+        guard let screen = NSScreen.main else { return }
+        let panelSize = panel.frame.size
+        let x = screen.visibleFrame.maxX - panelSize.width - 20
+        let y = screen.visibleFrame.maxY - panelSize.height - 60
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+}
+
+private struct RecordingOverlayView: View {
+    let title: String
+    let mode: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .foregroundColor(.red)
+                Text(mode)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.primary)
+                Spacer()
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 10, height: 10)
+                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+            }
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.primary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Recording in progress")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.9))
+                .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
+        )
+        .frame(width: 240, alignment: .leading)
     }
 }

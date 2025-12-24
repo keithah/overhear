@@ -21,6 +21,7 @@ final class MeetingRecordingCoordinator: ObservableObject {
     private var manualRecordingTemplate: Meeting?
     private var manualRecordingEmitted: Bool = false
     private var hasRecordedOnce = false
+    var onRecordingStatusChange: ((Bool, String?) -> Void)?
 
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingCoordinator")
     weak var autoRecordingCoordinator: AutoRecordingCoordinator?
@@ -111,6 +112,17 @@ final class MeetingRecordingCoordinator: ObservableObject {
                 .sink { [weak self, manager] newStatus in
                     guard let self else { return }
                     self.status = newStatus
+                    let isActive: Bool
+                    switch newStatus {
+                    case .capturing, .transcribing:
+                        isActive = true
+                    default:
+                        isActive = false
+                    }
+                    if let onRecordingStatusChange {
+                        let title = self.activeMeeting?.title ?? manager.displayTitle
+                        onRecordingStatusChange(isActive, title)
+                    }
                     switch newStatus {
                     case .capturing, .transcribing:
                         self.hasRecordedOnce = true
