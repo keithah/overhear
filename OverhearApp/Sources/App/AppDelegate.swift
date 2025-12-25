@@ -22,11 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let context = AppContext.makeDefault()
         self.context = context
 
-        // Proactively warm the MLX model if enabled so summaries/prompts are ready sooner.
-        if ProcessInfo.processInfo.environment["OVERHEAR_USE_MLX"] == "1" {
-            Task {
-                await LocalLLMPipeline.shared.warmup()
-            }
+        // Proactively warm the MLX model so summaries/prompts are ready sooner (best-effort).
+        Task {
+            await LocalLLMPipeline.shared.warmup()
         }
 
         // Request calendar permissions with proper app focus; retry once if needed.

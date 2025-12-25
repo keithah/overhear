@@ -9,11 +9,8 @@ protocol SummarizationEngine: Sendable {
 
 enum SummarizationEngineFactory {
     static func makeEngine() -> any SummarizationEngine {
-        let useMLX = ProcessInfo.processInfo.environment["OVERHEAR_USE_MLX"] == "1"
-        if useMLX {
-            return MLXPipelinedEngine(pipeline: LocalLLMPipeline.shared)
-        }
-        return LegacySummarizationEngine()
+        // Always prefer the MLX pipeline; it will gracefully fall back internally if unavailable.
+        return MLXPipelinedEngine(pipeline: LocalLLMPipeline.shared)
     }
 }
 
