@@ -341,6 +341,7 @@ struct LiveNotesView: View {
         .onAppear {
             Task { await prefillNotesIfNeeded() }
             Task { await refreshLLMState() }
+            Task { await warmLLM() }
         }
     }
 
@@ -368,6 +369,16 @@ struct LiveNotesView: View {
                 .padding(.vertical, 6)
                 .background(Capsule().fill(statusColor.opacity(0.15)))
                 .foregroundColor(statusColor)
+            Button {
+                Task { await coordinator.stopRecording() }
+            } label: {
+                Image(systemName: "stop.fill")
+                    .foregroundColor(.white)
+                    .padding(6)
+                    .background(Circle().fill(Color.red))
+            }
+            .buttonStyle(.plain)
+            .help("Stop recording")
             Button(action: onHide) {
                 Image(systemName: "minus.rectangle.fill")
                     .foregroundColor(.secondary)
@@ -775,6 +786,7 @@ struct LiveNotesManagerView: View {
         .frame(minWidth: 460, minHeight: 500)
         .onAppear {
             Task { await refreshLLMState() }
+            Task { await warmLLM() }
         }
     }
 
@@ -802,6 +814,16 @@ struct LiveNotesManagerView: View {
                 .padding(.vertical, 6)
                 .background(Capsule().fill(statusColor.opacity(0.15)))
                 .foregroundColor(statusColor)
+            Button {
+                Task { await manager.stopRecording() }
+            } label: {
+                Image(systemName: "stop.fill")
+                    .foregroundColor(.white)
+                    .padding(6)
+                    .background(Circle().fill(Color.red))
+            }
+            .buttonStyle(.plain)
+            .help("Stop recording")
             Button(action: onHide) {
                 Image(systemName: "minus.rectangle.fill")
                     .foregroundColor(.secondary)
