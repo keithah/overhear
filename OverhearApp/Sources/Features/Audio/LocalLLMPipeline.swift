@@ -204,9 +204,10 @@ actor LocalLLMPipeline {
                 return
             }
 
-            // If the configured model looks bad, try a known-good fallback once.
+            // If the configured model looks bad, try a known-good fallback once and notify the user.
             if !didAttemptFallback, let fallback = fallbackModelID(for: modelID) {
                 FileLogger.log(category: logCategory, message: "Warmup failed; switching model to fallback \(fallback)")
+                NotificationHelper.sendLLMFallback(original: modelID, fallback: fallback)
                 MLXPreferences.setModelID(fallback)
                 state = .idle
                 notifyStateChanged()

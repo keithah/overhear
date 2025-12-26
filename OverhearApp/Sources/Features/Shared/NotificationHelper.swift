@@ -248,6 +248,25 @@ extension NotificationHelper {
         }
     }
 
+    static func sendLLMFallback(original: String, fallback: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "LLM model fallback"
+        content.body = "Using \(fallback) because \(original) failed to load."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "com.overhear.notification.llm-fallback.\(UUID().uuidString)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule LLM fallback notification: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
     static func cleanMeetingTitle(from body: String) -> String {
         let prefix = "Start a New Note?"
         let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)

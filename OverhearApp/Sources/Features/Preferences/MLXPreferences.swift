@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 struct MLXPreferences {
     static func modelID(default value: String = "mlx-community/Llama-3.2-1B-Instruct-4bit") -> String {
@@ -31,18 +32,28 @@ struct MLXPreferences {
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return
         }
-        let dir = appSupport.appendingPathComponent("com.overhear.app/MLXModels")
-        try? FileManager.default.removeItem(at: dir)
+        Task.detached {
+            let dir = appSupport.appendingPathComponent("com.overhear.app/MLXModels")
+            do {
+                try FileManager.default.removeItem(at: dir)
+            } catch {
+                FileLogger.log(category: "MLXPreferences", message: "Failed to clear MLX model cache: \(error.localizedDescription)")
+            }
 
-        // Also clear MLXLLM-local caches we own. Avoid deleting broader/shared caches
-        // (e.g. Hugging Face) to prevent removing data used by other apps.
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let candidates: [URL] = [
-            home.appendingPathComponent("Library/Caches/MLXLLM"),
-            home.appendingPathComponent(".cache/mlx")
-        ]
-        for url in candidates {
-            try? FileManager.default.removeItem(at: url)
+            // Also clear MLXLLM-local caches we own. Avoid deleting broader/shared caches
+            // (e.g. Hugging Face) to prevent removing data used by other apps.
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            let candidates: [URL] = [
+                home.appendingPathComponent("Library/Caches/MLXLLM"),
+                home.appendingPathComponent(".cache/mlx")
+            ]
+            for url in candidates {
+                do {
+                    try FileManager.default.removeItem(at: url)
+                } catch {
+                    FileLogger.log(category: "MLXPreferences", message: "Failed to clear MLX cache at \(url.path): \(error.localizedDescription)")
+                }
+            }
         }
     }
 

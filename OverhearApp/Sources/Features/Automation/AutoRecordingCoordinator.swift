@@ -147,4 +147,9 @@ final class AutoRecordingCoordinator: ObservableObject {
     func currentRecordingTitle() -> String? {
         activeTitle
     }
+
+    deinit {
+        stopWorkItem?.cancel()
+        monitorTask?.cancel()
+    }
 }

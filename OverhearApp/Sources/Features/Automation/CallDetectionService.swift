@@ -227,8 +227,7 @@ final class CallDetectionService {
               CFGetTypeID(window) == AXUIElementGetTypeID() else {
             return nil
         }
-        // Safe after CFTypeID check.
-        let windowElement = unsafeDowncast(window, to: AXUIElement.self)
+        let windowElement = window as! AXUIElement
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)
@@ -261,15 +260,20 @@ final class CallDetectionService {
         var urlValue: AnyObject?
         let status = AXUIElementCopyAttributeValue(window, key, &urlValue)
         guard status == .success else { return nil }
-        if let cfValue = urlValue, CFGetTypeID(cfValue) == CFURLGetTypeID() {
-            if let url = cfValue as? URL {
-                return url.absoluteString
-            }
+        if let cfValue = urlValue, CFGetTypeID(cfValue) == CFURLGetTypeID(), let url = cfValue as? URL {
+            return sanitized(url)
         }
-        if let urlString = urlValue as? String {
-            return urlString
+        if let urlString = urlValue as? String, let url = URL(string: urlString) {
+            return sanitized(url)
         }
         return nil
+    }
+
+    private func sanitized(_ url: URL) -> String {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.query = nil
+        components?.fragment = nil
+        return components?.string ?? url.absoluteString
     }
 
     private var preferencesAllowNotifications: Bool {

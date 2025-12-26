@@ -106,6 +106,12 @@ final class MicUsageMonitor {
         defaultDeviceListener = nil
     }
 
+    deinit {
+        Task { @MainActor [weak self] in
+            self?.stop()
+        }
+    }
+
     private func refreshState() async {
         guard let device = observedDevice ?? defaultInputDeviceID() else {
             logger.error("Cannot refresh mic state; no input device")
