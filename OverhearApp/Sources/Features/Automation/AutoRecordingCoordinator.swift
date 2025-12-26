@@ -202,6 +202,8 @@ final class AutoRecordingCoordinator: ObservableObject {
             cleanupTask = Task { [weak manager] in
                 await manager?.stopRecording()
             }
+        } else {
+            logger.error("AutoRecordingCoordinator deinit without explicit stopRecording; ensure callers stop before releasing.")
         }
     }
 

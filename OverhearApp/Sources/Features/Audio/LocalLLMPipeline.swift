@@ -264,6 +264,7 @@ actor LocalLLMPipeline {
             do {
                 FileLogger.log(category: logCategory, message: "Warming MLX model \(modelInUse)")
                 try await runWarmupWithTimeout()
+                guard generation == warmupGeneration else { return }
                 state = .warming
                 notifyStateChanged()
                 state = .ready(modelInUse)
@@ -278,6 +279,7 @@ actor LocalLLMPipeline {
             } catch {
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
+                guard generation == warmupGeneration else { return }
                 logger.error("MLX warmup failed: \(error.localizedDescription, privacy: .public)")
                 FileLogger.log(category: logCategory, message: "MLX warmup failed: \(error.localizedDescription)")
                 consecutiveFailures += 1

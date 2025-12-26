@@ -69,4 +69,17 @@ final class AutoRecordingCoordinatorTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertFalse(coordinator.isRecording)
     }
+
+    func testRapidDetectionsDoNotDoubleStart() async {
+        let manager = FakeManager()
+        let coordinator = AutoRecordingCoordinator(
+            stopGracePeriod: 0.1,
+            maxRecordingDuration: 10,
+            managerFactory: { _, _ async throws -> RecordingManagerRef in manager }
+        )
+        coordinator.onDetection(appName: "App", meetingTitle: "Title")
+        coordinator.onDetection(appName: "App", meetingTitle: "Title")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(manager.startCount, 1)
+    }
 }

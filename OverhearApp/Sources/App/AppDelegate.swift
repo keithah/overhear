@@ -171,11 +171,19 @@ final class NotificationDeduper {
     let maxEntries: Int
     let ttl: TimeInterval
     private let dateProvider: () -> Date
+    private var cleanupTask: Task<Void, Never>?
 
     init(maxEntries: Int, ttl: TimeInterval = 60 * 60, dateProvider: @escaping () -> Date = { Date() }) {
         self.maxEntries = max(maxEntries, 1)
         self.ttl = max(1, ttl)
         self.dateProvider = dateProvider
+        cleanupTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
+                self.pruneExpired()
+            }
+        }
     }
 
     func record(_ id: String) -> Bool {

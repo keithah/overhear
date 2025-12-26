@@ -158,7 +158,9 @@ final class MicUsageMonitor {
         let oldTask = rebindTask
         rebindTask = nil
         oldTask?.cancel()
-        await oldTask?.value
+        // Avoid hangs if the previous task is stuck; wait briefly then proceed.
+        let waitTask = Task { @MainActor in await oldTask?.value }
+        _ = await waitTask.result
 
         rebindTask = Task { @MainActor [weak self] in
             guard let self else { return }
