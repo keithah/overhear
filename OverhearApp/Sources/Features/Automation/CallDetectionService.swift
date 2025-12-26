@@ -40,12 +40,13 @@ final class CallDetectionService {
     ]
     private lazy var nativeMeetingBundles: Set<String> = supportedMeetingBundles.subtracting(browserBundles)
 
-    func start(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {
-        guard activationObserver == nil, pollTimer == nil else { return }
+    @discardableResult
+    func start(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) -> Bool {
+        guard activationObserver == nil, pollTimer == nil else { return true }
         guard AXIsProcessTrusted() else {
             logger.error("Accessibility not granted; call detection will not start.")
             NotificationHelper.sendAccessibilityPermissionNeededIfNeeded()
-            return
+            return false
         }
         self.autoCoordinator = autoCoordinator
         self.preferences = preferences
@@ -73,6 +74,7 @@ final class CallDetectionService {
         RunLoop.main.add(timer, forMode: .common)
         pollTimer = timer
         logger.info("Call detection started with activation observer")
+        return true
     }
 
     func stop() {
@@ -223,11 +225,14 @@ final class CallDetectionService {
         var focusedWindow: AnyObject?
         let status = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
         guard status == .success,
-              let window = focusedWindow,
-              CFGetTypeID(window) == AXUIElementGetTypeID() else {
+              let window = focusedWindow else {
             return nil
         }
-        let windowElement = window as! AXUIElement
+        guard CFGetTypeID(window) == AXUIElementGetTypeID() else {
+            logger.error("Focused window is not an AXUIElement")
+            return nil
+        }
+        let windowElement = unsafeBitCast(window, to: AXUIElement.self) // Safe after CFTypeID check.
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)

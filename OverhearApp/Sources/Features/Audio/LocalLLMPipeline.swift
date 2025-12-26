@@ -117,11 +117,12 @@ actor LocalLLMPipeline {
 
     private func tryMLXSummarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async -> MeetingSummary? {
         guard let client else { return nil }
+        let trimmedTranscript = transcript.count > 10_000 ? String(transcript.prefix(10_000)) + "\n\n[Truncated]" : transcript
         await ensureReady()
         guard case .ready = state else { return nil }
         do {
-            FileLogger.log(category: logCategory, message: "Starting MLX summarize (chars=\(transcript.count), segments=\(segments.count))")
-            return try await client.summarize(transcript: transcript, segments: segments, template: template)
+            FileLogger.log(category: logCategory, message: "Starting MLX summarize (chars=\(trimmedTranscript.count), segments=\(segments.count))")
+            return try await client.summarize(transcript: trimmedTranscript, segments: segments, template: template)
         } catch {
             logger.error("MLX summarize failed: \(error.localizedDescription, privacy: .public)")
             state = .unavailable("Summarize failed: \(error.localizedDescription)")

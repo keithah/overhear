@@ -1,4 +1,4 @@
-import Foundation
+@preconcurrency import Foundation
 import Combine
 import os.log
 
@@ -8,15 +8,10 @@ import os.log
 @MainActor
 final class AutoRecordingCoordinator: ObservableObject {
     private let logger = Logger(subsystem: "com.overhear.app", category: "AutoRecordingCoordinator")
+    private let stopGracePeriod: TimeInterval
+    private let maxRecordingDuration: TimeInterval
     private var activeManager: MeetingRecordingManager?
     private var stopWorkItem: DispatchWorkItem?
-    // Grace period before stopping to avoid flapping on brief focus changes.
-    // 8 seconds was chosen as a balance between responsiveness (stop soon after
-    // a meeting ends) and stability (ignore transient focus changes).
-    private let stopGracePeriod: TimeInterval = 8.0
-    // Backstop duration to prevent runaway recordings; auto-stop via detection
-    // should normally end sessions first.
-    private let maxRecordingDuration: TimeInterval = 4 * 3600
     private var activeTitle: String?
     private var monitorTask: Task<Void, Never>?
     @Published private(set) var isRecording: Bool = false
@@ -24,6 +19,11 @@ final class AutoRecordingCoordinator: ObservableObject {
     var onCompleted: (() -> Void)?
     var onStatusUpdate: ((String, Bool) -> Void)?
     weak var manualRecordingCoordinator: MeetingRecordingCoordinator?
+
+    init(stopGracePeriod: TimeInterval = 8.0, maxRecordingDuration: TimeInterval = 4 * 3600) {
+        self.stopGracePeriod = stopGracePeriod
+        self.maxRecordingDuration = maxRecordingDuration
+    }
 
     func onDetection(appName: String, meetingTitle: String?) {
         // Skip if manual recording is active - don't interfere with user-initiated sessions

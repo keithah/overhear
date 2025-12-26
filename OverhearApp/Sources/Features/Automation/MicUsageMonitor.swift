@@ -1,4 +1,4 @@
-import CoreAudio
+@preconcurrency import CoreAudio
 import os.log
 
 /// Observes the system microphone activity flag (CoreAudio `kAudioDevicePropertyDeviceIsRunningSomewhere`)
