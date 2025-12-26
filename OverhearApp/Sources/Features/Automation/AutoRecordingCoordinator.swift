@@ -83,6 +83,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     }
 
     private func startRecording(appName: String, meetingTitle: String?) async {
+        guard state == .starting else { return }
         let id = "detected-\(Int(Date().timeIntervalSince1970))"
         let title: String
         if let meetingTitle, !meetingTitle.isEmpty {
@@ -91,7 +92,6 @@ final class AutoRecordingCoordinator: ObservableObject {
             title = appName
         }
         activeTitle = title
-        state = .starting
 
         do {
             let manager = try await managerFactory(id, title)

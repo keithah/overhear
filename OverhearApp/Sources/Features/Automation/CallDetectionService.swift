@@ -154,106 +154,38 @@ final class CallDetectionService {
         }
         activePollTask = Task { @MainActor [weak self] in
             guard let self else { return }
-        guard preferencesAllowNotifications else { return }
-        guard let app = NSWorkspace.shared.frontmostApplication,
-              let bundleID = app.bundleIdentifier else {
-            if await handleBackgroundDetection(excluding: nil) { return }
-            autoCoordinator?.onNoDetection()
-            logTelemetry(result: "no-app", bundleID: nil, host: nil)
-            return
-        }
-
-        guard supportedMeetingBundles.contains(bundleID) else {
-            lastNotifiedApp = nil
-            lastNotifiedTitle = nil
-            if await handleBackgroundDetection(excluding: bundleID) { return }
-            autoCoordinator?.onNoDetection()
-            logTelemetry(result: "unsupported-bundle", bundleID: bundleID, host: nil)
-            return
-        }
-
-        // Require mic-in-use to reduce false positives.
-        guard isMicActive else {
-            if await handleBackgroundDetection(excluding: bundleID) { return }
-            autoCoordinator?.onNoDetection()
-            logTelemetry(result: "mic-inactive", bundleID: bundleID, host: nil)
-            return
-        }
-
-        // Offload window inspection off the main actor to reduce AX latency on UI thread with timeout.
-        let titleInfo = await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
-            group.addTask { [weak self] in
-                guard let self else { return nil }
-                return await self.titleInfoOffMain(for: app)
-            }
-            group.addTask { [weak self] in
-                guard let self else { return nil }
-                try? await Task.sleep(nanoseconds: UInt64(self.titleLookupTimeout * 1_000_000_000))
-                return nil
-            }
-            return await group.next() ?? nil
-        }
-        guard let titleInfo else {
-            if await handleBackgroundDetection(excluding: bundleID) { return }
-            autoCoordinator?.onNoDetection()
-            logTelemetry(result: "no-title", bundleID: bundleID, host: nil)
-            return
-        }
-
-        // Avoid spamming notifications for the same window.
-        if lastNotifiedApp == bundleID && lastNotifiedTitle == titleInfo.displayTitle {
-            return
-        }
-
-        lastNotifiedApp = bundleID
-        lastNotifiedTitle = titleInfo.displayTitle
-
-        let appName = app.localizedName ?? bundleID
-        let meetingInfo = titleInfo.urlDescription ?? titleInfo.displayTitle
-
-        guard let preferences else {
-            autoCoordinator?.onNoDetection()
-            return
-        }
-
-        let shouldNotify = preferences.meetingNotificationsEnabled
-        let shouldAutoRecord = preferences.autoRecordingEnabled
-
-        // For browser-based Meet, require meet.google.com to reduce false positives.
-        if isBrowser(bundleID) {
-            guard let urlDescription = titleInfo.urlDescription,
-                  let host = URL(string: urlDescription)?.host,
-                  isSupportedBrowserHost(host) else {
-                if titleInfo.urlDescription == nil {
-                    logger.info("Skipped browser detection: missing URL attribute; ensure Meet tab is active")
-                    NotificationHelper.sendBrowserUrlMissingIfNeeded()
-                }
-                autoCoordinator?.onNoDetection()
-                logTelemetry(result: "browser-unsupported-host", bundleID: bundleID, host: titleInfo.redacted)
+            guard self.preferencesAllowNotifications else { return }
+            guard let app = NSWorkspace.shared.frontmostApplication,
+                  let bundleID = app.bundleIdentifier else {
+                if await self.handleBackgroundDetection(excluding: nil) { return }
+                self.autoCoordinator?.onNoDetection()
+                self.logTelemetry(result: "no-app", bundleID: nil, host: nil)
                 return
             }
-        }
 
-        if isBrowser(bundleID),
-           let urlDescription = titleInfo.urlDescription,
-           let host = URL(string: urlDescription)?.host,
-           !isSupportedBrowserHost(host) {
-            autoCoordinator?.onNoDetection()
-            logTelemetry(result: "browser-unsupported-host", bundleID: bundleID, host: titleInfo.redacted)
-            return
-        }
+            guard self.supportedMeetingBundles.contains(bundleID) else {
+                self.resetLastNotification()
+                if await self.handleBackgroundDetection(excluding: bundleID) { return }
+                self.autoCoordinator?.onNoDetection()
+                self.logTelemetry(result: "unsupported-bundle", bundleID: bundleID, host: nil)
+                return
+            }
 
-        let cleanTitle = NotificationHelper.cleanMeetingTitle(from: meetingInfo)
-        if shouldNotify {
-            NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
-        }
-        if shouldAutoRecord {
-            autoCoordinator?.onDetection(appName: appName, meetingTitle: cleanTitle)
-        } else {
-            autoCoordinator?.onNoDetection()
-        }
-        logger.info("Detected meeting window for \(appName, privacy: .public) title=\(cleanTitle, privacy: .private)")
-        logTelemetry(result: "detected", bundleID: bundleID, host: titleInfo.redacted)
+            guard self.isMicActive else {
+                if await self.handleBackgroundDetection(excluding: bundleID) { return }
+                self.autoCoordinator?.onNoDetection()
+                self.logTelemetry(result: "mic-inactive", bundleID: bundleID, host: nil)
+                return
+            }
+
+            guard let titleInfo = await self.resolveTitleInfo(for: app) else {
+                if await self.handleBackgroundDetection(excluding: bundleID) { return }
+                self.autoCoordinator?.onNoDetection()
+                self.logTelemetry(result: "no-title", bundleID: bundleID, host: nil)
+                return
+            }
+
+            await self.processDetection(app: app, bundleID: bundleID, titleInfo: titleInfo)
         }
         await activePollTask?.value
     }
@@ -399,6 +331,87 @@ final class CallDetectionService {
     private var preferencesAllowNotifications: Bool {
         guard let preferences else { return false }
         return (preferences.meetingNotificationsEnabled || preferences.autoRecordingEnabled)
+    }
+
+    private func resetLastNotification() {
+        lastNotifiedApp = nil
+        lastNotifiedTitle = nil
+    }
+
+    private func resolveTitleInfo(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
+        await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
+            group.addTask { [weak self] in
+                guard let self else { return nil }
+                return await self.titleInfoOffMain(for: app)
+            }
+            group.addTask { [weak self] in
+                guard let self else { return nil }
+                try? await Task.sleep(nanoseconds: UInt64(self.titleLookupTimeout * 1_000_000_000))
+                return nil
+            }
+            return await group.next() ?? nil
+        }
+    }
+
+    private func processDetection(
+        app: NSRunningApplication,
+        bundleID: String,
+        titleInfo: (displayTitle: String, urlDescription: String?, redacted: String?)
+    ) async {
+        // Avoid spamming notifications for the same window.
+        if lastNotifiedApp == bundleID && lastNotifiedTitle == titleInfo.displayTitle {
+            return
+        }
+
+        lastNotifiedApp = bundleID
+        lastNotifiedTitle = titleInfo.displayTitle
+
+        let appName = app.localizedName ?? bundleID
+        let meetingInfo = titleInfo.urlDescription ?? titleInfo.displayTitle
+
+        guard let preferences else {
+            autoCoordinator?.onNoDetection()
+            return
+        }
+
+        let shouldNotify = preferences.meetingNotificationsEnabled
+        let shouldAutoRecord = preferences.autoRecordingEnabled
+
+        // For browser-based Meet, require meet.google.com to reduce false positives.
+        if isBrowser(bundleID) {
+            guard let urlDescription = titleInfo.urlDescription,
+                  let host = URL(string: urlDescription)?.host,
+                  isSupportedBrowserHost(host) else {
+                if titleInfo.urlDescription == nil {
+                    logger.info("Skipped browser detection: missing URL attribute; ensure Meet tab is active")
+                    NotificationHelper.sendBrowserUrlMissingIfNeeded()
+                }
+                autoCoordinator?.onNoDetection()
+                logTelemetry(result: "browser-unsupported-host", bundleID: bundleID, host: titleInfo.redacted)
+                return
+            }
+        }
+
+        if isBrowser(bundleID),
+           let urlDescription = titleInfo.urlDescription,
+           let host = URL(string: urlDescription)?.host,
+           !isSupportedBrowserHost(host) {
+            autoCoordinator?.onNoDetection()
+            logTelemetry(result: "browser-unsupported-host", bundleID: bundleID, host: titleInfo.redacted)
+            return
+        }
+
+        let cleanTitle = NotificationHelper.cleanMeetingTitle(from: meetingInfo)
+        if shouldNotify {
+            NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
+        }
+        if shouldAutoRecord {
+            autoCoordinator?.onDetection(appName: appName, meetingTitle: cleanTitle)
+        } else {
+            autoCoordinator?.onNoDetection()
+        }
+        logger.info("Detected meeting window for \(appName, privacy: .public) title=\(cleanTitle, privacy: .private)")
+        logTelemetry(result: "detected", bundleID: bundleID, host: titleInfo.redacted)
     }
 
     private func isBrowser(_ bundleID: String) -> Bool {
