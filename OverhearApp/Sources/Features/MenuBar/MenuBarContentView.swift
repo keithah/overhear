@@ -729,11 +729,11 @@ struct LiveNotesView: View {
                 }
                 llmIsReady = true
             }
-        }
-        // Only log state transitions when not ready to avoid log spam.
-        if !llmIsReady, llmStateDescription != lastLoggedLLMState {
-            FileLogger.log(category: "LiveNotesView", message: "LLM state updated UI: \(llmStateDescription)")
-            lastLoggedLLMState = llmStateDescription
+            // Only log state transitions when not ready to avoid log spam.
+            if !llmIsReady, llmStateDescription != lastLoggedLLMState {
+                FileLogger.log(category: "LiveNotesView", message: "LLM state updated UI: \(llmStateDescription)")
+                lastLoggedLLMState = llmStateDescription
+            }
         }
     }
 

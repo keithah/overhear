@@ -149,9 +149,14 @@ final class AutoRecordingCoordinator: ObservableObject {
     }
 
     deinit {
-        Task { @MainActor [stopWorkItem, monitorTask] in
-            stopWorkItem?.cancel()
-            monitorTask?.cancel()
+        stopWorkItem?.cancel()
+        stopWorkItem = nil
+        monitorTask?.cancel()
+        monitorTask = nil
+        if let manager = activeManager {
+            Task {
+                await manager.stopRecording()
+            }
         }
     }
 }

@@ -83,7 +83,10 @@ final class MicUsageMonitor {
             mElement: kAudioObjectPropertyElementMain
         )
         if let block = listenerBlock, let device = observedDevice {
-            AudioObjectRemovePropertyListenerBlock(device, &address, DispatchQueue.main, block)
+            let status = AudioObjectRemovePropertyListenerBlock(device, &address, DispatchQueue.main, block)
+            if status != noErr {
+                logger.error("Failed to remove mic usage listener: \(status)")
+            }
         }
         listenerAdded = false
         listenerBlock = nil
@@ -96,19 +99,22 @@ final class MicUsageMonitor {
                 mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
-            AudioObjectRemovePropertyListenerBlock(
+            let status = AudioObjectRemovePropertyListenerBlock(
                 AudioObjectID(kAudioObjectSystemObject),
                 &defaultDeviceAddress,
                 DispatchQueue.main,
                 deviceChangeBlock
             )
+            if status != noErr {
+                logger.error("Failed to remove default device listener: \(status)")
+            }
         }
         defaultDeviceListener = nil
     }
 
     deinit {
-        Task { @MainActor [weak self] in
-            self?.stop()
+        MainActor.assumeIsolated {
+            stop()
         }
     }
 
@@ -156,7 +162,10 @@ final class MicUsageMonitor {
                 mScope: kAudioObjectPropertyScopeInput,
                 mElement: kAudioObjectPropertyElementMain
             )
-            AudioObjectRemovePropertyListenerBlock(device, &address, DispatchQueue.main, block)
+            let status = AudioObjectRemovePropertyListenerBlock(device, &address, DispatchQueue.main, block)
+            if status != noErr {
+                logger.error("Failed to remove mic listener during rebind: \(status)")
+            }
             listenerAdded = false
             listenerBlock = nil
             observedDevice = nil
@@ -182,14 +191,17 @@ final class MicUsageMonitor {
         }
         listenerBlock = block
         let status = AudioObjectAddPropertyListenerBlock(deviceID, &address, DispatchQueue.main, block)
-        if status == noErr {
-            listenerAdded = true
-            logger.info("Rebound mic usage listener to new input device")
-            await refreshState()
-        } else {
+        guard status == noErr else {
             logger.error("Failed to rebind mic usage listener: \(status)")
+            listenerBlock = nil
+            observedDevice = nil
             isActive = false
+            return
         }
+
+        listenerAdded = true
+        logger.info("Rebound mic usage listener to new input device")
+        await refreshState()
     }
 
     private func defaultInputDeviceID() -> AudioObjectID? {

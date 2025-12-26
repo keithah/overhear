@@ -39,7 +39,7 @@ actor LocalLLMPipeline {
 
     /// Warms the local model (best-effort). Safe to call multiple times.
     func warmup() async {
-        await warmupInternal(allowRetryOnCacheFailure: true, didAttemptFallback: false)
+        await warmupInternal()
     }
 
     private func setDownloading(_ progress: Double) {
@@ -164,61 +164,99 @@ actor LocalLLMPipeline {
 
     // MARK: - Warmup internals
 
-    private func warmupInternal(allowRetryOnCacheFailure: Bool, didAttemptFallback: Bool) async {
+    private enum WarmupError: Error {
+        case timeout
+    }
+
+    private func warmupInternal(maxAttempts: Int = 3, timeout: TimeInterval = 600) async {
         guard let client else { return }
 
-        // Allow recovery from unavailable; only skip if we're already working or ready.
-        switch state {
-        case .downloading, .warming, .ready:
-            return
-        case .idle, .unavailable:
-            state = .downloading(0)
-            notifyStateChanged()
-        }
+        var attempts = 0
+        var allowCacheRetry = true
+        var attemptedFallback = false
+        var modelInUse = modelID
 
-        do {
-            FileLogger.log(category: logCategory, message: "Warming MLX model \(modelID)")
-            try await client.warmup(progress: { [weak self] progress in
-                Task { [weak self] in
-                    await self?.setDownloading(progress)
+        func runWarmupWithTimeout() async throws {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await client.warmup(progress: { [weak self] progress in
+                        Task { [weak self] in
+                            await self?.setDownloading(progress)
+                        }
+                    })
                 }
-            })
-            state = .warming
-            notifyStateChanged()
-            state = .ready(modelID)
-            notifyStateChanged()
-            logger.info("MLX warmup completed (model=\(self.modelID, privacy: .public))")
-            FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelID))")
-            downloadWatchTask?.cancel()
-        } catch {
-            logger.error("MLX warmup failed: \(error.localizedDescription, privacy: .public)")
-            FileLogger.log(category: logCategory, message: "MLX warmup failed: \(error.localizedDescription)")
-
-            // If any failure occurs, clear caches and retry once (handles missing config.json, corrupt download, etc).
-            if allowRetryOnCacheFailure {
-                logger.info("MLX warmup retry after clearing cache (error: \(error.localizedDescription, privacy: .public))")
-                FileLogger.log(category: logCategory, message: "Clearing MLX cache and retrying warmup")
-                MLXPreferences.clearModelCache()
-                state = .idle
-                notifyStateChanged()
-                await warmupInternal(allowRetryOnCacheFailure: false, didAttemptFallback: didAttemptFallback)
-                return
+                group.addTask {
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    throw WarmupError.timeout
+                }
+                guard let result = try await group.next() else {
+                    throw WarmupError.timeout
+                }
+                group.cancelAll()
+                return result
             }
-
-            // If the configured model looks bad, try a known-good fallback once and notify the user.
-            if !didAttemptFallback, let fallback = fallbackModelID(for: modelID) {
-                FileLogger.log(category: logCategory, message: "Warmup failed; switching model to fallback \(fallback)")
-                NotificationHelper.sendLLMFallback(original: modelID, fallback: fallback)
-                MLXPreferences.setModelID(fallback)
-                state = .idle
-                notifyStateChanged()
-                await warmupInternal(allowRetryOnCacheFailure: true, didAttemptFallback: true)
-                return
-            }
-
-            state = .unavailable("Warmup failed: \(error.localizedDescription)")
-            notifyStateChanged()
         }
+
+        while attempts < maxAttempts {
+            attempts += 1
+
+            // Allow recovery from unavailable; only skip if we're already working or ready.
+            switch state {
+            case .downloading, .warming, .ready:
+                return
+            case .idle, .unavailable:
+                state = .downloading(0)
+                notifyStateChanged()
+            }
+
+            downloadWatchTask?.cancel()
+
+            do {
+                FileLogger.log(category: logCategory, message: "Warming MLX model \(modelInUse)")
+                try await runWarmupWithTimeout()
+                state = .warming
+                notifyStateChanged()
+                state = .ready(modelInUse)
+                notifyStateChanged()
+                logger.info("MLX warmup completed (model=\(modelInUse, privacy: .public))")
+                FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse))")
+                downloadWatchTask?.cancel()
+                return
+            } catch {
+                downloadWatchTask?.cancel()
+                logger.error("MLX warmup failed: \(error.localizedDescription, privacy: .public)")
+                FileLogger.log(category: logCategory, message: "MLX warmup failed: \(error.localizedDescription)")
+
+                if allowCacheRetry {
+                    allowCacheRetry = false
+                    logger.info("MLX warmup retry after clearing cache (error: \(error.localizedDescription, privacy: .public))")
+                    FileLogger.log(category: logCategory, message: "Clearing MLX cache and retrying warmup")
+                    MLXPreferences.clearModelCache()
+                    state = .idle
+                    notifyStateChanged()
+                    continue
+                }
+
+                if !attemptedFallback, let fallback = fallbackModelID(for: modelInUse) {
+                    attemptedFallback = true
+                    modelInUse = fallback
+                    FileLogger.log(category: logCategory, message: "Warmup failed; switching model to fallback \(fallback)")
+                    NotificationHelper.sendLLMFallback(original: modelID, fallback: fallback)
+                    MLXPreferences.setModelID(fallback)
+                    allowCacheRetry = true
+                    state = .idle
+                    notifyStateChanged()
+                    continue
+                }
+
+                state = .unavailable("Warmup failed: \(error.localizedDescription)")
+                notifyStateChanged()
+                return
+            }
+        }
+
+        state = .unavailable("Warmup failed after \(attempts) attempt(s)")
+        notifyStateChanged()
     }
 
     private func fallbackModelID(for current: String) -> String? {

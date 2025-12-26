@@ -319,6 +319,8 @@ final class MeetingRecordingManager: ObservableObject {
                 message: "Quick transcript save failed for \(metadata.meetingID): \(error.localizedDescription)"
             )
             status = .failed(RecordingError.transcriptionService(error))
+            self.transcriptID = nil
+            pendingNotes = nil
             return
         }
 

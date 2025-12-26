@@ -9,6 +9,8 @@ final class CallDetectionService {
     private let logger = Logger(subsystem: "com.overhear.app", category: "CallDetectionService")
     private var activationObserver: NSObjectProtocol?
     private var pollTimer: Timer?
+    private let pollInterval: TimeInterval
+    private let axCheck: () -> Bool
     private var lastNotifiedApp: String?
     private var lastNotifiedTitle: String?
     private let micMonitor = MicUsageMonitor()
@@ -40,10 +42,15 @@ final class CallDetectionService {
     ]
     private lazy var nativeMeetingBundles: Set<String> = supportedMeetingBundles.subtracting(browserBundles)
 
+    init(pollInterval: TimeInterval = 3.0, axCheck: @escaping () -> Bool = { AXIsProcessTrusted() }) {
+        self.pollInterval = pollInterval
+        self.axCheck = axCheck
+    }
+
     @discardableResult
     func start(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) -> Bool {
         guard activationObserver == nil, pollTimer == nil else { return true }
-        guard AXIsProcessTrusted() else {
+        guard axCheck() else {
             logger.error("Accessibility not granted; call detection will not start.")
             NotificationHelper.sendAccessibilityPermissionNeededIfNeeded()
             return false
@@ -66,12 +73,12 @@ final class CallDetectionService {
         Task { @MainActor in
             await self.pollFrontmostApp()
         }
-        let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.pollFrontmostApp()
             }
         }
-        RunLoop.main.add(timer, forMode: .common)
+        RunLoop.main.add(timer, forMode: .default)
         pollTimer = timer
         logger.info("Call detection started with activation observer")
         return true
@@ -94,7 +101,7 @@ final class CallDetectionService {
         guard preferencesAllowNotifications else { return }
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier else {
-            if handleBackgroundDetection(excluding: nil) { return }
+            if await handleBackgroundDetection(excluding: nil) { return }
             autoCoordinator?.onNoDetection()
             return
         }
@@ -102,20 +109,22 @@ final class CallDetectionService {
         guard supportedMeetingBundles.contains(bundleID) else {
             lastNotifiedApp = nil
             lastNotifiedTitle = nil
-            if handleBackgroundDetection(excluding: bundleID) { return }
+            if await handleBackgroundDetection(excluding: bundleID) { return }
             autoCoordinator?.onNoDetection()
             return
         }
 
         // Require mic-in-use to reduce false positives.
         guard isMicActive else {
-            if handleBackgroundDetection(excluding: bundleID) { return }
+            if await handleBackgroundDetection(excluding: bundleID) { return }
             autoCoordinator?.onNoDetection()
             return
         }
 
-        guard let titleInfo = activeWindowTitle(for: app) else {
-            if handleBackgroundDetection(excluding: bundleID) { return }
+        // Offload window inspection off the main actor to reduce AX latency on UI thread.
+        let titleInfo = await titleInfoOffMain(for: app)
+        guard let titleInfo else {
+            if await handleBackgroundDetection(excluding: bundleID) { return }
             autoCoordinator?.onNoDetection()
             return
         }
@@ -176,7 +185,7 @@ final class CallDetectionService {
     /// Fall back to detecting native meeting apps when they are running in the background
     /// (non-frontmost) but the microphone is active. This helps catch minimized/behind other
     /// windows sessions without relying on browser URL heuristics.
-    private func handleBackgroundDetection(excluding bundleID: String?) -> Bool {
+    private func handleBackgroundDetection(excluding bundleID: String?) async -> Bool {
         guard isMicActive else { return false }
         guard let preferences else { return false }
 
@@ -190,7 +199,7 @@ final class CallDetectionService {
             return false
         }
 
-        let titleInfo = activeWindowTitle(for: meetingApp)
+        let titleInfo = await titleInfoOffMain(for: meetingApp)
         let appName = meetingApp.localizedName ?? detectedBundle
         let meetingInfo = titleInfo?.displayTitle ?? appName
         let cleanTitle = NotificationHelper.cleanMeetingTitle(from: meetingInfo)
@@ -215,7 +224,7 @@ final class CallDetectionService {
         return true
     }
 
-    private func activeWindowTitle(for app: NSRunningApplication) -> (displayTitle: String, urlDescription: String?)? {
+    nonisolated private func activeWindowTitle(for app: NSRunningApplication) -> (displayTitle: String, urlDescription: String?)? {
         guard AXIsProcessTrusted() else {
             logger.error("Accessibility not granted; cannot inspect windows for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
             return nil
@@ -261,10 +270,13 @@ final class CallDetectionService {
         return (displayTitle: displayTitle, urlDescription: urlDescription)
     }
 
-    private func copyURLAttribute(window: AXUIElement, key: CFString) -> String? {
+    nonisolated private func copyURLAttribute(window: AXUIElement, key: CFString) -> String? {
         var urlValue: AnyObject?
         let status = AXUIElementCopyAttributeValue(window, key, &urlValue)
-        guard status == .success else { return nil }
+        guard status == .success else {
+            logger.debug("AX URL attribute \(key) unavailable (status=\(status.rawValue))")
+            return nil
+        }
         if let cfValue = urlValue, CFGetTypeID(cfValue) == CFURLGetTypeID(), let url = cfValue as? URL {
             return sanitized(url)
         }
@@ -274,11 +286,25 @@ final class CallDetectionService {
         return nil
     }
 
-    private func sanitized(_ url: URL) -> String {
+    private func titleInfoOffMain(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?)? {
+        await Task.detached { [weak self] () -> (displayTitle: String, urlDescription: String?)? in
+            guard let self else { return nil }
+            return self.activeWindowTitle(for: app)
+        }.value
+    }
+
+    nonisolated private func sanitized(_ url: URL) -> String {
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.path = "" // Avoid logging/using room codes embedded in the path.
         components?.query = nil
         components?.fragment = nil
-        return components?.string ?? url.absoluteString
+        if let hostOnly = components?.string {
+            return hostOnly
+        }
+        if let host = url.host {
+            return "\(url.scheme.map { "\($0)://" } ?? "")\(host)"
+        }
+        return url.absoluteString
     }
 
     private var preferencesAllowNotifications: Bool {

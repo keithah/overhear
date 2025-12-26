@@ -32,26 +32,26 @@ struct MLXPreferences {
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return
         }
-        Task.detached {
-            let dir = appSupport.appendingPathComponent("com.overhear.app/MLXModels")
-            do {
-                try FileManager.default.removeItem(at: dir)
-            } catch {
-                FileLogger.log(category: "MLXPreferences", message: "Failed to clear MLX model cache: \(error.localizedDescription)")
-            }
-
-            // Also clear MLXLLM-local caches we own. Avoid deleting broader/shared caches
-            // (e.g. Hugging Face) to prevent removing data used by other apps.
+        Task.detached(priority: .utility) {
             let home = FileManager.default.homeDirectoryForCurrentUser
-            let candidates: [URL] = [
-                home.appendingPathComponent("Library/Caches/MLXLLM"),
-                home.appendingPathComponent(".cache/mlx")
+            let scopedCaches: [URL] = [
+                appSupport.appendingPathComponent("com.overhear.app/MLXModels"),
+                home.appendingPathComponent("Library/Caches/MLXLLM")
             ]
-            for url in candidates {
+
+            for url in scopedCaches {
+                let standardized = url.standardizedFileURL
+                guard standardized.path.hasPrefix(home.path) else {
+                    FileLogger.log(category: "MLXPreferences", message: "Skipped clearing MLX cache outside home: \(standardized.path)")
+                    continue
+                }
                 do {
-                    try FileManager.default.removeItem(at: url)
+                    if FileManager.default.fileExists(atPath: standardized.path) {
+                        try FileManager.default.removeItem(at: standardized)
+                        FileLogger.log(category: "MLXPreferences", message: "Cleared MLX cache at \(standardized.path)")
+                    }
                 } catch {
-                    FileLogger.log(category: "MLXPreferences", message: "Failed to clear MLX cache at \(url.path): \(error.localizedDescription)")
+                    FileLogger.log(category: "MLXPreferences", message: "Failed to clear MLX cache at \(standardized.path): \(error.localizedDescription)")
                 }
             }
         }
