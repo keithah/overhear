@@ -189,6 +189,15 @@ actor LocalLLMPipeline {
         return chunks.joined(separator: "\n---\n")
     }
 
+    // Test helpers
+    nonisolated func chunkedTranscriptForTest(_ transcript: String, chunkSize: Int, maxChunks: Int) async -> String {
+        await chunkedTranscript(transcript, chunkSize: chunkSize, maxChunks: maxChunks)
+    }
+
+    nonisolated func shouldRetryByClearingCacheForTest(_ error: Error) async -> Bool {
+        await shouldRetryByClearingCache(error: error)
+    }
+
     // MARK: - Warmup internals
 
     private enum WarmupError: Error {

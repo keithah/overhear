@@ -22,6 +22,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     private let managerFactory: @MainActor (String, String?) async throws -> RecordingManagerRef
     private var activeManager: RecordingManagerRef?
     private var stopTask: Task<Void, Never>?
+    private var detectionTask: Task<Void, Never>?
     private var activeTitle: String?
     private var monitorTask: Task<Void, Never>?
     private var monitorStartDate: Date?
@@ -65,9 +66,11 @@ final class AutoRecordingCoordinator: ObservableObject {
             state = .starting
         }
 
-        Task { [weak self] in
+        detectionTask?.cancel()
+        let task: Task<Void, Never> = Task { [weak self] in
             await self?.startRecording(appName: appName, meetingTitle: meetingTitle)
         }
+        detectionTask = task
     }
 
     func onNoDetection() {
@@ -193,6 +196,8 @@ final class AutoRecordingCoordinator: ObservableObject {
         stopTask = nil
         monitorTask?.cancel()
         monitorTask = nil
+        detectionTask?.cancel()
+        detectionTask = nil
         if let manager = activeManager {
             cleanupTask = Task { [weak manager] in
                 await manager?.stopRecording()
