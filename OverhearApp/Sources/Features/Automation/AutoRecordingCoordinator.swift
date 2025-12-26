@@ -149,7 +149,9 @@ final class AutoRecordingCoordinator: ObservableObject {
     }
 
     deinit {
-        stopWorkItem?.cancel()
-        monitorTask?.cancel()
+        Task { @MainActor [stopWorkItem, monitorTask] in
+            stopWorkItem?.cancel()
+            monitorTask?.cancel()
+        }
     }
 }
