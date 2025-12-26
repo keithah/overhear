@@ -24,6 +24,7 @@ let package = Package(
                 "build",
                 ".build",
                 "Tests",
+                "Tools",
                 "Resources/Info.plist"
             ],
             resources: [
