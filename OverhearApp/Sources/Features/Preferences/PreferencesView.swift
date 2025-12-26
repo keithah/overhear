@@ -187,6 +187,8 @@ struct PreferencesView: View {
                     Text("\(preferences.notificationMinutesBefore)")
                         .frame(minWidth: 20, alignment: .trailing)
                 }
+                Toggle("Redact meeting titles in notifications", isOn: $preferences.redactMeetingTitles)
+                    .toggleStyle(.switch)
                 Text("Notifications fire before your next meeting; countdown appears in the menu bar if enabled.")
                     .font(.caption)
                     .foregroundColor(.secondary)

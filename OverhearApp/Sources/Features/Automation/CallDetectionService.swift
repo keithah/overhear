@@ -74,6 +74,7 @@ final class CallDetectionService {
             self?.isMicActive = active
         }
         micMonitor.start()
+        telemetryCount = 0
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
@@ -152,7 +153,7 @@ final class CallDetectionService {
             // Avoid overlapping polls; keep the latest request.
             activePollTask.cancel()
         }
-        activePollTask = Task { @MainActor [weak self] in
+        let newTask = Task { @MainActor [weak self] in
             guard let self else { return }
             guard self.preferencesAllowNotifications else { return }
             guard let app = NSWorkspace.shared.frontmostApplication,
@@ -187,7 +188,8 @@ final class CallDetectionService {
 
             await self.processDetection(app: app, bundleID: bundleID, titleInfo: titleInfo)
         }
-        await activePollTask?.value
+        activePollTask = newTask
+        await newTask.value
     }
 
     /// Fall back to detecting native meeting apps when they are running in the background
@@ -232,7 +234,8 @@ final class CallDetectionService {
         return true
     }
 
-    nonisolated private func activeWindowTitle(for app: NSRunningApplication) -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
+    @MainActor
+    private func activeWindowTitle(for app: NSRunningApplication) -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         guard AXIsProcessTrusted() else {
             logger.error("Accessibility not granted; cannot inspect windows for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
             return nil
@@ -310,7 +313,7 @@ final class CallDetectionService {
 
         return await Task.detached(priority: .utility) { [weak self] in
             guard let self else { return nil }
-            return self.activeWindowTitle(for: app)
+            return await MainActor.run { self.activeWindowTitle(for: app) }
         }.value
     }
 

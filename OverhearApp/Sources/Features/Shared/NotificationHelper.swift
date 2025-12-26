@@ -200,12 +200,13 @@ extension NotificationHelper {
         content.title = "Meeting window detected (\(appName))"
         let cleanedTitle = meetingTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
         let truncatedTitle = cleanedTitle.map { String($0.prefix(60)) }
+        let shouldRedact = UserDefaults.standard.bool(forKey: PreferenceKey.redactMeetingTitles.rawValue)
         let bodyTitle = (truncatedTitle?.isEmpty == false) ? truncatedTitle : nil
-        content.body = "Start a New Note for \(appName)?"
+        content.body = shouldRedact ? "Start a New Note?" : "Start a New Note for \(appName)?"
         content.sound = .default
         content.userInfo = [
             "appName": appName,
-            "meetingTitle": bodyTitle ?? ""
+            "meetingTitle": shouldRedact ? "" : (bodyTitle ?? "")
         ]
 
         // Add action buttons

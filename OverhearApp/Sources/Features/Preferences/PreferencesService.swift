@@ -100,6 +100,10 @@ final class PreferencesService: ObservableObject {
         didSet { persist(autoShowLiveNotes, key: .autoShowLiveNotes) }
     }
 
+    @Published var redactMeetingTitles: Bool {
+        didSet { persist(redactMeetingTitles, key: .redactMeetingTitles) }
+    }
+
     @Published var detectionPollingInterval: Double {
         didSet { persist(detectionPollingInterval, key: .detectionPollingInterval) }
     }
@@ -109,6 +113,7 @@ final class PreferencesService: ObservableObject {
 
     init(userDefaults: UserDefaults = .standard) {
         self.defaults = userDefaults
+        UserDefaults.standard.register(defaults: ["redactMeetingTitles": false])
         self.launchAtLogin = defaults.bool(forKey: PreferenceKey.launchAtLogin.rawValue)
         self.use24HourClock = defaults.object(forKey: PreferenceKey.use24HourClock.rawValue) as? Bool ?? false
         self.showEventsWithoutLinks = defaults.object(forKey: PreferenceKey.showEventsWithoutLinks.rawValue) as? Bool ?? true
@@ -130,6 +135,7 @@ final class PreferencesService: ObservableObject {
         self.meetingNotificationsEnabled = defaults.object(forKey: PreferenceKey.meetingNotificationsEnabled.rawValue) as? Bool ?? false
         self.autoRecordingEnabled = defaults.object(forKey: PreferenceKey.autoRecordingEnabled.rawValue) as? Bool ?? false
         self.autoShowLiveNotes = defaults.object(forKey: PreferenceKey.autoShowLiveNotes.rawValue) as? Bool ?? true
+        self.redactMeetingTitles = defaults.object(forKey: PreferenceKey.redactMeetingTitles.rawValue) as? Bool ?? false
         self.detectionPollingInterval = defaults.object(forKey: PreferenceKey.detectionPollingInterval.rawValue) as? Double ?? 3.0
 
         updateLaunchAtLogin(launchAtLogin)
@@ -221,7 +227,7 @@ final class PreferencesService: ObservableObject {
     }
 }
 
-private enum PreferenceKey: String {
+enum PreferenceKey: String {
     case launchAtLogin
     case use24HourClock
     case showEventsWithoutLinks
@@ -240,8 +246,9 @@ private enum PreferenceKey: String {
     case menubarDaysToShow
     case menubarToggleHotkey
     case joinNextMeetingHotkey
-    case meetingNotificationsEnabled
-    case autoRecordingEnabled
-    case autoShowLiveNotes
-    case detectionPollingInterval
+        case meetingNotificationsEnabled
+        case autoRecordingEnabled
+        case autoShowLiveNotes
+        case redactMeetingTitles
+        case detectionPollingInterval
 }

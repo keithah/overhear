@@ -155,7 +155,11 @@ final class MicUsageMonitor {
     private var rebindTask: Task<Void, Never>?
 
     private func rebindToCurrentDevice() async {
-        rebindTask?.cancel()
+        let oldTask = rebindTask
+        rebindTask = nil
+        oldTask?.cancel()
+        await oldTask?.value
+
         rebindTask = Task { @MainActor [weak self] in
             guard let self else { return }
             guard !self.rebinding else { return }

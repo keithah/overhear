@@ -177,7 +177,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     func stopRecording() async {
         stopTask?.cancel()
         stopTask = nil
-        guard let manager = activeManager else { return }
+        guard state == .recording, let manager = activeManager else { return }
         logger.info("Auto-record stopping")
         state = .stopping
         await manager.stopRecording()
@@ -194,11 +194,13 @@ final class AutoRecordingCoordinator: ObservableObject {
         monitorTask?.cancel()
         monitorTask = nil
         if let manager = activeManager {
-            Task { [weak manager] in
+            cleanupTask = Task { [weak manager] in
                 await manager?.stopRecording()
             }
         }
     }
+
+    private var cleanupTask: Task<Void, Never>?
 }
 
 @MainActor
