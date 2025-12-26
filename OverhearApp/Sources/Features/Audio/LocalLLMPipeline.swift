@@ -23,6 +23,7 @@ actor LocalLLMPipeline {
     private let logCategory = "LocalLLMPipeline"
     private(set) var state: State
     private var downloadWatchTask: Task<Void, Never>?
+    private var warmupGeneration: Int = 0
     private var lastProgressLogBucket: Int = -1
     private var modelID: String {
         MLXPreferences.modelID()
@@ -42,7 +43,8 @@ actor LocalLLMPipeline {
         await warmupInternal()
     }
 
-    private func setDownloading(_ progress: Double) {
+    private func setDownloading(_ progress: Double, generation: Int) {
+        guard generation == warmupGeneration else { return }
         state = .downloading(progress)
         notifyStateChanged()
         let bucket = Int((progress * 100).rounded(.towardZero) / 10)
@@ -54,10 +56,13 @@ actor LocalLLMPipeline {
         // Watchdog: if we reach 100% download but never transition to ready, auto-promote after a short delay.
         if progress >= 0.999 {
             downloadWatchTask?.cancel()
-            downloadWatchTask = Task {
+            downloadWatchTask = nil
+            downloadWatchTask = nil
+            let watchTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s grace period
-                await promoteReadyAfterDownloadWatchdog()
+                await self?.promoteReadyAfterDownloadWatchdog()
             }
+            downloadWatchTask = watchTask
         }
     }
 
@@ -175,13 +180,15 @@ actor LocalLLMPipeline {
         var allowCacheRetry = true
         var attemptedFallback = false
         var modelInUse = modelID
+        warmupGeneration &+= 1
+        let generation = warmupGeneration
 
         func runWarmupWithTimeout() async throws {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
                     try await client.warmup(progress: { [weak self] progress in
                         Task { [weak self] in
-                            await self?.setDownloading(progress)
+                            await self?.setDownloading(progress, generation: generation)
                         }
                     })
                 }
@@ -221,9 +228,11 @@ actor LocalLLMPipeline {
                 logger.info("MLX warmup completed (model=\(modelInUse, privacy: .public))")
                 FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse))")
                 downloadWatchTask?.cancel()
+                downloadWatchTask = nil
                 return
             } catch {
                 downloadWatchTask?.cancel()
+                downloadWatchTask = nil
                 logger.error("MLX warmup failed: \(error.localizedDescription, privacy: .public)")
                 FileLogger.log(category: logCategory, message: "MLX warmup failed: \(error.localizedDescription)")
 

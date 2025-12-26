@@ -149,59 +149,64 @@ final class MicUsageMonitor {
 
     private var observedDevice: AudioObjectID?
     private var rebinding = false
+    private var rebindTask: Task<Void, Never>?
 
     private func rebindToCurrentDevice() async {
-        guard !rebinding else { return }
-        rebinding = true
-        defer { rebinding = false }
+        rebindTask?.cancel()
+        rebindTask = Task { [weak self] in
+            guard let self else { return }
+            guard !self.rebinding else { return }
+            self.rebinding = true
+            defer { self.rebinding = false }
 
         // Tear down existing listener
-        if listenerAdded, let block = listenerBlock, let device = observedDevice {
+            if self.listenerAdded, let block = self.listenerBlock, let device = self.observedDevice {
+                var address = AudioObjectPropertyAddress(
+                    mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+                    mScope: kAudioObjectPropertyScopeInput,
+                    mElement: kAudioObjectPropertyElementMain
+                )
+                let status = AudioObjectRemovePropertyListenerBlock(device, &address, DispatchQueue.main, block)
+                if status != noErr {
+                    self.logger.error("Failed to remove mic listener during rebind: \(status)")
+                }
+                self.listenerAdded = false
+                self.listenerBlock = nil
+                self.observedDevice = nil
+            }
+
+        // Re-register on the new default device
+            guard let deviceID = self.defaultInputDeviceID() else {
+                self.logger.error("Rebind failed: no default input device")
+                self.isActive = false
+                return
+            }
+            self.observedDevice = deviceID
+
             var address = AudioObjectPropertyAddress(
                 mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
                 mScope: kAudioObjectPropertyScopeInput,
                 mElement: kAudioObjectPropertyElementMain
             )
-            let status = AudioObjectRemovePropertyListenerBlock(device, &address, DispatchQueue.main, block)
-            if status != noErr {
-                logger.error("Failed to remove mic listener during rebind: \(status)")
+            let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+                Task { @MainActor in
+                    await self?.refreshState()
+                }
             }
-            listenerAdded = false
-            listenerBlock = nil
-            observedDevice = nil
-        }
-
-        // Re-register on the new default device
-        guard let deviceID = defaultInputDeviceID() else {
-            logger.error("Rebind failed: no default input device")
-            isActive = false
-            return
-        }
-        observedDevice = deviceID
-
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
-            mScope: kAudioObjectPropertyScopeInput,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            Task { @MainActor in
-                await self?.refreshState()
+            self.listenerBlock = block
+            let status = AudioObjectAddPropertyListenerBlock(deviceID, &address, DispatchQueue.main, block)
+            guard status == noErr else {
+                self.logger.error("Failed to rebind mic usage listener: \(status)")
+                self.listenerBlock = nil
+                self.observedDevice = nil
+                self.isActive = false
+                return
             }
-        }
-        listenerBlock = block
-        let status = AudioObjectAddPropertyListenerBlock(deviceID, &address, DispatchQueue.main, block)
-        guard status == noErr else {
-            logger.error("Failed to rebind mic usage listener: \(status)")
-            listenerBlock = nil
-            observedDevice = nil
-            isActive = false
-            return
-        }
 
-        listenerAdded = true
-        logger.info("Rebound mic usage listener to new input device")
-        await refreshState()
+            self.listenerAdded = true
+            self.logger.info("Rebound mic usage listener to new input device")
+            await self.refreshState()
+        }
     }
 
     private func defaultInputDeviceID() -> AudioObjectID? {

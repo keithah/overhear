@@ -17,6 +17,7 @@ final class CallDetectionService {
     private var lastNotifiedTitle: String?
     private let micMonitor = MicUsageMonitor()
     private var isMicActive = false
+    private var isPolling = false
     private weak var autoCoordinator: AutoRecordingCoordinator?
     private weak var preferences: PreferencesService?
 
@@ -104,6 +105,12 @@ final class CallDetectionService {
         logger.info("Call detection polling stopped")
     }
 
+    deinit {
+        Task { @MainActor [weak self] in
+            self?.stop()
+        }
+    }
+
     /// Best-effort retry entrypoint that attempts to start once permission becomes available.
     @discardableResult
     func retryIfAuthorized(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) -> Bool {
@@ -124,6 +131,9 @@ final class CallDetectionService {
     }
 
     private func pollFrontmostApp() async {
+        guard !isPolling else { return }
+        isPolling = true
+        defer { isPolling = false }
         guard preferencesAllowNotifications else { return }
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier else {

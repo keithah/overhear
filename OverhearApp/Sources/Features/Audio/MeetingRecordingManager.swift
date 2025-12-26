@@ -226,7 +226,7 @@ final class MeetingRecordingManager: ObservableObject {
     func saveNotes(_ notes: String) async {
         // Always remember the latest notes in case the transcript ID is not yet assigned.
         pendingNotes = notes
-        guard let transcriptID else {
+        guard let transcriptID = transcriptID else {
             FileLogger.log(category: "MeetingRecordingManager", message: "Deferring notes persist until transcriptID is available")
             return
         }
