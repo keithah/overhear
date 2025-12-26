@@ -7,6 +7,13 @@ import os.log
 /// interacting with AppKit and SwiftUI.
 @MainActor
 final class AutoRecordingCoordinator: ObservableObject {
+    private enum RecordingState {
+        case idle
+        case starting
+        case recording
+        case stopping
+    }
+
     private let logger = Logger(subsystem: "com.overhear.app", category: "AutoRecordingCoordinator")
     private let stopGracePeriod: TimeInterval
     private let maxRecordingDuration: TimeInterval
@@ -15,6 +22,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     private var activeTitle: String?
     private var monitorTask: Task<Void, Never>?
     private var monitorStartDate: Date?
+    private var state: RecordingState = .idle
     @Published private(set) var isRecording: Bool = false
     var onManagerUpdate: ((MeetingRecordingManager?) -> Void)?
     var onCompleted: (() -> Void)?
@@ -37,16 +45,21 @@ final class AutoRecordingCoordinator: ObservableObject {
         stopTask?.cancel()
         stopTask = nil
 
-        if activeManager != nil {
+        switch state {
+        case .recording:
             isRecording = true
-            return // Already recording; keep going.
+            return
+        case .starting, .stopping:
+            return
+        case .idle:
+            break
         }
 
         startRecording(appName: appName, meetingTitle: meetingTitle)
     }
 
     func onNoDetection() {
-        guard activeManager != nil else { return }
+        guard activeManager != nil, state == .recording else { return }
         // Schedule a graceful stop to avoid flapping on brief focus changes.
         if stopTask == nil {
             stopTask = Task { [weak self] in
@@ -66,6 +79,7 @@ final class AutoRecordingCoordinator: ObservableObject {
             title = appName
         }
         activeTitle = title
+        state = .starting
 
         do {
             let manager = try MeetingRecordingManager(
@@ -75,6 +89,7 @@ final class AutoRecordingCoordinator: ObservableObject {
             activeManager = manager
             onManagerUpdate?(manager)
             isRecording = true
+            state = .recording
             logger.info("Auto-record start for \(title, privacy: .public)")
             onStatusUpdate?(title, true)
             Task {
@@ -85,6 +100,7 @@ final class AutoRecordingCoordinator: ObservableObject {
             activeManager = nil
             activeTitle = nil
             isRecording = false
+            state = .idle
         }
     }
 
@@ -126,6 +142,7 @@ final class AutoRecordingCoordinator: ObservableObject {
         monitorStartDate = nil
         stopTask?.cancel()
         stopTask = nil
+        state = .idle
         let endedTitle = activeTitle
         let endedManager = activeManager
         activeManager = nil
@@ -146,6 +163,7 @@ final class AutoRecordingCoordinator: ObservableObject {
         stopTask = nil
         guard let manager = activeManager else { return }
         logger.info("Auto-record stopping")
+        state = .stopping
         await manager.stopRecording()
         await clearState()
     }

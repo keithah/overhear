@@ -190,8 +190,9 @@ extension NotificationHelper {
         let content = UNMutableNotificationContent()
         content.title = "Meeting window detected (\(appName))"
         let cleanedTitle = meetingTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let bodyTitle = (cleanedTitle?.isEmpty == false) ? cleanedTitle : nil
-        content.body = bodyTitle.map { "Start a New Note for \($0)?" } ?? "Start a New Note for this meeting?"
+        let truncatedTitle = cleanedTitle.map { String($0.prefix(60)) }
+        let bodyTitle = (truncatedTitle?.isEmpty == false) ? truncatedTitle : nil
+        content.body = "Start a New Note for \(appName)?"
         content.sound = .default
         content.userInfo = [
             "appName": appName,
