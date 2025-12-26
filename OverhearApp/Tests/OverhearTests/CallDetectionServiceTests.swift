@@ -41,4 +41,21 @@ final class CallDetectionServiceTests: XCTestCase {
         // All browser bundles should be in supported bundles
         XCTAssertTrue(browserBundles.isSubset(of: supportedBundles))
     }
+
+    func testBrowserHostSupport() {
+        let service = CallDetectionService()
+        let hosts = [
+            "meet.google.com",
+            "zoom.us",
+            "us02web.zoom.us",
+            "teams.microsoft.com",
+            "teams.live.com",
+            "webex.com",
+            "events.webex.com"
+        ]
+        hosts.forEach { host in
+            XCTAssertTrue(service.isSupportedBrowserHost(host), "Expected host \(host) to be supported")
+        }
+        XCTAssertFalse(service.isSupportedBrowserHost("example.com"))
+    }
 }

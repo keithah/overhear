@@ -2,13 +2,15 @@ import AppKit
 import UserNotifications
 import Foundation
 import SwiftUI
+import Combine
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var context: AppContext?
     var menuBarController: MenuBarController?
     let recordingOverlay = RecordingOverlayController()
-    private var handledNotificationIDs: Set<String> = []
+    private var notificationDeduper = NotificationDeduper(maxEntries: 200)
+    private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
@@ -53,6 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Meeting window detection for notifications + auto-record (requires Accessibility)
         context.callDetectionService.start(autoCoordinator: context.autoRecordingCoordinator, preferences: context.preferencesService)
+        context.preferencesService.$detectionPollingInterval
+            .receive(on: RunLoop.main)
+            .sink { [weak context] interval in
+                context?.callDetectionService.updatePollInterval(interval)
+            }
+            .store(in: &cancellables)
 
         // Recording overlay to surface in-meeting status
         context.recordingCoordinator.onRecordingStatusChange = { [weak self, weak context] isRecording, title in
@@ -121,11 +129,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let notificationID = response.notification.request.identifier
         let shouldHandle = await MainActor.run { () -> Bool in
-            if handledNotificationIDs.contains(notificationID) {
-                return false
-            }
-            handledNotificationIDs.insert(notificationID)
-            return true
+            return notificationDeduper.record(notificationID)
         }
         guard shouldHandle else { return }
 
@@ -150,6 +154,32 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 context.autoRecordingCoordinator.onNoDetection()
             }
         }
+    }
+}
+
+@MainActor
+private extension AppDelegate {
+    // Additional helpers can live here
+}
+
+struct NotificationDeduper {
+    private var handled: Set<String> = []
+    private var order: [String] = []
+    let maxEntries: Int
+
+    init(maxEntries: Int) {
+        self.maxEntries = max(maxEntries, 1)
+    }
+
+    mutating func record(_ id: String) -> Bool {
+        if handled.contains(id) { return false }
+        handled.insert(id)
+        order.append(id)
+        while order.count > maxEntries, let oldest = order.first {
+            order.removeFirst()
+            handled.remove(oldest)
+        }
+        return true
     }
 }
 

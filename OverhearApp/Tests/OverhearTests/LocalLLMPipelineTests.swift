@@ -130,4 +130,20 @@ final class LocalLLMPipelineTests: XCTestCase {
             XCTFail("Expected ready after successful warmup, got \(state)")
         }
     }
+
+    func testCircuitBreakerPreventsExcessiveRetries() async {
+        let client = FakeClient(mode: .alwaysFail)
+        let pipeline = LocalLLMPipeline(client: client)
+        await pipeline.warmup()
+        let firstCount = await client.warmupCount
+        await pipeline.warmup()
+        let secondCount = await client.warmupCount
+        XCTAssertEqual(firstCount, secondCount, "Circuit breaker should prevent additional warmup attempts during cooldown")
+        let state = await pipeline.currentState()
+        if case .unavailable = state {
+            // expected
+        } else {
+            XCTFail("Expected unavailable state after repeated failures")
+        }
+    }
 }

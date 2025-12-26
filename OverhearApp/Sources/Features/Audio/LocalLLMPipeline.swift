@@ -21,10 +21,15 @@ actor LocalLLMPipeline {
     private let client: MLXClient?
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
     private let logCategory = "LocalLLMPipeline"
+    private let warmupTimeout: TimeInterval = 600
+    private let downloadWatchdogDelay: TimeInterval = 2
+    private let failureCooldown: TimeInterval = 300
     private(set) var state: State
     private var downloadWatchTask: Task<Void, Never>?
     private var warmupGeneration: Int = 0
     private var lastProgressLogBucket: Int = -1
+    private var consecutiveFailures = 0
+    private var cooldownUntil: Date?
     private var modelID: String {
         MLXPreferences.modelID()
     }
@@ -40,7 +45,7 @@ actor LocalLLMPipeline {
 
     /// Warms the local model (best-effort). Safe to call multiple times.
     func warmup() async {
-        await warmupInternal()
+        await warmupInternal(maxAttempts: 3, timeout: warmupTimeout)
     }
 
     private func setDownloading(_ progress: Double, generation: Int) {
@@ -59,7 +64,7 @@ actor LocalLLMPipeline {
             downloadWatchTask = nil
             downloadWatchTask = nil
             let watchTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s grace period
+                try? await Task.sleep(nanoseconds: UInt64((self?.downloadWatchdogDelay ?? 2) * 1_000_000_000))
                 await self?.promoteReadyAfterDownloadWatchdog()
             }
             downloadWatchTask = watchTask
@@ -82,6 +87,7 @@ actor LocalLLMPipeline {
         if let summary = await tryMLXSummarize(transcript: transcript, segments: segments, template: template) {
             return summary
         }
+        FileLogger.log(category: logCategory, message: "Using deterministic fallback summary")
         return MeetingSummary(
             summary: String(transcript.prefix(200)),
             highlights: segments.prefix(3).map { segment in
@@ -176,6 +182,12 @@ actor LocalLLMPipeline {
     private func warmupInternal(maxAttempts: Int = 3, timeout: TimeInterval = 600) async {
         guard let client else { return }
 
+        if let cooldownUntil, cooldownUntil > Date() {
+            state = .unavailable("LLM cooling down after repeated failures")
+            notifyStateChanged()
+            return
+        }
+
         var attempts = 0
         var allowCacheRetry = true
         var attemptedFallback = false
@@ -229,14 +241,17 @@ actor LocalLLMPipeline {
                 FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse))")
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
+                consecutiveFailures = 0
+                cooldownUntil = nil
                 return
             } catch {
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
                 logger.error("MLX warmup failed: \(error.localizedDescription, privacy: .public)")
                 FileLogger.log(category: logCategory, message: "MLX warmup failed: \(error.localizedDescription)")
+                consecutiveFailures += 1
 
-                if allowCacheRetry {
+                if allowCacheRetry, shouldRetryByClearingCache(error: error) {
                     allowCacheRetry = false
                     logger.info("MLX warmup retry after clearing cache (error: \(error.localizedDescription, privacy: .public))")
                     FileLogger.log(category: logCategory, message: "Clearing MLX cache and retrying warmup")
@@ -251,7 +266,6 @@ actor LocalLLMPipeline {
                     modelInUse = fallback
                     FileLogger.log(category: logCategory, message: "Warmup failed; switching model to fallback \(fallback)")
                     NotificationHelper.sendLLMFallback(original: modelID, fallback: fallback)
-                    MLXPreferences.setModelID(fallback)
                     allowCacheRetry = true
                     state = .idle
                     notifyStateChanged()
@@ -265,7 +279,22 @@ actor LocalLLMPipeline {
         }
 
         state = .unavailable("Warmup failed after \(attempts) attempt(s)")
+        if consecutiveFailures >= maxAttempts {
+            cooldownUntil = Date().addingTimeInterval(failureCooldown)
+        }
         notifyStateChanged()
+    }
+
+    private func shouldRetryByClearingCache(error: Error) -> Bool {
+        let message = error.localizedDescription.lowercased()
+        let cacheHints = [
+            "no such file",
+            "couldn’t be opened",
+            "could not be opened",
+            "config.json",
+            "missing file"
+        ]
+        return cacheHints.contains(where: { message.contains($0) })
     }
 
     private func fallbackModelID(for current: String) -> String? {

@@ -95,6 +95,14 @@ final class PreferencesService: ObservableObject {
     @Published var autoRecordingEnabled: Bool {
         didSet { persist(autoRecordingEnabled, key: .autoRecordingEnabled) }
     }
+    
+    @Published var autoShowLiveNotes: Bool {
+        didSet { persist(autoShowLiveNotes, key: .autoShowLiveNotes) }
+    }
+
+    @Published var detectionPollingInterval: Double {
+        didSet { persist(detectionPollingInterval, key: .detectionPollingInterval) }
+    }
 
     private let defaults: UserDefaults
     private var cancellables: Set<AnyCancellable> = []
@@ -121,6 +129,8 @@ final class PreferencesService: ObservableObject {
         self.joinNextMeetingHotkey = defaults.string(forKey: PreferenceKey.joinNextMeetingHotkey.rawValue) ?? ""
         self.meetingNotificationsEnabled = defaults.object(forKey: PreferenceKey.meetingNotificationsEnabled.rawValue) as? Bool ?? false
         self.autoRecordingEnabled = defaults.object(forKey: PreferenceKey.autoRecordingEnabled.rawValue) as? Bool ?? false
+        self.autoShowLiveNotes = defaults.object(forKey: PreferenceKey.autoShowLiveNotes.rawValue) as? Bool ?? true
+        self.detectionPollingInterval = defaults.object(forKey: PreferenceKey.detectionPollingInterval.rawValue) as? Double ?? 3.0
 
         updateLaunchAtLogin(launchAtLogin)
     }
@@ -232,4 +242,6 @@ private enum PreferenceKey: String {
     case joinNextMeetingHotkey
     case meetingNotificationsEnabled
     case autoRecordingEnabled
+    case autoShowLiveNotes
+    case detectionPollingInterval
 }

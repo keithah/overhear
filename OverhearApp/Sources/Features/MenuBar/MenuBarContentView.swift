@@ -179,7 +179,7 @@ if viewModel.isLoading {
         }
         .frame(width: preferences.viewMode == .minimalist ? 360 : 360, height: calculateHeight())
         .onChange(of: recordingCoordinator.isRecording) { _, newValue in
-            if newValue && !didAutoShowLiveNotes {
+            if newValue && preferences.autoShowLiveNotes && !didAutoShowLiveNotes {
                 LiveNotesWindowController.shared.show(with: recordingCoordinator)
                 didAutoShowLiveNotes = true
             }

@@ -194,7 +194,22 @@ struct PreferencesView: View {
 
             Section(header: Text("Auto recording")) {
                 Toggle("Auto start/stop when meeting window detected", isOn: $preferences.autoRecordingEnabled)
-                Text("Requires Accessibility permission to detect meeting windows and an active microphone (you being in a call); auto-recording won't start if either is missing. Currently supports Zoom, Teams, Webex, and Meet in Safari/Chrome/Edge.")
+                HStack {
+                    Text("Polling interval (seconds)")
+                    Spacer()
+                    Stepper("", value: $preferences.detectionPollingInterval, in: 1...10, step: 1)
+                        .labelsHidden()
+                    Text(String(format: "%.0f", preferences.detectionPollingInterval))
+                        .frame(minWidth: 20, alignment: .trailing)
+                }
+                Text("Requires Accessibility permission to detect meeting windows and an active microphone (you being in a call); auto-recording won't start if either is missing. Currently supports Zoom, Teams, Webex, and Meet in Safari/Chrome/Edge across native apps and browsers.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Text("Live Notes")) {
+                Toggle("Auto-open Live Notes when recording starts", isOn: $preferences.autoShowLiveNotes)
+                Text("Power users can disable the automatic window popover and open Live Notes manually from the menu bar.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

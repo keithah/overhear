@@ -15,12 +15,13 @@ final class AppContext: ObservableObject {
 
     @MainActor
     static func makeDefault() -> AppContext {
-        AppContext(
+        let preferences = PreferencesService()
+        return AppContext(
             permissions: PermissionsService(),
-            preferences: PreferencesService(),
+            preferences: preferences,
             calendar: CalendarService(),
             recordingCoordinator: MeetingRecordingCoordinator(),
-            callDetectionService: CallDetectionService(),
+            callDetectionService: CallDetectionService(pollInterval: preferences.detectionPollingInterval),
             autoRecordingCoordinator: AutoRecordingCoordinator()
         )
     }

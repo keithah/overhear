@@ -9,7 +9,7 @@ final class CallDetectionService {
     private let logger = Logger(subsystem: "com.overhear.app", category: "CallDetectionService")
     private var activationObserver: NSObjectProtocol?
     private var pollTimer: Timer?
-    private let pollInterval: TimeInterval
+    private var pollInterval: TimeInterval
     private let axCheck: () -> Bool
     private var permissionDenied = false
     private var permissionRetryTask: Task<Void, Never>?
@@ -17,7 +17,7 @@ final class CallDetectionService {
     private var lastNotifiedTitle: String?
     private let micMonitor = MicUsageMonitor()
     private var isMicActive = false
-    private var isPolling = false
+    private var activePollTask: Task<Void, Never>?
     private weak var autoCoordinator: AutoRecordingCoordinator?
     private weak var preferences: PreferencesService?
 
@@ -44,6 +44,11 @@ final class CallDetectionService {
         "com.brave.Browser"
     ]
     private lazy var nativeMeetingBundles: Set<String> = supportedMeetingBundles.subtracting(browserBundles)
+
+    private let permissionRetryDelay: TimeInterval = 5.0
+    private let titleLookupTimeout: TimeInterval = 1.0
+    private let maxTelemetryPerSession = 100
+    private var telemetryCount = 0
 
     init(pollInterval: TimeInterval = 3.0, axCheck: @escaping () -> Bool = { AXIsProcessTrusted() }) {
         self.pollInterval = pollInterval
@@ -102,13 +107,12 @@ final class CallDetectionService {
         micMonitor.stop()
         permissionRetryTask?.cancel()
         permissionRetryTask = nil
+        telemetryCount = 0
         logger.info("Call detection polling stopped")
     }
 
-    deinit {
-        Task { @MainActor [weak self] in
-            self?.stop()
-        }
+    @MainActor deinit {
+        stop()
     }
 
     /// Best-effort retry entrypoint that attempts to start once permission becomes available.
@@ -118,10 +122,21 @@ final class CallDetectionService {
         return start(autoCoordinator: autoCoordinator, preferences: preferences)
     }
 
+    func updatePollInterval(_ interval: TimeInterval) {
+        pollInterval = max(1.0, interval)
+        if pollTimer != nil {
+            stop()
+        }
+        if let autoCoordinator, let preferences {
+            telemetryCount = 0
+            _ = start(autoCoordinator: autoCoordinator, preferences: preferences)
+        }
+    }
+
     private func schedulePermissionRetry(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {
         permissionRetryTask?.cancel()
         permissionRetryTask = Task.detached { [weak self] in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(self?.permissionRetryDelay ?? 5.0 * 1_000_000_000))
             guard let self else { return }
             await MainActor.run {
                 guard self.axCheck() else { return }
@@ -131,14 +146,18 @@ final class CallDetectionService {
     }
 
     private func pollFrontmostApp() async {
-        guard !isPolling else { return }
-        isPolling = true
-        defer { isPolling = false }
+        if let activePollTask {
+            // Avoid overlapping polls; keep the latest request.
+            activePollTask.cancel()
+        }
+        activePollTask = Task { @MainActor [weak self] in
+            guard let self else { return }
         guard preferencesAllowNotifications else { return }
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier else {
             if await handleBackgroundDetection(excluding: nil) { return }
             autoCoordinator?.onNoDetection()
+            logTelemetry(result: "no-app", bundleID: nil, host: nil)
             return
         }
 
@@ -147,6 +166,7 @@ final class CallDetectionService {
             lastNotifiedTitle = nil
             if await handleBackgroundDetection(excluding: bundleID) { return }
             autoCoordinator?.onNoDetection()
+            logTelemetry(result: "unsupported-bundle", bundleID: bundleID, host: nil)
             return
         }
 
@@ -154,14 +174,27 @@ final class CallDetectionService {
         guard isMicActive else {
             if await handleBackgroundDetection(excluding: bundleID) { return }
             autoCoordinator?.onNoDetection()
+            logTelemetry(result: "mic-inactive", bundleID: bundleID, host: nil)
             return
         }
 
-        // Offload window inspection off the main actor to reduce AX latency on UI thread.
-        let titleInfo = await titleInfoOffMain(for: app)
+        // Offload window inspection off the main actor to reduce AX latency on UI thread with timeout.
+        let titleInfo = await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
+            group.addTask { [weak self] in
+                guard let self else { return nil }
+                return await self.titleInfoOffMain(for: app)
+            }
+            group.addTask { [weak self] in
+                guard let self else { return nil }
+                try? await Task.sleep(nanoseconds: UInt64(self.titleLookupTimeout * 1_000_000_000))
+                return nil
+            }
+            return await group.next() ?? nil
+        }
         guard let titleInfo else {
             if await handleBackgroundDetection(excluding: bundleID) { return }
             autoCoordinator?.onNoDetection()
+            logTelemetry(result: "no-title", bundleID: bundleID, host: nil)
             return
         }
 
@@ -188,12 +221,13 @@ final class CallDetectionService {
         if isBrowser(bundleID) {
             guard let urlDescription = titleInfo.urlDescription,
                   let host = URL(string: urlDescription)?.host,
-                  host == "meet.google.com" else {
+                  isSupportedBrowserHost(host) else {
                 if titleInfo.urlDescription == nil {
                     logger.info("Skipped browser detection: missing URL attribute; ensure Meet tab is active")
                     NotificationHelper.sendBrowserUrlMissingIfNeeded()
                 }
                 autoCoordinator?.onNoDetection()
+                logTelemetry(result: "browser-unsupported-host", bundleID: bundleID, host: titleInfo.redacted)
                 return
             }
         }
@@ -201,8 +235,9 @@ final class CallDetectionService {
         if isBrowser(bundleID),
            let urlDescription = titleInfo.urlDescription,
            let host = URL(string: urlDescription)?.host,
-           host != "meet.google.com" {
+           !isSupportedBrowserHost(host) {
             autoCoordinator?.onNoDetection()
+            logTelemetry(result: "browser-unsupported-host", bundleID: bundleID, host: titleInfo.redacted)
             return
         }
 
@@ -216,6 +251,9 @@ final class CallDetectionService {
             autoCoordinator?.onNoDetection()
         }
         logger.info("Detected meeting window for \(appName, privacy: .public) title=\(cleanTitle, privacy: .private)")
+        logTelemetry(result: "detected", bundleID: bundleID, host: titleInfo.redacted)
+        }
+        await activePollTask?.value
     }
 
     /// Fall back to detecting native meeting apps when they are running in the background
@@ -260,7 +298,7 @@ final class CallDetectionService {
         return true
     }
 
-    nonisolated private func activeWindowTitle(for app: NSRunningApplication) -> (displayTitle: String, urlDescription: String?)? {
+    nonisolated private func activeWindowTitle(for app: NSRunningApplication) -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         guard AXIsProcessTrusted() else {
             logger.error("Accessibility not granted; cannot inspect windows for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
             return nil
@@ -283,27 +321,31 @@ final class CallDetectionService {
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)
         let rawTitle = titleValue as? String ?? ""
 
-        // For browsers, try to extract the URL to distinguish Meet.
+        // For browsers, try to extract the URL to distinguish meeting hosts.
         var urlDescription: String?
+        var redactedURL: String?
         if let safariURL = copyURLAttribute(window: windowElement, key: kAXURLAttribute as CFString) {
-            urlDescription = safariURL
+            urlDescription = safariURL.normalizedForDetection()
+            redactedURL = safariURL.redactedForLogging()
         } else if let chromeURL = copyURLAttribute(window: windowElement, key: "AXDocument" as CFString) {
-            urlDescription = chromeURL
+            urlDescription = chromeURL.normalizedForDetection()
+            redactedURL = chromeURL.redactedForLogging()
         }
 
         // Require either a title or URL.
         let displayTitle = rawTitle.isEmpty ? (urlDescription ?? "") : rawTitle
         guard !displayTitle.isEmpty else { return nil }
 
-        // Only accept Meet if the URL host matches meet.google.com.
+        // Normalize supported hosts for browsers.
         if let urlDescription,
            let url = URL(string: urlDescription),
            let host = url.host,
-           host == "meet.google.com" {
-            return (displayTitle: "Google Meet", urlDescription: urlDescription)
+           isSupportedBrowserHost(host) {
+            let title = host.contains("meet.google.com") ? "Google Meet" : displayTitle
+            return (displayTitle: title, urlDescription: urlDescription, redacted: redactedURL)
         }
 
-        return (displayTitle: displayTitle, urlDescription: urlDescription)
+        return (displayTitle: displayTitle, urlDescription: urlDescription, redacted: redactedURL)
     }
 
     nonisolated private func copyURLAttribute(window: AXUIElement, key: CFString) -> String? {
@@ -314,33 +356,33 @@ final class CallDetectionService {
             return nil
         }
         if let cfValue = urlValue, CFGetTypeID(cfValue) == CFURLGetTypeID(), let url = cfValue as? URL {
-            return sanitized(url)
+            return url.absoluteString
         }
         if let urlString = urlValue as? String, let url = URL(string: urlString) {
-            return sanitized(url)
+            return url.absoluteString
         }
         return nil
     }
 
-    private func titleInfoOffMain(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?)? {
-        await Task.detached { [weak self] () -> (displayTitle: String, urlDescription: String?)? in
+    private func titleInfoOffMain(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
+        await Task.detached { [weak self] () -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
             guard let self else { return nil }
             return self.activeWindowTitle(for: app)
         }.value
     }
 
-    nonisolated private func sanitized(_ url: URL) -> String {
-        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        components?.path = "" // Avoid logging/using room codes embedded in the path.
-        components?.query = nil
-        components?.fragment = nil
-        if let hostOnly = components?.string {
-            return hostOnly
-        }
-        if let host = url.host {
-            return "\(url.scheme.map { "\($0)://" } ?? "")\(host)"
-        }
-        return url.absoluteString
+    nonisolated func isSupportedBrowserHost(_ host: String) -> Bool {
+        let supportedHosts = [
+            "meet.google.com",
+            "zoom.us",
+            "us04web.zoom.us",
+            "us02web.zoom.us",
+            "teams.microsoft.com",
+            "teams.live.com",
+            "webex.com",
+            "webex.com.cn"
+        ]
+        return supportedHosts.contains(where: { host.hasSuffix($0) })
     }
 
     private var preferencesAllowNotifications: Bool {
@@ -352,4 +394,37 @@ final class CallDetectionService {
         browserBundles.contains(bundleID)
     }
 
+}
+
+private extension CallDetectionService {
+    func logTelemetry(result: String, bundleID: String?, host: String?) {
+        guard telemetryCount < maxTelemetryPerSession else { return }
+        telemetryCount += 1
+        let safeHost = host ?? "unknown"
+        let safeBundle = bundleID ?? "unknown"
+        FileLogger.log(category: "CallDetectionTelemetry", message: "result=\(result) bundle=\(safeBundle) host=\(safeHost) mic=\(isMicActive)")
+    }
+}
+
+private extension String {
+    func redactedForLogging() -> String {
+        guard let url = URL(string: self),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return self
+        }
+        components.path = ""
+        components.query = nil
+        components.fragment = nil
+        return components.string ?? self
+    }
+
+    func normalizedForDetection() -> String {
+        guard let url = URL(string: self),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return self
+        }
+        components.query = nil
+        components.fragment = nil
+        return components.string ?? self
+    }
 }
