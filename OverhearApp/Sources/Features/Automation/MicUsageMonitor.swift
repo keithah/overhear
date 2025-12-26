@@ -113,8 +113,8 @@ final class MicUsageMonitor {
     }
 
     deinit {
-        MainActor.assumeIsolated {
-            stop()
+        Task { @MainActor [weak self] in
+            self?.stop()
         }
     }
 

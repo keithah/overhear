@@ -762,7 +762,9 @@ struct LiveNotesView: View {
         llmStatePollTask?.cancel()
         guard !llmIsReady else { return }
         llmStatePollTask = Task {
-            while !Task.isCancelled && !llmIsReady {
+            var attempts = 0
+            while !Task.isCancelled && !llmIsReady && attempts < 120 {
+                attempts += 1
                 await refreshLLMState()
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }

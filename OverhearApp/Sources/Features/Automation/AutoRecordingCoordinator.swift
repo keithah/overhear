@@ -11,9 +11,10 @@ final class AutoRecordingCoordinator: ObservableObject {
     private let stopGracePeriod: TimeInterval
     private let maxRecordingDuration: TimeInterval
     private var activeManager: MeetingRecordingManager?
-    private var stopWorkItem: DispatchWorkItem?
+    private var stopTask: Task<Void, Never>?
     private var activeTitle: String?
     private var monitorTask: Task<Void, Never>?
+    private var monitorStartDate: Date?
     @Published private(set) var isRecording: Bool = false
     var onManagerUpdate: ((MeetingRecordingManager?) -> Void)?
     var onCompleted: (() -> Void)?
@@ -33,8 +34,8 @@ final class AutoRecordingCoordinator: ObservableObject {
         }
 
         // Cancel any pending stop since we have a fresh detection.
-        stopWorkItem?.cancel()
-        stopWorkItem = nil
+        stopTask?.cancel()
+        stopTask = nil
 
         if activeManager != nil {
             isRecording = true
@@ -47,14 +48,12 @@ final class AutoRecordingCoordinator: ObservableObject {
     func onNoDetection() {
         guard activeManager != nil else { return }
         // Schedule a graceful stop to avoid flapping on brief focus changes.
-        if stopWorkItem == nil {
-            let item = DispatchWorkItem { [weak self] in
-                Task { @MainActor in
-                    await self?.stopRecording()
-                }
+        if stopTask == nil {
+            stopTask = Task { [weak self] in
+                guard let self = self else { return }
+                try? await Task.sleep(nanoseconds: UInt64(self.stopGracePeriod * 1_000_000_000))
+                await self.stopRecording()
             }
-            stopWorkItem = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + stopGracePeriod, execute: item)
         }
     }
 
@@ -94,6 +93,7 @@ final class AutoRecordingCoordinator: ObservableObject {
             guard let manager else { return }
             await self?.monitorStatus(manager: manager)
         }
+        monitorStartDate = Date()
         await manager.startRecording(duration: maxRecordingDuration)
         await monitorTask?.value
     }
@@ -101,6 +101,11 @@ final class AutoRecordingCoordinator: ObservableObject {
     private func monitorStatus(manager: MeetingRecordingManager) async {
         guard let current = activeManager, current === manager else { return }
         while !Task.isCancelled {
+            if let started = monitorStartDate, Date().timeIntervalSince(started) > maxRecordingDuration + 60 {
+                logger.info("Auto-record monitor timeout; stopping recording")
+                await stopRecording()
+                return
+            }
             guard let currentManager = activeManager, currentManager === manager else { return }
             let status = currentManager.status
             switch status {
@@ -118,8 +123,9 @@ final class AutoRecordingCoordinator: ObservableObject {
     private func clearState(transcriptReady: Bool = false) async {
         monitorTask?.cancel()
         monitorTask = nil
-        stopWorkItem?.cancel()
-        stopWorkItem = nil
+        monitorStartDate = nil
+        stopTask?.cancel()
+        stopTask = nil
         let endedTitle = activeTitle
         let endedManager = activeManager
         activeManager = nil
@@ -136,8 +142,8 @@ final class AutoRecordingCoordinator: ObservableObject {
     }
 
     func stopRecording() async {
-        stopWorkItem?.cancel()
-        stopWorkItem = nil
+        stopTask?.cancel()
+        stopTask = nil
         guard let manager = activeManager else { return }
         logger.info("Auto-record stopping")
         await manager.stopRecording()
@@ -149,8 +155,8 @@ final class AutoRecordingCoordinator: ObservableObject {
     }
 
     deinit {
-        stopWorkItem?.cancel()
-        stopWorkItem = nil
+        stopTask?.cancel()
+        stopTask = nil
         monitorTask?.cancel()
         monitorTask = nil
         if let manager = activeManager {
