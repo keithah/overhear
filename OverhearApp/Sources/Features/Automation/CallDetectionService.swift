@@ -11,6 +11,8 @@ final class CallDetectionService {
     private var pollTimer: Timer?
     private let pollInterval: TimeInterval
     private let axCheck: () -> Bool
+    private var permissionDenied = false
+    private var permissionRetryTask: Task<Void, Never>?
     private var lastNotifiedApp: String?
     private var lastNotifiedTitle: String?
     private let micMonitor = MicUsageMonitor()
@@ -53,8 +55,11 @@ final class CallDetectionService {
         guard axCheck() else {
             logger.error("Accessibility not granted; call detection will not start.")
             NotificationHelper.sendAccessibilityPermissionNeededIfNeeded()
+            permissionDenied = true
+            schedulePermissionRetry(autoCoordinator: autoCoordinator, preferences: preferences)
             return false
         }
+        permissionDenied = false
         self.autoCoordinator = autoCoordinator
         self.preferences = preferences
         micMonitor.onChange = { [weak self] active in
@@ -94,7 +99,28 @@ final class CallDetectionService {
         lastNotifiedApp = nil
         lastNotifiedTitle = nil
         micMonitor.stop()
+        permissionRetryTask?.cancel()
+        permissionRetryTask = nil
         logger.info("Call detection polling stopped")
+    }
+
+    /// Best-effort retry entrypoint that attempts to start once permission becomes available.
+    @discardableResult
+    func retryIfAuthorized(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) -> Bool {
+        guard permissionDenied else { return true }
+        return start(autoCoordinator: autoCoordinator, preferences: preferences)
+    }
+
+    private func schedulePermissionRetry(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {
+        permissionRetryTask?.cancel()
+        permissionRetryTask = Task.detached { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard let self else { return }
+            await MainActor.run {
+                guard self.axCheck() else { return }
+                _ = self.start(autoCoordinator: autoCoordinator, preferences: preferences)
+            }
+        }
     }
 
     private func pollFrontmostApp() async {

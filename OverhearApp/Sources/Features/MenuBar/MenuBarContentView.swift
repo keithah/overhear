@@ -776,33 +776,38 @@ struct LiveNotesView: View {
         panel.canCreateDirectories = true
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            let title = coordinator.activeMeeting?.title ?? "New Note"
-            var lines: [String] = ["# \(title)"]
-            if let summary = coordinator.summary {
-                if !summary.summary.isEmpty {
-                    lines.append("\n## Summary\n\(summary.summary)")
+            Task.detached(priority: .utility) {
+                let (title, summary, liveNotes) = await MainActor.run { () -> (String, MeetingSummary?, String) in
+                    let title = coordinator.activeMeeting?.title ?? "New Note"
+                    return (title, coordinator.summary, coordinator.liveNotes)
                 }
-                if !summary.highlights.isEmpty {
-                    lines.append("\n## Highlights")
-                    summary.highlights.forEach { lines.append("- \($0)") }
-                }
-                if !summary.actionItems.isEmpty {
-                    lines.append("\n## Action Items")
-                    summary.actionItems.forEach { item in
-                        let owner = (item.owner?.isEmpty == false) ? " [\(item.owner!)]" : ""
-                        lines.append("- \(item.description)\(owner)")
+                var lines: [String] = ["# \(title)"]
+                if let summary {
+                    if !summary.summary.isEmpty {
+                        lines.append("\n## Summary\n\(summary.summary)")
+                    }
+                    if !summary.highlights.isEmpty {
+                        lines.append("\n## Highlights")
+                        summary.highlights.forEach { lines.append("- \($0)") }
+                    }
+                    if !summary.actionItems.isEmpty {
+                        lines.append("\n## Action Items")
+                        summary.actionItems.forEach { item in
+                            let owner = (item.owner?.isEmpty == false) ? " [\(item.owner!)]" : ""
+                            lines.append("- \(item.description)\(owner)")
+                        }
                     }
                 }
-            }
-            if !coordinator.liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                lines.append("\n## Notes")
-                lines.append(coordinator.liveNotes)
-            }
-            let text = lines.joined(separator: "\n")
-            do {
-                try text.write(to: url, atomically: true, encoding: .utf8)
-            } catch {
-                FileLogger.log(category: "LiveNotesView", message: "Failed to export summary: \(error.localizedDescription)")
+                if !liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    lines.append("\n## Notes")
+                    lines.append(liveNotes)
+                }
+                let text = lines.joined(separator: "\n")
+                do {
+                    try text.write(to: url, atomically: true, encoding: .utf8)
+                } catch {
+                    FileLogger.log(category: "LiveNotesView", message: "Failed to export summary: \(error.localizedDescription)")
+                }
             }
         }
     }

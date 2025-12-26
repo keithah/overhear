@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var context: AppContext?
     var menuBarController: MenuBarController?
     let recordingOverlay = RecordingOverlayController()
+    private var handledNotificationIDs: Set<String> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
@@ -118,6 +119,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let notificationID = response.notification.request.identifier
+        let shouldHandle = await MainActor.run { () -> Bool in
+            if handledNotificationIDs.contains(notificationID) {
+                return false
+            }
+            handledNotificationIDs.insert(notificationID)
+            return true
+        }
+        guard shouldHandle else { return }
+
         let actionIdentifier = response.actionIdentifier
         let content = response.notification.request.content
         let appName: String = {

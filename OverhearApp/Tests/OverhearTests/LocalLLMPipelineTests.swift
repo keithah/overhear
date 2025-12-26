@@ -2,6 +2,37 @@ import XCTest
 @testable import Overhear
 
 final class LocalLLMPipelineTests: XCTestCase {
+    actor FakeClient: MLXClient {
+        enum Mode {
+            case succeed
+            case alwaysFail
+        }
+
+        let mode: Mode
+        private(set) var warmupCount = 0
+
+        init(mode: Mode) {
+            self.mode = mode
+        }
+
+        func warmup(progress: @Sendable @escaping (Double) -> Void) async throws {
+            warmupCount += 1
+            progress(0.5)
+            progress(1.0)
+            if mode == .alwaysFail {
+                throw NSError(domain: "test", code: -1)
+            }
+        }
+
+        func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async throws -> MeetingSummary {
+            return MeetingSummary(summary: "ok", highlights: [], actionItems: [])
+        }
+
+        func generate(prompt: String, systemPrompt: String?, maxTokens: Int) async throws -> String {
+            return "generated"
+        }
+    }
+
     func testStateEquality() {
         // Test that State enum conforms to Equatable correctly
         XCTAssertEqual(
@@ -71,6 +102,32 @@ final class LocalLLMPipelineTests: XCTestCase {
             // Expected state
         } else {
             XCTFail("Pipeline without client should be in unavailable state, got \(state)")
+        }
+    }
+
+    func testWarmupFailsAfterRetries() async {
+        let client = FakeClient(mode: .alwaysFail)
+        let pipeline = LocalLLMPipeline(client: client)
+        await pipeline.warmup()
+        let state = await pipeline.currentState()
+        if case .unavailable = state {
+            // expected
+        } else {
+            XCTFail("Expected unavailable after failed warmup, got \(state)")
+        }
+        let count = await client.warmupCount
+        XCTAssertLessThanOrEqual(count, 3, "Warmup retried too many times: \(count)")
+    }
+
+    func testWarmupSucceeds() async {
+        let client = FakeClient(mode: .succeed)
+        let pipeline = LocalLLMPipeline(client: client)
+        await pipeline.warmup()
+        let state = await pipeline.currentState()
+        if case .ready = state {
+            // success
+        } else {
+            XCTFail("Expected ready after successful warmup, got \(state)")
         }
     }
 }
