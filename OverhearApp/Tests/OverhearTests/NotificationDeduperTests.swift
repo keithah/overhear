@@ -1,6 +1,7 @@
 import XCTest
 @testable import Overhear
 
+@MainActor
 final class NotificationDeduperTests: XCTestCase {
     func testDeduperBoundsAndUniqueness() {
         var deduper = NotificationDeduper(maxEntries: 3)

@@ -163,20 +163,22 @@ private extension AppDelegate {
     // Additional helpers can live here
 }
 
-struct NotificationDeduper {
+@MainActor
+final class NotificationDeduper {
     private var handled: Set<String> = []
     private var order: [String] = []
     private var timestamps: [String: Date] = [:]
     let maxEntries: Int
-    let ttl: TimeInterval = 60 * 60  // 1 hour
+    let ttl: TimeInterval
     private let dateProvider: () -> Date
 
-    init(maxEntries: Int, dateProvider: @escaping () -> Date = { Date() }) {
+    init(maxEntries: Int, ttl: TimeInterval = 60 * 60, dateProvider: @escaping () -> Date = { Date() }) {
         self.maxEntries = max(maxEntries, 1)
+        self.ttl = max(1, ttl)
         self.dateProvider = dateProvider
     }
 
-    mutating func record(_ id: String) -> Bool {
+    func record(_ id: String) -> Bool {
         if handled.contains(id) { return false }
         handled.insert(id)
         order.append(id)
@@ -190,7 +192,7 @@ struct NotificationDeduper {
         return true
     }
 
-    private mutating func pruneExpired() {
+    private func pruneExpired() {
         let now = dateProvider()
         order = order.filter { id in
             if let ts = timestamps[id], now.timeIntervalSince(ts) <= ttl {

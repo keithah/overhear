@@ -71,6 +71,7 @@ All processing is **local-first** and privacy-conscious.
 - Microphone access is required for recording and for auto-detection (auto-recording will not start unless the mic is active to avoid false positives). This is intentional for privacy; see below.
 - Meeting detection supports native Zoom/Teams/Webex apps plus Google Meet in Safari/Chrome/Edge/Arc/Firefox/Brave (active tab only). Other browser hosts are currently ignored to avoid false positives.
 - The local MLX runtime expects small low-memory models (SmolLM2 1.7B or Llama 3.2 1B) and runs fully offline.
+- Logging convention: `Logger` writes to the unified system log for operational events; `FileLogger` is opt-in (via `OVERHEAR_FILE_LOGS=1`) and reserved for verbose diagnostics such as streaming and MLX state.
 
 ## Privacy & Security Model
 - **Local-first:** Audio capture, transcription, diarization, and MLX summarization all run on-device; transcripts are AES-GCM encrypted on disk.

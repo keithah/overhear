@@ -62,7 +62,7 @@ final class AutoRecordingCoordinator: ObservableObject {
         case .starting, .stopping:
             return
         case .idle:
-            break
+            state = .starting
         }
 
         Task { [weak self] in

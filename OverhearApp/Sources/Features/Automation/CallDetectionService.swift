@@ -317,7 +317,7 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement")
             return nil
         }
-        let windowElement = unsafeBitCast(window, to: AXUIElement.self) // Safe after CFTypeID check.
+        let windowElement = window as! AXUIElement
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)

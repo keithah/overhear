@@ -44,8 +44,11 @@ final class AppContext: ObservableObject {
         self.preferencesWindowController = PreferencesWindowController(preferences: preferences, calendarService: calendar)
         self.callDetectionService = callDetectionService
         self.autoRecordingCoordinator = autoRecordingCoordinator
+        wireCoordinators()
+    }
 
-        // Wire coordinators to prevent conflicts
+    private func wireCoordinators() {
+        // Link weakly in one place to avoid accidental circular strong references.
         recordingCoordinator.autoRecordingCoordinator = autoRecordingCoordinator
         autoRecordingCoordinator.manualRecordingCoordinator = recordingCoordinator
     }

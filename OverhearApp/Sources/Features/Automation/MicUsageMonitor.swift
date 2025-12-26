@@ -115,6 +115,9 @@ final class MicUsageMonitor {
     }
 
     @MainActor deinit {
+        if listenerAdded {
+            logger.error("MicUsageMonitor deinit while listener still active; forcing stop()")
+        }
         stop()
     }
 

@@ -63,7 +63,6 @@ actor LocalLLMPipeline {
         if progress >= 0.999 {
             downloadWatchTask?.cancel()
             downloadWatchTask = nil
-            downloadWatchTask = nil
             let watchTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64((self?.downloadWatchdogDelay ?? 2) * 1_000_000_000))
                 await self?.promoteReadyAfterDownloadWatchdog()
@@ -214,6 +213,7 @@ actor LocalLLMPipeline {
 
         func runWarmupWithTimeout() async throws {
             try await withThrowingTaskGroup(of: Void.self) { group in
+                // Run warmup and a timeout sentinel in parallel; whichever finishes first cancels the other.
                 group.addTask {
                     try await client.warmup(progress: { [weak self] progress in
                         Task { [weak self] in
@@ -245,6 +245,7 @@ actor LocalLLMPipeline {
             case .downloading, .warming, .ready:
                 return
             case .idle, .unavailable:
+                consecutiveFailures = 0
                 state = .downloading(0)
                 notifyStateChanged()
             }
@@ -307,7 +308,13 @@ actor LocalLLMPipeline {
     }
 
     private func shouldRetryByClearingCache(error: Error) -> Bool {
-        let message = error.localizedDescription.lowercased()
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain,
+           [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(nsError.code) {
+            return true
+        }
+
+        let message = nsError.localizedDescription.lowercased()
         let cacheHints = [
             "no such file",
             "couldn’t be opened",
