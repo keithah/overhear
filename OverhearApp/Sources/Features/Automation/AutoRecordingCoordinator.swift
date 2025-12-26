@@ -5,6 +5,8 @@ import os.log
 /// Coordinates auto-recording sessions that start from meeting-window detection.
 /// Runs on the main actor so UI bindings stay consistent and avoids actor hops when
 /// interacting with AppKit and SwiftUI.
+typealias RecordingManagerRef = any RecordingManagerType
+
 @MainActor
 final class AutoRecordingCoordinator: ObservableObject {
     private enum RecordingState {
@@ -17,21 +19,29 @@ final class AutoRecordingCoordinator: ObservableObject {
     private let logger = Logger(subsystem: "com.overhear.app", category: "AutoRecordingCoordinator")
     private let stopGracePeriod: TimeInterval
     private let maxRecordingDuration: TimeInterval
-    private var activeManager: MeetingRecordingManager?
+    private let managerFactory: @MainActor (String, String?) async throws -> RecordingManagerRef
+    private var activeManager: RecordingManagerRef?
     private var stopTask: Task<Void, Never>?
     private var activeTitle: String?
     private var monitorTask: Task<Void, Never>?
     private var monitorStartDate: Date?
     private var state: RecordingState = .idle
     @Published private(set) var isRecording: Bool = false
-    var onManagerUpdate: ((MeetingRecordingManager?) -> Void)?
+    var onManagerUpdate: ((RecordingManagerRef?) -> Void)?
     var onCompleted: (() -> Void)?
     var onStatusUpdate: ((String, Bool) -> Void)?
     weak var manualRecordingCoordinator: MeetingRecordingCoordinator?
 
-    init(stopGracePeriod: TimeInterval = 8.0, maxRecordingDuration: TimeInterval = 4 * 3600) {
+    init(
+        stopGracePeriod: TimeInterval = 8.0,
+        maxRecordingDuration: TimeInterval = 4 * 3600,
+        managerFactory: @escaping @MainActor (String, String?) async throws -> RecordingManagerRef = { id, title in
+            try MeetingRecordingManager(meetingID: id, meetingTitle: title)
+        }
+    ) {
         self.stopGracePeriod = stopGracePeriod
         self.maxRecordingDuration = maxRecordingDuration
+        self.managerFactory = managerFactory
     }
 
     func onDetection(appName: String, meetingTitle: String?) {
@@ -55,7 +65,9 @@ final class AutoRecordingCoordinator: ObservableObject {
             break
         }
 
-        startRecording(appName: appName, meetingTitle: meetingTitle)
+        Task { [weak self] in
+            await self?.startRecording(appName: appName, meetingTitle: meetingTitle)
+        }
     }
 
     func onNoDetection() {
@@ -70,7 +82,7 @@ final class AutoRecordingCoordinator: ObservableObject {
         }
     }
 
-    private func startRecording(appName: String, meetingTitle: String?) {
+    private func startRecording(appName: String, meetingTitle: String?) async {
         let id = "detected-\(Int(Date().timeIntervalSince1970))"
         let title: String
         if let meetingTitle, !meetingTitle.isEmpty {
@@ -82,17 +94,15 @@ final class AutoRecordingCoordinator: ObservableObject {
         state = .starting
 
         do {
-            let manager = try MeetingRecordingManager(
-                meetingID: id,
-                meetingTitle: title
-            )
+            let manager = try await managerFactory(id, title)
             activeManager = manager
             onManagerUpdate?(manager)
             isRecording = true
             state = .recording
             logger.info("Auto-record start for \(title, privacy: .public)")
             onStatusUpdate?(title, true)
-            Task {
+            Task { [weak self] in
+                guard let self else { return }
                 await self.startAndMonitor(manager: manager)
             }
         } catch {
@@ -104,17 +114,23 @@ final class AutoRecordingCoordinator: ObservableObject {
         }
     }
 
-    private func startAndMonitor(manager: MeetingRecordingManager) async {
+    private func startAndMonitor(manager: RecordingManagerRef) async {
         monitorTask = Task { [weak self, weak manager] in
             guard let manager else { return }
             await self?.monitorStatus(manager: manager)
         }
         monitorStartDate = Date()
         await manager.startRecording(duration: maxRecordingDuration)
+        if case .failed = manager.status {
+            monitorTask?.cancel()
+            monitorTask = nil
+            await clearState(transcriptReady: false)
+            return
+        }
         await monitorTask?.value
     }
 
-    private func monitorStatus(manager: MeetingRecordingManager) async {
+    private func monitorStatus(manager: RecordingManagerRef) async {
         guard let current = activeManager, current === manager else { return }
         while !Task.isCancelled {
             if let started = monitorStartDate, Date().timeIntervalSince(started) > maxRecordingDuration + 60 {
@@ -172,15 +188,32 @@ final class AutoRecordingCoordinator: ObservableObject {
         activeTitle
     }
 
-    deinit {
+    @MainActor deinit {
         stopTask?.cancel()
         stopTask = nil
         monitorTask?.cancel()
         monitorTask = nil
         if let manager = activeManager {
-            Task {
-                await manager.stopRecording()
+            Task { [weak manager] in
+                await manager?.stopRecording()
             }
         }
     }
 }
+
+@MainActor
+protocol RecordingManagerType: AnyObject, ObservableObject {
+    var status: MeetingRecordingManager.Status { get }
+    var displayTitle: String { get }
+    var meetingTitle: String { get }
+    var transcriptID: String? { get }
+    var liveTranscript: String { get }
+    var liveSegments: [LiveTranscriptSegment] { get }
+    var summary: MeetingSummary? { get }
+    func startRecording(duration: TimeInterval) async
+    func stopRecording() async
+    func regenerateSummary(template: PromptTemplate?) async
+    func saveNotes(_ notes: String) async
+}
+
+extension MeetingRecordingManager: RecordingManagerType {}

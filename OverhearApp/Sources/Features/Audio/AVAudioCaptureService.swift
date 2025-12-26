@@ -140,6 +140,8 @@ actor AVAudioCaptureService {
         durationTask?.cancel()
         durationTask = nil
 
+        bufferObservers.removeAll()
+
         switch result {
         case .success(let captureResult):
             continuation?.resume(returning: captureResult)

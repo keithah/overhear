@@ -76,7 +76,7 @@ final class MeetingRecordingManager: ObservableObject {
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline
     private let recordingDirectory: URL
-    private let meetingTitle: String
+    let meetingTitle: String
     private let meetingDate: Date
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingManager")
     
@@ -213,13 +213,13 @@ final class MeetingRecordingManager: ObservableObject {
     func regenerateSummary(template: PromptTemplate? = nil) async {
         guard !isRegeneratingSummary else { return }
         isRegeneratingSummary = true
+        defer { isRegeneratingSummary = false }
         let transcriptValue = transcript
         let segmentsValue = speakerSegments
         let summaryResult = await pipeline.regenerateSummary(transcript: transcriptValue, segments: segmentsValue, template: template)
         await MainActor.run {
             self.summary = summaryResult
         }
-        isRegeneratingSummary = false
         await persistRegeneratedSummary(summaryResult)
     }
 

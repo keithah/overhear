@@ -89,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         menuBarController?.tearDown()
         context?.callDetectionService.stop()
+        recordingOverlay.hide()
     }
 
     @MainActor
@@ -165,21 +166,40 @@ private extension AppDelegate {
 struct NotificationDeduper {
     private var handled: Set<String> = []
     private var order: [String] = []
+    private var timestamps: [String: Date] = [:]
     let maxEntries: Int
+    let ttl: TimeInterval = 60 * 60  // 1 hour
+    private let dateProvider: () -> Date
 
-    init(maxEntries: Int) {
+    init(maxEntries: Int, dateProvider: @escaping () -> Date = { Date() }) {
         self.maxEntries = max(maxEntries, 1)
+        self.dateProvider = dateProvider
     }
 
     mutating func record(_ id: String) -> Bool {
         if handled.contains(id) { return false }
         handled.insert(id)
         order.append(id)
+        timestamps[id] = dateProvider()
+        pruneExpired()
         while order.count > maxEntries, let oldest = order.first {
             order.removeFirst()
             handled.remove(oldest)
+            timestamps.removeValue(forKey: oldest)
         }
         return true
+    }
+
+    private mutating func pruneExpired() {
+        let now = dateProvider()
+        order = order.filter { id in
+            if let ts = timestamps[id], now.timeIntervalSince(ts) <= ttl {
+                return true
+            }
+            handled.remove(id)
+            timestamps.removeValue(forKey: id)
+            return false
+        }
     }
 }
 

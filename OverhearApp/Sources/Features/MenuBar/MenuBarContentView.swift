@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import Combine
 
 extension NSNotification.Name {
     static let scrollToToday = NSNotification.Name("ScrollToToday")
@@ -729,7 +730,15 @@ struct LiveNotesView: View {
                 }
                 llmIsReady = true
             }
+            if llmIsReady {
+                lastLoggedLLMState = llmStateDescription
+                return
+            }
             // Only log state transitions when not ready to avoid log spam.
+            if llmStateDescription.localizedCaseInsensitiveContains("LLM ready") {
+                lastLoggedLLMState = llmStateDescription
+                return
+            }
             if !llmIsReady, llmStateDescription != lastLoggedLLMState {
                 FileLogger.log(category: "LiveNotesView", message: "LLM state updated UI: \(llmStateDescription)")
                 lastLoggedLLMState = llmStateDescription

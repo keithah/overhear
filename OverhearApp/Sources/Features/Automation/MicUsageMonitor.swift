@@ -110,12 +110,12 @@ final class MicUsageMonitor {
             }
         }
         defaultDeviceListener = nil
+        rebindTask?.cancel()
+        rebindTask = nil
     }
 
-    deinit {
-        Task { @MainActor [weak self] in
-            self?.stop()
-        }
+    @MainActor deinit {
+        stop()
     }
 
     private func refreshState() async {
@@ -153,7 +153,7 @@ final class MicUsageMonitor {
 
     private func rebindToCurrentDevice() async {
         rebindTask?.cancel()
-        rebindTask = Task { [weak self] in
+        rebindTask = Task { @MainActor [weak self] in
             guard let self else { return }
             guard !self.rebinding else { return }
             self.rebinding = true

@@ -108,7 +108,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
                 self?.updateStatusItemIcon()
             }
         autoRecordingCoordinator.onManagerUpdate = { manager in
-            if let manager {
+            if let manager = manager as? MeetingRecordingManager {
                 LiveNotesWindowController.shared.show(autoManager: manager)
             }
         }

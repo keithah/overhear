@@ -4,10 +4,11 @@ import EventKit
 
 final class CalendarAccessHelperTests: XCTestCase {
     func testAuthorizationDecisions() {
-        XCTAssertTrue(CalendarAccessHelper.isAuthorized(.authorized))
         if #available(macOS 14.0, *) {
             XCTAssertTrue(CalendarAccessHelper.isAuthorized(.fullAccess))
             XCTAssertFalse(CalendarAccessHelper.isAuthorized(.writeOnly))
+        } else {
+            XCTAssertTrue(CalendarAccessHelper.isAuthorized(.authorized))
         }
         XCTAssertFalse(CalendarAccessHelper.isAuthorized(.denied))
         XCTAssertFalse(CalendarAccessHelper.isAuthorized(.restricted))
@@ -15,11 +16,13 @@ final class CalendarAccessHelperTests: XCTestCase {
 
     func testShouldPromptOnlyWhenNotDetermined() {
         XCTAssertTrue(CalendarAccessHelper.shouldPrompt(status: .notDetermined))
-        XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .authorized))
         XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .denied))
         XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .restricted))
         if #available(macOS 14.0, *) {
             XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .writeOnly))
+            XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .fullAccess))
+        } else {
+            XCTAssertFalse(CalendarAccessHelper.shouldPrompt(status: .authorized))
         }
     }
 }

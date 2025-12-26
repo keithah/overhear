@@ -20,6 +20,8 @@ final class CallDetectionService {
     private var activePollTask: Task<Void, Never>?
     private weak var autoCoordinator: AutoRecordingCoordinator?
     private weak var preferences: PreferencesService?
+    private var lastAXQueryDate: Date?
+    private let minAXQueryInterval: TimeInterval = 0.5
 
     // Known meeting bundle IDs (native apps) and browsers used for Meet.
     private let supportedMeetingBundles: Set<String> = [
@@ -365,7 +367,16 @@ final class CallDetectionService {
     }
 
     private func titleInfoOffMain(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
-        await Task.detached { [weak self] () -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
+        let canQuery = await MainActor.run { () -> Bool in
+            if let last = lastAXQueryDate, Date().timeIntervalSince(last) < minAXQueryInterval {
+                return false
+            }
+            lastAXQueryDate = Date()
+            return true
+        }
+        guard canQuery else { return nil }
+
+        return await Task.detached(priority: .utility) { [weak self] in
             guard let self else { return nil }
             return self.activeWindowTitle(for: app)
         }.value

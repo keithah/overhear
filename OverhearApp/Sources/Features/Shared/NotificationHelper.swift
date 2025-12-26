@@ -10,6 +10,15 @@ enum NotificationHelper {
     private static let maxPromptOnlyBodyLength = 30
     private static let accessibilityWarningKey = "com.overhear.notification.accessibilityWarningShown"
     private static let browserUrlWarningKey = "com.overhear.notification.browserUrlWarningShown"
+    private static var supportsUserNotifications: Bool {
+#if DEBUG
+        // Unit tests and non-app hosts (Xcode toolchain) cannot schedule UNUserNotifications.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return false
+        }
+#endif
+        return Bundle.main.bundleURL.pathExtension == "app"
+    }
 
     static func requestPermission(completion: (@Sendable () -> Void)? = nil) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -250,6 +259,10 @@ extension NotificationHelper {
     }
 
     static func sendLLMFallback(original: String, fallback: String) {
+        guard supportsUserNotifications else {
+            logger.debug("Skipping LLM fallback notification outside app host")
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = "LLM model fallback"
         content.body = "Using \(fallback) because \(original) failed to load."

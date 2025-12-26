@@ -30,6 +30,7 @@ actor LocalLLMPipeline {
     private var lastProgressLogBucket: Int = -1
     private var consecutiveFailures = 0
     private var cooldownUntil: Date?
+    private var lastLoggedState: State?
     private var modelID: String {
         MLXPreferences.modelID()
     }
@@ -128,7 +129,7 @@ actor LocalLLMPipeline {
 
     private func tryMLXSummarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async -> MeetingSummary? {
         guard let client else { return nil }
-        let trimmedTranscript = transcript.count > 10_000 ? String(transcript.prefix(10_000)) + "\n\n[Truncated]" : transcript
+        let trimmedTranscript = chunkedTranscript(transcript, chunkSize: 4000, maxChunks: 4)
         await ensureReady()
         guard case .ready = state else { return nil }
         do {
@@ -171,6 +172,22 @@ actor LocalLLMPipeline {
 
     func currentState() -> State {
         return state
+    }
+
+    private func chunkedTranscript(_ transcript: String, chunkSize: Int, maxChunks: Int) -> String {
+        guard transcript.count > chunkSize else { return transcript }
+        var chunks: [String] = []
+        var current = transcript[...]
+        while !current.isEmpty && chunks.count < maxChunks {
+            let end = current.index(current.startIndex, offsetBy: min(chunkSize, current.count))
+            let slice = current[current.startIndex..<end]
+            chunks.append(String(slice))
+            current = current[end...]
+        }
+        if !current.isEmpty {
+            chunks.append("[Truncated]")
+        }
+        return chunks.joined(separator: "\n---\n")
     }
 
     // MARK: - Warmup internals
@@ -218,6 +235,10 @@ actor LocalLLMPipeline {
 
         while attempts < maxAttempts {
             attempts += 1
+            if attempts > 1 {
+                let backoffSeconds = pow(2.0, Double(attempts - 2))
+                try? await Task.sleep(nanoseconds: UInt64(backoffSeconds * 1_000_000_000))
+            }
 
             // Allow recovery from unavailable; only skip if we're already working or ready.
             switch state {
@@ -311,7 +332,10 @@ actor LocalLLMPipeline {
     }
 
     private func notifyStateChanged() {
-        FileLogger.log(category: logCategory, message: "State changed to \(state)")
+        if state != lastLoggedState {
+            FileLogger.log(category: logCategory, message: "State changed to \(state)")
+            lastLoggedState = state
+        }
         NotificationCenter.default.post(
             name: LocalLLMPipeline.stateChangedNotification,
             object: nil,

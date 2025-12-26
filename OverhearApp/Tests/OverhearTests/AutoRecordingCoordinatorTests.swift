@@ -1,0 +1,72 @@
+import XCTest
+@testable import Overhear
+
+@MainActor
+final class AutoRecordingCoordinatorTests: XCTestCase {
+    @MainActor
+    final class FakeManager: RecordingManagerType {
+        enum ResultState {
+            case success
+            case fail
+        }
+        @Published var status: MeetingRecordingManager.Status = .idle
+        var meetingTitle: String = "Test"
+        var displayTitle: String { meetingTitle }
+        var transcriptID: String?
+        var liveTranscript: String = ""
+        var liveSegments: [LiveTranscriptSegment] = []
+        var summary: MeetingSummary?
+        var startCount = 0
+        var stopCount = 0
+        var behavior: ResultState = .success
+
+        func startRecording(duration: TimeInterval) async {
+            startCount += 1
+            switch behavior {
+            case .success:
+                status = .capturing
+            case .fail:
+                status = .failed(NSError(domain: "test", code: -1))
+            }
+        }
+
+        func stopRecording() async {
+            stopCount += 1
+            status = .completed
+        }
+
+        func regenerateSummary(template: PromptTemplate?) async {}
+
+        func saveNotes(_ notes: String) async {}
+    }
+
+    func testStartsAndStopsWithGrace() async {
+        let manager = FakeManager()
+        let coordinator = AutoRecordingCoordinator(
+            stopGracePeriod: 0.1,
+            maxRecordingDuration: 10,
+            managerFactory: { _, _ async throws -> RecordingManagerRef in manager }
+        )
+        coordinator.onDetection(appName: "App", meetingTitle: "Title")
+        XCTAssertEqual(manager.startCount, 1)
+        XCTAssertTrue(coordinator.isRecording)
+
+        coordinator.onNoDetection()
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(manager.stopCount, 1)
+        XCTAssertFalse(coordinator.isRecording)
+    }
+
+    func testFailedStartClearsState() async {
+        let manager = FakeManager()
+        manager.behavior = .fail
+        let coordinator = AutoRecordingCoordinator(
+            stopGracePeriod: 0.1,
+            maxRecordingDuration: 10,
+            managerFactory: { _, _ async throws -> RecordingManagerRef in manager }
+        )
+        coordinator.onDetection(appName: "App", meetingTitle: "Title")
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(coordinator.isRecording)
+    }
+}

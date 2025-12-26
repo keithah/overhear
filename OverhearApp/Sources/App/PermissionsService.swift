@@ -16,8 +16,14 @@ final class PermissionsService: ObservableObject {
         calendarAuthorizationStatus = status
         
         // If already have permission, return true
-        if status == .fullAccess || status == .authorized {
-            return true
+        if #available(macOS 14.0, *) {
+            if status == .fullAccess {
+                return true
+            }
+        } else {
+            if status == .authorized {
+                return true
+            }
         }
         
         // If denied or restricted, return false

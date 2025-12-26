@@ -363,13 +363,16 @@ actor TranscriptStore {
             if data.count == 32 {
                 return SymmetricKey(data: data)
             } else {
-                // Corrupted key size - delete and recreate
-                print("Warning: Encryption key has invalid size (\(data.count) bytes). Previously encrypted transcripts may become unrecoverable.")
-                let deleteQuery: [String: Any] = [
+                FileLogger.log(category: "TranscriptStore", message: "Encryption key invalid size (\(data.count)); keeping old key for recovery and generating new one")
+                // Keep old key for potential recovery; store under a legacy tag.
+                let legacyTag = "\(keyTag).legacy.\(UUID().uuidString)"
+                let addLegacy: [String: Any] = [
                     kSecClass as String: kSecClassGenericPassword,
-                    kSecAttrAccount as String: keyTag
+                    kSecAttrAccount as String: legacyTag,
+                    kSecValueData as String: data,
+                    kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
                 ]
-                SecItemDelete(deleteQuery as CFDictionary)
+                _ = SecItemAdd(addLegacy as CFDictionary, nil)
                 // Fall through to create new key
             }
         }
