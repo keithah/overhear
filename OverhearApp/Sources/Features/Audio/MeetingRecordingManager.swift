@@ -71,6 +71,7 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     @Published private(set) var summary: MeetingSummary?
     private(set) var transcriptID: String?
+    private var pendingNotes: String?
 
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline
@@ -223,7 +224,12 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     func saveNotes(_ notes: String) async {
-        guard let transcriptID else { return }
+        // Always remember the latest notes in case the transcript ID is not yet assigned.
+        pendingNotes = notes
+        guard let transcriptID else {
+            FileLogger.log(category: "MeetingRecordingManager", message: "Deferring notes persist until transcriptID is available")
+            return
+        }
         do {
             try await pipeline.updateTranscript(id: transcriptID) { stored in
                 StoredTranscript(
@@ -240,6 +246,7 @@ final class MeetingRecordingManager: ObservableObject {
                 )
             }
             FileLogger.log(category: "MeetingRecordingManager", message: "Persisted notes for \(transcriptID)")
+            pendingNotes = nil
         } catch {
             FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes: \(error.localizedDescription)")
         }
@@ -305,6 +312,7 @@ final class MeetingRecordingManager: ObservableObject {
                 category: "MeetingRecordingManager",
                 message: "Quick transcript saved for \(metadata.meetingID); scheduling background refresh"
             )
+            await persistPendingNotesIfNeeded()
         } catch {
             FileLogger.log(
                 category: "MeetingRecordingManager",
@@ -397,20 +405,44 @@ final class MeetingRecordingManager: ObservableObject {
         self.transcriptionTask = processingTask
         _ = await processingTask.result
     }
+
+    private func persistPendingNotesIfNeeded() async {
+        guard let pendingNotes, let transcriptID else { return }
+        do {
+            try await pipeline.updateTranscript(id: transcriptID) { stored in
+                StoredTranscript(
+                    id: stored.id,
+                    meetingID: stored.meetingID,
+                    title: stored.title,
+                    date: stored.date,
+                    transcript: stored.transcript,
+                    duration: stored.duration,
+                    audioFilePath: stored.audioFilePath,
+                    segments: stored.segments,
+                    summary: stored.summary,
+                    notes: pendingNotes
+                )
+            }
+            FileLogger.log(category: "MeetingRecordingManager", message: "Persisted pending notes for \(transcriptID)")
+            self.pendingNotes = nil
+        } catch {
+            FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist pending notes: \(error.localizedDescription)")
+        }
+    }
 }
 
 #if canImport(FluidAudio)
 private extension MeetingRecordingManager {
     /// Streaming configuration tuned for balanced accuracy/latency for live transcripts.
     private var streamingConfig: StreamingAsrConfig {
+        // Favor accuracy/stability: longer chunks and context so we stop dropping words.
         StreamingAsrConfig(
-            // Bias toward lower latency for first tokens and confirmations; shorter chunks.
-            chunkSeconds: 2.5,
-            hypothesisChunkSeconds: 0.35,
-            leftContextSeconds: 0.6,
-            rightContextSeconds: 0.35,
-            minContextForConfirmation: 1.2,
-            confirmationThreshold: 0.5
+            chunkSeconds: 10.0,              // near FluidAudio's recommended 10–11s windows
+            hypothesisChunkSeconds: 0.8,     // quick partials
+            leftContextSeconds: 2.0,         // carry enough history for word boundaries
+            rightContextSeconds: 1.5,        // small lookahead to avoid clipping endings
+            minContextForConfirmation: 8.0,  // wait for context before finalizing
+            confirmationThreshold: 0.80      // higher confidence before locking text
         )
     }
 

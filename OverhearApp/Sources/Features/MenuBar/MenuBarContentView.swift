@@ -313,6 +313,10 @@ struct LiveNotesView: View {
     @State private var notesPrefilled = false
     @State private var llmStateDescription: String = "Checking…"
     @State private var isWarmingLLM = false
+    @State private var warmupTask: Task<Void, Never>?
+    @State private var llmStatePollTask: Task<Void, Never>?
+    @State private var llmIsReady = false
+    @State private var lastLoggedLLMState: String?
     var onHide: () -> Void
 
     private var statusText: String {
@@ -342,6 +346,16 @@ struct LiveNotesView: View {
             Task { await prefillNotesIfNeeded() }
             Task { await refreshLLMState() }
             Task { await warmLLM() }
+            startLLMStatePolling()
+        }
+        .onDisappear {
+            llmStatePollTask?.cancel()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: LocalLLMPipeline.stateChangedNotification)) { _ in
+            Task { await refreshLLMState() }
+            if llmIsReady {
+                llmStatePollTask?.cancel()
+            }
         }
     }
 
@@ -372,10 +386,16 @@ struct LiveNotesView: View {
             Button {
                 Task { await coordinator.stopRecording() }
             } label: {
-                Image(systemName: "stop.fill")
-                    .foregroundColor(.white)
-                    .padding(6)
-                    .background(Circle().fill(Color.red))
+                HStack(spacing: 6) {
+                    Image(systemName: "stop.fill")
+                        .foregroundColor(.white)
+                    Text("Stop")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(Color.red))
             }
             .buttonStyle(.plain)
             .help("Stop recording")
@@ -386,6 +406,11 @@ struct LiveNotesView: View {
             .buttonStyle(.plain)
             .help("Hide window")
             Menu {
+                if coordinator.isRecording {
+                    Button("Stop recording") {
+                        Task { await coordinator.stopRecording() }
+                    }
+                }
                 Button("Open Sound settings…") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
                         NSWorkspace.shared.open(url)
@@ -501,20 +526,30 @@ struct LiveNotesView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.green)
                 } else {
-                    Text("Generates after recording")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                Text(llmStateDescription)
-                    .font(.system(size: 10))
+                Text("Generates after recording")
+                    .font(.system(size: 11))
                     .foregroundColor(.secondary)
-                Button {
-                    Task { await warmLLM() }
-                } label: {
-                    Text(isWarmingLLM ? "Warming…" : "Warm up LLM")
+            }
+            Text(llmStateDescription)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+                if llmIsReady {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("LLM ready")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.green)
+                    }
+                } else {
+                    Button {
+                        Task { await warmLLM() }
+                    } label: {
+                        Text(isWarmingLLM ? "Warming…" : "Warm up LLM")
+                    }
+                    .disabled(isWarmingLLM)
+                    .controlSize(.mini)
                 }
-                .disabled(isWarmingLLM)
-                .controlSize(.mini)
                 Menu {
                     Button("Regenerate (default prompt)") {
                         Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
@@ -675,29 +710,63 @@ struct LiveNotesView: View {
             switch state {
             case .unavailable(let reason):
                 llmStateDescription = "LLM unavailable (\(reason))"
+                llmIsReady = false
             case .idle:
                 llmStateDescription = "LLM idle"
+                llmIsReady = false
             case .downloading(let progress):
                 let pct = Int((progress * 100).rounded())
                 llmStateDescription = "LLM downloading… \(pct)%"
+                llmIsReady = false
             case .warming:
                 llmStateDescription = "LLM warming…"
+                llmIsReady = false
             case .ready(let modelID):
                 if let modelID {
                     llmStateDescription = "LLM ready (\(modelID))"
                 } else {
                     llmStateDescription = "LLM ready"
                 }
+                llmIsReady = true
             }
+        }
+        // Only log state transitions when not ready to avoid log spam.
+        if !llmIsReady, llmStateDescription != lastLoggedLLMState {
+            FileLogger.log(category: "LiveNotesView", message: "LLM state updated UI: \(llmStateDescription)")
+            lastLoggedLLMState = llmStateDescription
         }
     }
 
     private func warmLLM() async {
-        guard !isWarmingLLM else { return }
+        if let warmupTask {
+            await warmupTask.value
+            return
+        }
         isWarmingLLM = true
-        await LocalLLMPipeline.shared.warmup()
+        let task = Task {
+            await LocalLLMPipeline.shared.warmup()
+        }
+        warmupTask = task
+        await task.value
+        warmupTask = nil
         await refreshLLMState()
+        if llmIsReady {
+            llmStatePollTask?.cancel()
+        } else {
+            startLLMStatePolling()
+        }
         isWarmingLLM = false
+    }
+
+    private func startLLMStatePolling() {
+        llmStatePollTask?.cancel()
+        guard !llmIsReady else { return }
+        llmStatePollTask = Task {
+            while !Task.isCancelled && !llmIsReady {
+                await refreshLLMState()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
     }
 
     private func exportSummary() {
@@ -749,7 +818,17 @@ struct LiveNotesManagerView: View {
     @State private var liveNotes: String = ""
     @State private var llmStateDescription: String = "Checking…"
     @State private var isWarmingLLM = false
+    @State private var warmupTask: Task<Void, Never>?
     var onHide: () -> Void
+
+    private var isActiveRecording: Bool {
+        switch manager.status {
+        case .capturing, .transcribing:
+            return true
+        default:
+            return false
+        }
+    }
 
     private var statusText: String {
         switch manager.status {
@@ -817,10 +896,16 @@ struct LiveNotesManagerView: View {
             Button {
                 Task { await manager.stopRecording() }
             } label: {
-                Image(systemName: "stop.fill")
-                    .foregroundColor(.white)
-                    .padding(6)
-                    .background(Circle().fill(Color.red))
+                HStack(spacing: 6) {
+                    Image(systemName: "stop.fill")
+                        .foregroundColor(.white)
+                    Text("Stop")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(Color.red))
             }
             .buttonStyle(.plain)
             .help("Stop recording")
@@ -831,6 +916,11 @@ struct LiveNotesManagerView: View {
             .buttonStyle(.plain)
             .help("Hide window")
             Menu {
+                if isActiveRecording {
+                    Button("Stop recording") {
+                        Task { await manager.stopRecording() }
+                    }
+                }
                 Button("Open Sound settings…") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.sound") {
                         NSWorkspace.shared.open(url)
@@ -1175,9 +1265,17 @@ struct LiveNotesManagerView: View {
     }
 
     private func warmLLM() async {
-        guard !isWarmingLLM else { return }
+        if let warmupTask {
+            await warmupTask.value
+            return
+        }
         isWarmingLLM = true
-        await LocalLLMPipeline.shared.warmup()
+        let task = Task {
+            await LocalLLMPipeline.shared.warmup()
+        }
+        warmupTask = task
+        await task.value
+        warmupTask = nil
         await refreshLLMState()
         isWarmingLLM = false
     }
