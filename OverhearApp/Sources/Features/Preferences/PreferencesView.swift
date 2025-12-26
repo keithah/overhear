@@ -201,7 +201,7 @@ struct PreferencesView: View {
 
             Section(header: Text("On-device LLM (MLX)")) {
                 VStack(alignment: .leading, spacing: 8) {
-                    TextField("Model ID (e.g. mlx-community/SmolLM2-1.7B-Instruct-4bit)", text: $mlxModelID)
+                    TextField("Model ID (e.g. mlx-community/Llama-3.2-1B-Instruct-4bit)", text: $mlxModelID)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 420)
                     HStack(spacing: 12) {

@@ -125,7 +125,7 @@ actor TranscriptStore {
         do {
             FileLogger.log(
                 category: "TranscriptStore",
-                message: "save() writing \(fileURL.lastPathComponent)"
+                message: "save() writing \(fileURL.lastPathComponent) summaryChars=\(transcript.summary?.summary.count ?? 0) highlights=\(transcript.summary?.highlights.count ?? 0) actions=\(transcript.summary?.actionItems.count ?? 0)"
             )
             let data = try encoder.encode(transcript)
             let encrypted = try Self.encryptData(data, using: encryptionKey)

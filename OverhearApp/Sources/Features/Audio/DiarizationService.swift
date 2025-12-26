@@ -14,9 +14,17 @@ actor DiarizationService {
         do {
             let segments = try await engine.diarize(audioURL: audioURL)
             diarizationLogger.info("Diarization returned \(segments.count) speaker segments")
+            FileLogger.log(
+                category: "DiarizationService",
+                message: "Diarization returned \(segments.count) segments for \(audioURL.lastPathComponent)"
+            )
             return segments
         } catch {
             diarizationLogger.error("Diarization failed: \(error.localizedDescription, privacy: .public)")
+            FileLogger.log(
+                category: "DiarizationService",
+                message: "Diarization failed: \(error.localizedDescription)"
+            )
             return []
         }
     }

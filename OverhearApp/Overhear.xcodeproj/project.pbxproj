@@ -43,6 +43,7 @@
 	7B4976A61FDC8DF74F991A16 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6760441C0977FD19F2B6838 /* PreferencesView.swift */; };
 	B09ACBBF34AF004C83A0835A /* OverhearApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5563B52A06A54C980A22A14 /* OverhearApp.swift */; };
 	B6D0B2A219F53F31AD9C3EB3 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 8C1DE61BFEDC45A39B3A7D65 /* FluidAudio */; };
+	E7D5B8A7F5CB4F5BB8D02F1A /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 7C4E1C6C7B2C4B5D8DDC7B2E /* MLXLLM */; };
 	C2D5E6CE6C1B18A934FB6917 /* MenuBarContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12220410D1DBBF18A9BA1D0 /* MenuBarContentView.swift */; };
 	C3BAC7E2A8CDBF78BAB8A332 /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1126CA13260065D9BC095422 /* Meeting.swift */; };
 	EAF99761927E193EB588F6CA /* PreferencesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C268D5AFB48081C5B8477301 /* PreferencesWindowController.swift */; };
@@ -122,6 +123,7 @@
 		buildActionMask = 2147483647;
 		files = (
 			B6D0B2A219F53F31AD9C3EB3 /* FluidAudio in Frameworks */,
+			E7D5B8A7F5CB4F5BB8D02F1A /* MLXLLM in Frameworks */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
@@ -293,6 +295,10 @@
 		dependencies = (
 		);
 		name = Overhear;
+		packageProductDependencies = (
+			8C1DE61BFEDC45A39B3A7D65 /* FluidAudio */,
+			7C4E1C6C7B2C4B5D8DDC7B2E /* MLXLLM */,
+		);
 		productName = Overhear;
 		productReference = B450443A64541675999965EF /* Overhear.app */;
 		productType = "com.apple.product-type.application";
@@ -323,6 +329,7 @@
 		productRefGroup = D2B8E6BF76808FD739F37E61 /* Products */;
 		packageReferences = (
 			88C9F04FA24C42FB8A939657 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+			7D8C4F6F0B5B4C32B3E3E6D9 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
 		);
 		projectDirPath = "";
 		projectRoot = "";
@@ -594,6 +601,14 @@
 				minimumVersion = 0.7.11;
 			};
 		};
+		7D8C4F6F0B5B4C32B3E3E6D9 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 2.29.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -601,6 +616,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 88C9F04FA24C42FB8A939657 /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
+		};
+		7C4E1C6C7B2C4B5D8DDC7B2E /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7D8C4F6F0B5B4C32B3E3E6D9 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
 		};
 /* End XCSwiftPackageProductDependency section */
 

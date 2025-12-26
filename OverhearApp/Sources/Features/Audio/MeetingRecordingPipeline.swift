@@ -103,6 +103,10 @@ actor MeetingRecordingPipeline {
         let transcriptValue = transcriptText ?? ""
         let segments = await diarizationService.analyze(audioURL: audioURL)
         let summary = await summarizationService.summarize(transcript: transcriptValue, segments: segments)
+        FileLogger.log(
+            category: "MeetingRecordingPipeline",
+            message: "Summarization complete for \(metadata.meetingID); summaryChars=\(summary.summary.count) highlights=\(summary.highlights.count) actions=\(summary.actionItems.count) segments=\(segments.count)"
+        )
 
         let stored = StoredTranscript(
             id: transcriptID,
