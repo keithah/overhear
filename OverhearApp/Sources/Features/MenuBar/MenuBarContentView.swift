@@ -731,12 +731,12 @@ struct LiveNotesView: View {
                 llmIsReady = true
             }
             // Avoid verbose logging when the model is healthy; only log transitions into failure states.
-            if !llmIsReady, llmStateDescription != lastLoggedLLMState {
+            if !llmStateDescription.lowercased().contains("ready"),
+               !llmIsReady,
+               llmStateDescription != lastLoggedLLMState {
                 FileLogger.log(category: "LiveNotesView", message: "LLM state updated UI: \(llmStateDescription)")
-                lastLoggedLLMState = llmStateDescription
-            } else {
-                lastLoggedLLMState = llmStateDescription
             }
+            lastLoggedLLMState = llmStateDescription
         }
     }
 
