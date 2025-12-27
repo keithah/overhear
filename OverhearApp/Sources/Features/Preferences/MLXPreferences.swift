@@ -2,6 +2,8 @@ import Foundation
 import OSLog
 
 struct MLXPreferences {
+    static let modelChangedNotification = Notification.Name("MLXPreferencesModelChanged")
+
     static func modelID(default value: String = "mlx-community/Llama-3.2-1B-Instruct-4bit") -> String {
         let env = ProcessInfo.processInfo.environment["OVERHEAR_MLX_MODEL_ID"]
         let stored = UserDefaults.standard.string(forKey: "overhear.mlx.modelID")
@@ -22,9 +24,11 @@ struct MLXPreferences {
     static func setModelID(_ id: String) {
         guard let cleaned = sanitize(id) else {
             UserDefaults.standard.removeObject(forKey: "overhear.mlx.modelID")
+            NotificationCenter.default.post(name: modelChangedNotification, object: nil)
             return
         }
         UserDefaults.standard.set(cleaned, forKey: "overhear.mlx.modelID")
+        NotificationCenter.default.post(name: modelChangedNotification, object: nil)
     }
 
     static func clearModelCache() {
@@ -57,7 +61,7 @@ struct MLXPreferences {
         }
     }
 
-    private static func sanitize(_ raw: String) -> String? {
+    static func sanitize(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         // Restrict to common HF/MLX identifier characters.

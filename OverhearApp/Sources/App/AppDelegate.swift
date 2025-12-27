@@ -281,8 +281,16 @@ final class RecordingOverlayController: NSObject, NSWindowDelegate {
     private func position(panel: NSPanel) {
         guard let screen = NSScreen.main else { return }
         let panelSize = panel.frame.size
-        let x = screen.visibleFrame.maxX - panelSize.width - 20
-        let y = screen.visibleFrame.maxY - panelSize.height - 60
+        let insets: NSEdgeInsets
+        if #available(macOS 12.0, *) {
+            insets = screen.safeAreaInsets
+        } else {
+            insets = NSEdgeInsets()
+        }
+        let horizontalPadding: CGFloat = max(16, insets.right + 8)
+        let verticalPadding: CGFloat = max(40, insets.top + 20)
+        let x = screen.visibleFrame.maxX - panelSize.width - horizontalPadding
+        let y = screen.visibleFrame.maxY - panelSize.height - verticalPadding
         panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
 

@@ -30,6 +30,7 @@ actor LocalLLMPipeline {
     private var lastProgressLogBucket: Int = -1
     private var consecutiveFailures = 0
     private var cooldownUntil: Date?
+    private var modelChangeObserver: NSObjectProtocol?
     private var lastLoggedState: State?
     private var modelID: String {
         MLXPreferences.modelID()
@@ -41,6 +42,13 @@ actor LocalLLMPipeline {
             state = .unavailable("MLX client not available")
         } else {
             state = .idle
+        }
+        modelChangeObserver = NotificationCenter.default.addObserver(
+            forName: MLXPreferences.modelChangedNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task { await self?.handleModelChanged() }
         }
     }
 
@@ -362,5 +370,21 @@ actor LocalLLMPipeline {
             object: nil,
             userInfo: ["state": state]
         )
+    }
+
+    private func handleModelChanged() async {
+        warmupGeneration &+= 1
+        downloadWatchTask?.cancel()
+        downloadWatchTask = nil
+        consecutiveFailures = 0
+        cooldownUntil = nil
+        state = client == nil ? .unavailable("MLX client not available") : .idle
+        notifyStateChanged()
+    }
+
+    deinit {
+        if let observer = modelChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 }
