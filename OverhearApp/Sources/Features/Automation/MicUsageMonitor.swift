@@ -155,17 +155,22 @@ final class MicUsageMonitor {
     private var rebindTask: Task<Void, Never>?
 
     private func rebindToCurrentDevice() async {
+        guard !rebinding else { return }
+        rebinding = true
+
         let oldTask = rebindTask
         rebindTask = nil
         oldTask?.cancel()
-        // Avoid hangs if the previous task is stuck; wait briefly then proceed.
-        let waitTask = Task { @MainActor in await oldTask?.value }
-        _ = await waitTask.result
+        if let oldTask {
+            let waitTask = Task { await oldTask.value }
+            // Best-effort wait with a small timeout to avoid hanging the main actor.
+            async let timeout: Void = { try? await Task.sleep(nanoseconds: 2_000_000_000) }()
+            _ = await timeout
+            waitTask.cancel()
+        }
 
         rebindTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            guard !self.rebinding else { return }
-            self.rebinding = true
             defer { self.rebinding = false }
 
         // Tear down existing listener

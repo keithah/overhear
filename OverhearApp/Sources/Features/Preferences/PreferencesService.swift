@@ -136,7 +136,7 @@ final class PreferencesService: ObservableObject {
         self.autoRecordingEnabled = defaults.object(forKey: PreferenceKey.autoRecordingEnabled.rawValue) as? Bool ?? false
         self.autoShowLiveNotes = defaults.object(forKey: PreferenceKey.autoShowLiveNotes.rawValue) as? Bool ?? true
         self.redactMeetingTitles = defaults.object(forKey: PreferenceKey.redactMeetingTitles.rawValue) as? Bool ?? false
-        self.detectionPollingInterval = defaults.object(forKey: PreferenceKey.detectionPollingInterval.rawValue) as? Double ?? 3.0
+        self.detectionPollingInterval = defaults.object(forKey: PreferenceKey.detectionPollingInterval.rawValue) as? Double ?? 5.0
 
         updateLaunchAtLogin(launchAtLogin)
     }

@@ -730,17 +730,11 @@ struct LiveNotesView: View {
                 }
                 llmIsReady = true
             }
-            if llmIsReady {
-                lastLoggedLLMState = llmStateDescription
-                return
-            }
-            // Only log state transitions when not ready to avoid log spam.
-            if llmStateDescription.localizedCaseInsensitiveContains("LLM ready") {
-                lastLoggedLLMState = llmStateDescription
-                return
-            }
+            // Avoid verbose logging when the model is healthy; only log transitions into failure states.
             if !llmIsReady, llmStateDescription != lastLoggedLLMState {
                 FileLogger.log(category: "LiveNotesView", message: "LLM state updated UI: \(llmStateDescription)")
+                lastLoggedLLMState = llmStateDescription
+            } else {
                 lastLoggedLLMState = llmStateDescription
             }
         }

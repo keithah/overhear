@@ -177,13 +177,12 @@ final class NotificationDeduper {
         self.maxEntries = max(maxEntries, 1)
         self.ttl = max(1, ttl)
         self.dateProvider = dateProvider
-        cleanupTask = Task { [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
-                self.pruneExpired()
-            }
-        }
+        startCleanupTimer()
+    }
+
+    deinit {
+        cleanupTask?.cancel()
+        cleanupTask = nil
     }
 
     func record(_ id: String) -> Bool {
@@ -203,7 +202,11 @@ final class NotificationDeduper {
     private func pruneExpired() {
         let now = dateProvider()
         order = order.filter { id in
-            if let ts = timestamps[id], now.timeIntervalSince(ts) <= ttl {
+            guard let ts = timestamps[id] else {
+                handled.remove(id)
+                return false
+            }
+            if now.timeIntervalSince(ts) <= ttl {
                 return true
             }
             handled.remove(id)
@@ -211,12 +214,24 @@ final class NotificationDeduper {
             return false
         }
     }
+
+    private func startCleanupTimer() {
+        cleanupTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
+                await MainActor.run {
+                    self.pruneExpired()
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Recording overlay (in-meeting indicator)
 
 @MainActor
-final class RecordingOverlayController {
+final class RecordingOverlayController: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var hosting: NSHostingController<RecordingOverlayView>?
 
@@ -255,6 +270,7 @@ final class RecordingOverlayController {
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.contentView = hosting.view
         panel.isMovableByWindowBackground = false
+        panel.delegate = self
 
         self.panel = panel
         self.hosting = hosting
@@ -267,6 +283,11 @@ final class RecordingOverlayController {
         let x = screen.visibleFrame.maxX - panelSize.width - 20
         let y = screen.visibleFrame.maxY - panelSize.height - 60
         panel.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        panel = nil
+        hosting = nil
     }
 }
 

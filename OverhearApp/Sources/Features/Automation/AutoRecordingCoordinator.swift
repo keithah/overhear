@@ -28,6 +28,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     private var monitorStartDate: Date?
     private var state: RecordingState = .idle
     @Published private(set) var isRecording: Bool = false
+    private var detectionGeneration: Int = 0
     var onManagerUpdate: ((RecordingManagerRef?) -> Void)?
     var onCompleted: (() -> Void)?
     var onStatusUpdate: ((String, Bool) -> Void)?
@@ -67,8 +68,12 @@ final class AutoRecordingCoordinator: ObservableObject {
         }
 
         detectionTask?.cancel()
+        detectionGeneration &+= 1
+        let generation = detectionGeneration
         let task: Task<Void, Never> = Task { [weak self] in
-            await self?.startRecording(appName: appName, meetingTitle: meetingTitle)
+            guard let self else { return }
+            guard !Task.isCancelled else { return }
+            await self.startRecording(appName: appName, meetingTitle: meetingTitle, generation: generation)
         }
         detectionTask = task
     }
@@ -85,8 +90,9 @@ final class AutoRecordingCoordinator: ObservableObject {
         }
     }
 
-    private func startRecording(appName: String, meetingTitle: String?) async {
-        guard state == .starting else { return }
+    private func startRecording(appName: String, meetingTitle: String?, generation: Int) async {
+        guard state == .starting, generation == detectionGeneration else { return }
+        guard !Task.isCancelled else { return }
         let id = "detected-\(Int(Date().timeIntervalSince1970))"
         let title: String
         if let meetingTitle, !meetingTitle.isEmpty {

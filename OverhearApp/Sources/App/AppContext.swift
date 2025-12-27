@@ -49,6 +49,9 @@ final class AppContext: ObservableObject {
 
     private func wireCoordinators() {
         // Link weakly in one place to avoid accidental circular strong references.
+        // MeetingRecordingCoordinator.autoRecordingCoordinator is weak, as is
+        // AutoRecordingCoordinator.manualRecordingCoordinator, so this wiring
+        // does not introduce retain cycles.
         recordingCoordinator.autoRecordingCoordinator = autoRecordingCoordinator
         autoRecordingCoordinator.manualRecordingCoordinator = recordingCoordinator
     }

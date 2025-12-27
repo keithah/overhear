@@ -98,19 +98,21 @@ final class CallDetectionService {
         return true
     }
 
-    func stop() {
+    func stop(clearState: Bool = true) {
         if let observer = activationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
             activationObserver = nil
         }
         pollTimer?.invalidate()
         pollTimer = nil
-        lastNotifiedApp = nil
-        lastNotifiedTitle = nil
+        if clearState {
+            lastNotifiedApp = nil
+            lastNotifiedTitle = nil
+            telemetryCount = 0
+        }
         micMonitor.stop()
         permissionRetryTask?.cancel()
         permissionRetryTask = nil
-        telemetryCount = 0
         logger.info("Call detection polling stopped")
     }
 
@@ -128,11 +130,16 @@ final class CallDetectionService {
     func updatePollInterval(_ interval: TimeInterval) {
         pollInterval = max(1.0, interval)
         if pollTimer != nil {
-            stop()
+            let lastApp = lastNotifiedApp
+            let lastTitle = lastNotifiedTitle
+            stop(clearState: false)
+            lastNotifiedApp = lastApp
+            lastNotifiedTitle = lastTitle
         }
         if let autoCoordinator, let preferences {
-            telemetryCount = 0
+            let telemetry = telemetryCount
             _ = start(autoCoordinator: autoCoordinator, preferences: preferences)
+            telemetryCount = telemetry
         }
     }
 
@@ -252,7 +259,8 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement")
             return nil
         }
-        let windowElement = unsafeBitCast(window, to: AXUIElement.self)
+        // CFGetTypeID check above ensures this cast is safe; force-cast so failures are visible during development.
+        let windowElement = window as! AXUIElement
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)
