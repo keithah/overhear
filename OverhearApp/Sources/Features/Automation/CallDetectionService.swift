@@ -6,6 +6,7 @@ import os.log
 /// uses microphone-in-use as a gating signal to reduce false positives.
 @MainActor
 final class CallDetectionService {
+    private var pollGeneration = 0
     private let logger = Logger(subsystem: "com.overhear.app", category: "CallDetectionService")
     private var activationObserver: NSObjectProtocol?
     private var pollTimer: Timer?
@@ -156,12 +157,15 @@ final class CallDetectionService {
     }
 
     private func pollFrontmostApp() async {
+        pollGeneration &+= 1
+        let generation = pollGeneration
         if let activePollTask {
             // Avoid overlapping polls; keep the latest request.
             activePollTask.cancel()
         }
         let newTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            guard generation == self.pollGeneration else { return }
             guard self.preferencesAllowNotifications else { return }
             guard let app = NSWorkspace.shared.frontmostApplication,
                   let bundleID = app.bundleIdentifier else {
@@ -260,7 +264,7 @@ final class CallDetectionService {
             return nil
         }
         // CFGetTypeID check above ensures this cast is safe; force-cast so failures are visible during development.
-        let windowElement = window as! AXUIElement
+        let windowElement = unsafeBitCast(window, to: AXUIElement.self)
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)

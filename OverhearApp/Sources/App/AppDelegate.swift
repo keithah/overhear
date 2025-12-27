@@ -174,7 +174,8 @@ final class NotificationDeduper {
     private var cleanupTask: Task<Void, Never>?
 
     init(maxEntries: Int, ttl: TimeInterval = 60 * 60, dateProvider: @escaping () -> Date = { Date() }) {
-        self.maxEntries = max(maxEntries, 1)
+        let hardCap = 500
+        self.maxEntries = min(max(maxEntries, 1), hardCap)
         self.ttl = max(1, ttl)
         self.dateProvider = dateProvider
         startCleanupTimer()

@@ -21,7 +21,7 @@ actor LocalLLMPipeline {
     private let client: MLXClient?
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
     private let logCategory = "LocalLLMPipeline"
-    private let warmupTimeout: TimeInterval = 600
+    private let warmupTimeout: TimeInterval = 900
     private let downloadWatchdogDelay: TimeInterval = 2
     private let failureCooldown: TimeInterval = 300
     private(set) var state: State
@@ -280,6 +280,9 @@ actor LocalLLMPipeline {
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
                 guard generation == warmupGeneration else { return }
+                if case WarmupError.timeout = error {
+                    FileLogger.log(category: logCategory, message: "MLX warmup timeout after \(timeout)s")
+                }
                 logger.error("MLX warmup failed: \(error.localizedDescription, privacy: .public)")
                 FileLogger.log(category: logCategory, message: "MLX warmup failed: \(error.localizedDescription)")
                 consecutiveFailures += 1

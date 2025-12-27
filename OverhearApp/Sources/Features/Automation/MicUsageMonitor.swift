@@ -162,11 +162,14 @@ final class MicUsageMonitor {
         rebindTask = nil
         oldTask?.cancel()
         if let oldTask {
-            let waitTask = Task { await oldTask.value }
-            // Best-effort wait with a small timeout to avoid hanging the main actor.
-            async let timeout: Void = { try? await Task.sleep(nanoseconds: 2_000_000_000) }()
-            _ = await timeout
-            waitTask.cancel()
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await oldTask.value }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+                _ = await group.next()
+                group.cancelAll()
+            }
         }
 
         rebindTask = Task { @MainActor [weak self] in

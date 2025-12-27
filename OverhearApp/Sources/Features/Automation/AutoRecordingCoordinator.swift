@@ -23,6 +23,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     private var activeManager: RecordingManagerRef?
     private var stopTask: Task<Void, Never>?
     private var detectionTask: Task<Void, Never>?
+    private var stopGeneration: Int = 0
     private var activeTitle: String?
     private var monitorTask: Task<Void, Never>?
     private var monitorStartDate: Date?
@@ -82,8 +83,11 @@ final class AutoRecordingCoordinator: ObservableObject {
         guard activeManager != nil, state == .recording else { return }
         // Schedule a graceful stop to avoid flapping on brief focus changes.
         if stopTask == nil {
+            stopGeneration &+= 1
+            let generation = stopGeneration
             stopTask = Task { [weak self] in
                 guard let self = self else { return }
+                guard generation == self.stopGeneration else { return }
                 try? await Task.sleep(nanoseconds: UInt64(self.stopGracePeriod * 1_000_000_000))
                 await self.stopRecording()
             }

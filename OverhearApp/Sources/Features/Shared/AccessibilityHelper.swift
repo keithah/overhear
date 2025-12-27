@@ -27,9 +27,11 @@ enum AccessibilityHelper {
             log("AX already trusted; skipping prompt")
             return true
         }
-        // Give the system time to surface the prompt and for the user to respond (best-effort).
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
-        let trusted = AXIsProcessTrusted()
+        // Best-effort: poll trust status after a short delay without blocking the main actor.
+        let trusted = await Task.detached(priority: .utility) {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            return AXIsProcessTrusted()
+        }.value
         log("AX trust after prompt: \(trusted)")
         return trusted
     }
