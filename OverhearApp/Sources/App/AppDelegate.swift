@@ -24,11 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let context = AppContext.makeDefault()
         self.context = context
-
-        // Proactively warm the MLX model so summaries/prompts are ready sooner (best-effort).
-        Task {
-            await LocalLLMPipeline.shared.warmup()
-        }
+        Task { await notificationDeduper.startCleanup() }
 
         // Request calendar permissions with proper app focus; retry once if needed.
         Task { @MainActor in
@@ -135,9 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let notificationID = response.notification.request.identifier
-        let shouldHandle = await MainActor.run { () -> Bool in
-            return notificationDeduper.record(notificationID)
-        }
+        let shouldHandle = await notificationDeduper.record(notificationID)
         guard shouldHandle else { return }
 
         let actionIdentifier = response.actionIdentifier
@@ -169,8 +163,7 @@ private extension AppDelegate {
     // Additional helpers can live here
 }
 
-@MainActor
-final class NotificationDeduper {
+actor NotificationDeduper {
     private var handled: Set<String> = []
     private var order: [String] = []
     private var timestamps: [String: Date] = [:]
@@ -196,7 +189,6 @@ final class NotificationDeduper {
         #if DEBUG
         self.cleanupInterval = cleanupInterval
         #endif
-        startCleanupTimer()
     }
 
     deinit {
@@ -234,7 +226,8 @@ final class NotificationDeduper {
         }
     }
 
-    private func startCleanupTimer() {
+    func startCleanup() {
+        guard cleanupTask == nil else { return }
         cleanupTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -245,9 +238,7 @@ final class NotificationDeduper {
                 interval = 600 // 10 minutes
                 #endif
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                await MainActor.run {
-                    self.pruneExpired()
-                }
+                await self.pruneExpired()
             }
         }
     }

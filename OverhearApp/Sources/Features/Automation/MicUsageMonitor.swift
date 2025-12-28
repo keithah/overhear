@@ -220,7 +220,7 @@ final class MicUsageMonitor {
     private var rebindTask: Task<Void, Never>?
 
     private func rebindToCurrentDevice() async {
-        guard !rebinding else { return }
+        guard !rebinding, rebindTask == nil else { return }
         rebinding = true
 
         let oldTask = rebindTask

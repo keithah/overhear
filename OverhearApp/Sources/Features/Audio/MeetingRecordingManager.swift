@@ -60,8 +60,9 @@ final class MeetingRecordingManager: ObservableObject {
             }
         }
     }
-    
+
     let meetingID: String
+    private let fileSafeMeetingID: String
     
     @Published private(set) var status: Status = .idle
     @Published private(set) var transcript: String = ""
@@ -111,6 +112,7 @@ final class MeetingRecordingManager: ObservableObject {
         summarizationService: SummarizationService = SummarizationService()
     ) throws {
         self.meetingID = meetingID
+        self.fileSafeMeetingID = MeetingRecordingManager.makeFileSafeID(meetingID)
         self.captureService = captureService
         self.meetingTitle = meetingTitle ?? meetingID
         self.meetingDate = meetingDate
@@ -156,7 +158,7 @@ final class MeetingRecordingManager: ObservableObject {
 #endif
         
         let outputURL = recordingDirectory
-            .appendingPathComponent("\(meetingID)-\(ISO8601DateFormatter().string(from: Date()))")
+            .appendingPathComponent("\(fileSafeMeetingID)-\(ISO8601DateFormatter().string(from: Date()))")
             .appendingPathExtension("wav")
         
         do {
@@ -682,3 +684,12 @@ private extension MeetingRecordingManager {
     func stopLiveStreaming() async {}
 }
 #endif
+
+private extension MeetingRecordingManager {
+    static func makeFileSafeID(_ raw: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let sanitized = raw.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
+        let result = String(sanitized).trimmingCharacters(in: CharacterSet(charactersIn: "._"))
+        return result.isEmpty ? "meeting" : result
+    }
+}

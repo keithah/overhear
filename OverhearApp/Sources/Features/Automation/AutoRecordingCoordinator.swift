@@ -101,6 +101,11 @@ final class AutoRecordingCoordinator: ObservableObject {
     private func startRecording(appName: String, meetingTitle: String?, generation: Int) async {
         guard state == .starting, generation == detectionGeneration else { return }
         guard !Task.isCancelled else { return }
+        if manualRecordingCoordinator?.isRecording == true {
+            state = .idle
+            detectionTask = nil
+            return
+        }
         let id = "detected-\(Int(Date().timeIntervalSince1970))"
         let title: String
         if let meetingTitle, !meetingTitle.isEmpty {

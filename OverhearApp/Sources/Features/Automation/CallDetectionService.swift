@@ -167,9 +167,17 @@ final class CallDetectionService {
             // Avoid overlapping polls; keep the latest request.
             activePollTask.cancel()
         }
-        let newTask = Task { @MainActor [weak self] in
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
             guard generation == self.pollGeneration else { return }
+            guard self.axCheck() else {
+                self.permissionDenied = true
+                self.stop(clearState: false)
+                if let autoCoordinator, let preferences {
+                    self.schedulePermissionRetry(autoCoordinator: autoCoordinator, preferences: preferences)
+                }
+                return
+            }
             guard self.preferencesAllowNotifications else { return }
             guard let app = NSWorkspace.shared.frontmostApplication,
                   let bundleID = app.bundleIdentifier else {
@@ -203,8 +211,8 @@ final class CallDetectionService {
 
             await self.processDetection(app: app, bundleID: bundleID, titleInfo: titleInfo)
         }
-        activePollTask = newTask
-        await newTask.value
+        activePollTask = task
+        await task.value
     }
 
     /// Fall back to detecting native meeting apps when they are running in the background
