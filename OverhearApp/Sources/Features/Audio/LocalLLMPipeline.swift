@@ -43,13 +43,6 @@ actor LocalLLMPipeline {
         } else {
             state = .idle
         }
-        modelChangeObserver = NotificationCenter.default.addObserver(
-            forName: MLXPreferences.modelChangedNotification,
-            object: nil,
-            queue: nil
-        ) { [weak self] _ in
-            Task { await self?.handleModelChanged() }
-        }
     }
 
     /// Warms the local model (best-effort). Safe to call multiple times.
@@ -213,6 +206,7 @@ actor LocalLLMPipeline {
     }
 
     private func warmupInternal(maxAttempts: Int = 3, timeout: TimeInterval = 600) async {
+        ensureModelObserver()
         guard let client else { return }
 
         if let cooldownUntil, cooldownUntil > Date() {
@@ -227,6 +221,7 @@ actor LocalLLMPipeline {
         var modelInUse = modelID
         warmupGeneration &+= 1
         let generation = warmupGeneration
+        let warmupStart = Date()
 
         func runWarmupWithTimeout() async throws {
             try await withThrowingTaskGroup(of: Void.self) { group in
@@ -277,22 +272,26 @@ actor LocalLLMPipeline {
                 notifyStateChanged()
                 state = .ready(modelInUse)
                 notifyStateChanged()
-                logger.info("MLX warmup completed (model=\(modelInUse, privacy: .public))")
-                FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse))")
+                let duration = Date().timeIntervalSince(warmupStart)
+                let durationString = String(format: "%.2f", duration)
+                logger.info("MLX warmup completed (model=\(modelInUse, privacy: .public)) in \(duration, format: .fixed(precision: 2))s")
+                FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse)) in \(durationString)s")
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
                 consecutiveFailures = 0
                 cooldownUntil = nil
                 return
             } catch {
+                let duration = Date().timeIntervalSince(warmupStart)
+                let durationString = String(format: "%.2f", duration)
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
                 guard generation == warmupGeneration else { return }
                 if case WarmupError.timeout = error {
                     FileLogger.log(category: logCategory, message: "MLX warmup timeout after \(timeout)s")
                 }
-                logger.error("MLX warmup failed: \(error.localizedDescription, privacy: .public)")
-                FileLogger.log(category: logCategory, message: "MLX warmup failed: \(error.localizedDescription)")
+                logger.error("MLX warmup failed after \(duration, format: .fixed(precision: 2))s: \(error.localizedDescription, privacy: .public)")
+                FileLogger.log(category: logCategory, message: "MLX warmup failed after \(durationString)s: \(error.localizedDescription)")
                 consecutiveFailures += 1
 
                 if allowCacheRetry, shouldRetryByClearingCache(error: error) {
@@ -382,9 +381,15 @@ actor LocalLLMPipeline {
         notifyStateChanged()
     }
 
-    deinit {
-        if let observer = modelChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
+    private func ensureModelObserver() {
+        if modelChangeObserver != nil { return }
+        modelChangeObserver = NotificationCenter.default.addObserver(
+            forName: MLXPreferences.modelChangedNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task { await self?.handleModelChanged() }
         }
     }
+
 }

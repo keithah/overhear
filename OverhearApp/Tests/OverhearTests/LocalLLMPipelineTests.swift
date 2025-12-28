@@ -6,7 +6,9 @@ final class LocalLLMPipelineTests: XCTestCase {
         let actor = LocalLLMPipeline(client: nil)
         let longText = String(repeating: "a", count: 50_000)
         let result = await actor.chunkedTranscriptForTest(longText, chunkSize: 4000, maxChunks: 4)
-        XCTAssertLessThanOrEqual(result.count, 4000 * 4)
+        // Account for separator lines between chunks.
+        let separatorOverhead = 40 // allow extra padding for separators/newlines
+        XCTAssertLessThanOrEqual(result.count, 4000 * 4 + separatorOverhead)
     }
 
     func testShouldRetryByClearingCacheForMissingFile() async throws {

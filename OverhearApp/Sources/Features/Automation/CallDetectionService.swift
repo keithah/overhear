@@ -75,6 +75,7 @@ final class CallDetectionService {
             self?.isMicActive = active
         }
         micMonitor.start()
+        micMonitor.healthCheck()
         telemetryCount = 0
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -117,8 +118,10 @@ final class CallDetectionService {
         logger.info("Call detection polling stopped")
     }
 
-    @MainActor deinit {
-        stop()
+    deinit {
+        Task { @MainActor [weak self] in
+            self?.stop()
+        }
     }
 
     /// Best-effort retry entrypoint that attempts to start once permission becomes available.
@@ -263,8 +266,7 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement")
             return nil
         }
-        // CFGetTypeID check above ensures this cast is safe; force-cast so failures are visible during development.
-        let windowElement = unsafeBitCast(window, to: AXUIElement.self)
+        let windowElement: AXUIElement = unsafeDowncast(window, to: AXUIElement.self)
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)
@@ -315,9 +317,10 @@ final class CallDetectionService {
 
     private func titleInfoOffMain(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         let canQuery = await MainActor.run { () -> Bool in
-            if let last = lastAXQueryDate, Date().timeIntervalSince(last) < minAXQueryInterval {
-                return false
-            }
+        if let last = lastAXQueryDate, Date().timeIntervalSince(last) < minAXQueryInterval {
+            logger.debug("AX query throttled to avoid rapid polling")
+            return false
+        }
             lastAXQueryDate = Date()
             return true
         }

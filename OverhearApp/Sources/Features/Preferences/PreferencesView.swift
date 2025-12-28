@@ -204,6 +204,14 @@ struct PreferencesView: View {
                     Text(String(format: "%.0f", preferences.detectionPollingInterval))
                         .frame(minWidth: 20, alignment: .trailing)
                 }
+                HStack {
+                    Text("Stop grace period (seconds)")
+                    Spacer()
+                    Stepper("", value: $preferences.autoRecordingGracePeriod, in: 0...30, step: 1)
+                        .labelsHidden()
+                    Text(String(format: "%.0f", preferences.autoRecordingGracePeriod))
+                        .frame(minWidth: 20, alignment: .trailing)
+                }
                 Text("Requires Accessibility permission to detect meeting windows and an active microphone (you being in a call); auto-recording won't start if either is missing. Currently supports Zoom, Teams, Webex, and Meet in Safari/Chrome/Edge across native apps and browsers.")
                     .font(.caption)
                     .foregroundColor(.secondary)

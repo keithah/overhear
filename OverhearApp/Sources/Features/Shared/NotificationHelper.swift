@@ -42,6 +42,10 @@ enum NotificationHelper {
     }
     
     static func sendTestNotification(completion: (@Sendable () -> Void)? = nil) {
+        guard supportsUserNotifications else {
+            completion?()
+            return
+        }
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
@@ -118,6 +122,7 @@ enum NotificationHelper {
 
 extension NotificationHelper {
     static func sendAccessibilityPermissionNeededIfNeeded() {
+        guard supportsUserNotifications else { return }
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: accessibilityWarningKey) {
             return
@@ -143,6 +148,7 @@ extension NotificationHelper {
     }
 
     static func sendBrowserUrlMissingIfNeeded() {
+        guard supportsUserNotifications else { return }
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: browserUrlWarningKey) {
             return
@@ -170,6 +176,7 @@ extension NotificationHelper {
 
 extension NotificationHelper {
     static func sendRecordingCompleted(title: String, transcriptReady: Bool) {
+        guard supportsUserNotifications else { return }
         let content = UNMutableNotificationContent()
         if transcriptReady {
             content.title = "New Note ready"
@@ -196,6 +203,7 @@ extension NotificationHelper {
 
 extension NotificationHelper {
     static func sendMeetingPrompt(appName: String, meetingTitle: String?) {
+        guard supportsUserNotifications else { return }
         let content = UNMutableNotificationContent()
         content.title = "Meeting window detected (\(appName))"
         let cleanedTitle = meetingTitle?.trimmingCharacters(in: .whitespacesAndNewlines)

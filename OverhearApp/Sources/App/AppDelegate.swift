@@ -61,6 +61,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 context?.callDetectionService.updatePollInterval(interval)
             }
             .store(in: &cancellables)
+        context.preferencesService.$autoRecordingGracePeriod
+            .receive(on: RunLoop.main)
+            .sink { [weak context] grace in
+                context?.autoRecordingCoordinator.updateGracePeriod(grace)
+            }
+            .store(in: &cancellables)
 
         // Recording overlay to surface in-meeting status
         context.recordingCoordinator.onRecordingStatusChange = { [weak self, weak context] isRecording, title in
@@ -170,14 +176,26 @@ final class NotificationDeduper {
     private var timestamps: [String: Date] = [:]
     let maxEntries: Int
     let ttl: TimeInterval
+    #if DEBUG
+    /// Optional override for cleanup cadence to make tests deterministic.
+    let cleanupInterval: TimeInterval
+    #endif
     private let dateProvider: () -> Date
     private var cleanupTask: Task<Void, Never>?
 
-    init(maxEntries: Int, ttl: TimeInterval = 60 * 60, dateProvider: @escaping () -> Date = { Date() }) {
+    init(
+        maxEntries: Int,
+        ttl: TimeInterval = 60 * 60,
+        dateProvider: @escaping () -> Date = { Date() },
+        cleanupInterval: TimeInterval = 600
+    ) {
         let hardCap = 500
         self.maxEntries = min(max(maxEntries, 1), hardCap)
         self.ttl = max(1, ttl)
         self.dateProvider = dateProvider
+        #if DEBUG
+        self.cleanupInterval = cleanupInterval
+        #endif
         startCleanupTimer()
     }
 
@@ -220,7 +238,13 @@ final class NotificationDeduper {
         cleanupTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 600_000_000_000) // 10 minutes
+                let interval: TimeInterval
+                #if DEBUG
+                interval = cleanupInterval
+                #else
+                interval = 600 // 10 minutes
+                #endif
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 await MainActor.run {
                     self.pruneExpired()
                 }

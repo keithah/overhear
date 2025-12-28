@@ -17,7 +17,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     }
 
     private let logger = Logger(subsystem: "com.overhear.app", category: "AutoRecordingCoordinator")
-    private let stopGracePeriod: TimeInterval
+    private var stopGracePeriod: TimeInterval
     private let maxRecordingDuration: TimeInterval
     private let managerFactory: @MainActor (String, String?) async throws -> RecordingManagerRef
     private var activeManager: RecordingManagerRef?
@@ -45,6 +45,10 @@ final class AutoRecordingCoordinator: ObservableObject {
         self.stopGracePeriod = stopGracePeriod
         self.maxRecordingDuration = maxRecordingDuration
         self.managerFactory = managerFactory
+    }
+
+    func updateGracePeriod(_ seconds: TimeInterval) {
+        stopGracePeriod = max(0, seconds)
     }
 
     func onDetection(appName: String, meetingTitle: String?) {
@@ -201,23 +205,14 @@ final class AutoRecordingCoordinator: ObservableObject {
         activeTitle
     }
 
-    @MainActor deinit {
+    deinit {
         stopTask?.cancel()
         stopTask = nil
         monitorTask?.cancel()
         monitorTask = nil
         detectionTask?.cancel()
         detectionTask = nil
-        if let manager = activeManager {
-            cleanupTask = Task { [weak manager] in
-                await manager?.stopRecording()
-            }
-        } else {
-            logger.error("AutoRecordingCoordinator deinit without explicit stopRecording; ensure callers stop before releasing.")
-        }
     }
-
-    private var cleanupTask: Task<Void, Never>?
 }
 
 @MainActor

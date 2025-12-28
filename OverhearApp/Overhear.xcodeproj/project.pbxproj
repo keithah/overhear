@@ -39,6 +39,7 @@
 	4C460327A9D08F6F394261F2 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9643B3F6CF09183E7E9EE4A /* MenuBarController.swift */; };
 	553ADF43BEB23110DAFF4EBC /* CalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C7FE5C6BFB9491A6568F7C /* CalendarService.swift */; };
 	D735051D7A7D468EBDF47363AE10B0CD /* CalendarAccessHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14628F1AFD8E4DE1871ECE76491BDC42 /* CalendarAccessHelper.swift */; };
+	4262CBB0E3604C7FA59F4AE320DC239C /* LiveNotesComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE9734EA47344D0AADB9A29CEB2593A /* LiveNotesComponents.swift */; };
 	672895B9E03830086B5E32E1 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0467AC2803809ABEE6368BF8 /* PreferencesService.swift */; };
 	7B4976A61FDC8DF74F991A16 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6760441C0977FD19F2B6838 /* PreferencesView.swift */; };
 	B09ACBBF34AF004C83A0835A /* OverhearApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5563B52A06A54C980A22A14 /* OverhearApp.swift */; };
@@ -105,6 +106,7 @@
 	E6760441C0977FD19F2B6838 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 	82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRowView.swift; sourceTree = "<group>"; };
 	5B3C1D4E6A9845A4B7F8C2DA /* TranscriptWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptWindowController.swift; sourceTree = "<group>"; };
+	4BE9734EA47344D0AADB9A29CEB2593A /* LiveNotesComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveNotesComponents.swift; sourceTree = "<group>"; };
 
 		FD7D27902BBF20D900A5CB6F /* AutoRecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/AutoRecordingCoordinator.swift; sourceTree = "<group>"; };
 		FD7D27922BBF20EA00A5CB6F /* CallDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/CallDetectionService.swift; sourceTree = "<group>"; };
@@ -200,6 +202,7 @@
 		children = (
 			B9643B3F6CF09183E7E9EE4A /* MenuBarController.swift */,
 			D12220410D1DBBF18A9BA1D0 /* MenuBarContentView.swift */,
+			4BE9734EA47344D0AADB9A29CEB2593A /* LiveNotesComponents.swift */,
 			A1F0D0C1F1E201000000000C /* MenuBarIconProvider.swift */,
 			82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */,
 		);
@@ -387,6 +390,7 @@
 			B1F0D0C1F1E2010000000019 /* TranscriptSearchView.swift in Sources */,
 			B1F0D0C1F1E201000000001A /* TranscriptionView.swift in Sources */,
 			5B3C1D4E6A9845A4B7F8C2DB /* TranscriptWindowController.swift in Sources */,
+			4262CBB0E3604C7FA59F4AE320DC239C /* LiveNotesComponents.swift in Sources */,
 			553ADF43BEB23110DAFF4EBC /* CalendarService.swift in Sources */,
 			D735051D7A7D468EBDF47363AE10B0CD /* CalendarAccessHelper.swift in Sources */,
 			B1F0D0C1F1E201000000001E /* NotificationHelper.swift in Sources */,

@@ -107,6 +107,9 @@ final class PreferencesService: ObservableObject {
     @Published var detectionPollingInterval: Double {
         didSet { persist(detectionPollingInterval, key: .detectionPollingInterval) }
     }
+    @Published var autoRecordingGracePeriod: Double {
+        didSet { persist(autoRecordingGracePeriod, key: .autoRecordingGracePeriod) }
+    }
 
     private let defaults: UserDefaults
     private var cancellables: Set<AnyCancellable> = []
@@ -137,6 +140,7 @@ final class PreferencesService: ObservableObject {
         self.autoShowLiveNotes = defaults.object(forKey: PreferenceKey.autoShowLiveNotes.rawValue) as? Bool ?? true
         self.redactMeetingTitles = defaults.object(forKey: PreferenceKey.redactMeetingTitles.rawValue) as? Bool ?? false
         self.detectionPollingInterval = defaults.object(forKey: PreferenceKey.detectionPollingInterval.rawValue) as? Double ?? 5.0
+        self.autoRecordingGracePeriod = defaults.object(forKey: PreferenceKey.autoRecordingGracePeriod.rawValue) as? Double ?? 8.0
 
         updateLaunchAtLogin(launchAtLogin)
     }
@@ -251,4 +255,5 @@ enum PreferenceKey: String {
         case autoShowLiveNotes
         case redactMeetingTitles
         case detectionPollingInterval
+        case autoRecordingGracePeriod
 }

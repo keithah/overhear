@@ -22,7 +22,7 @@ final class AppContext: ObservableObject {
             calendar: CalendarService(),
             recordingCoordinator: MeetingRecordingCoordinator(),
             callDetectionService: CallDetectionService(pollInterval: preferences.detectionPollingInterval),
-            autoRecordingCoordinator: AutoRecordingCoordinator()
+            autoRecordingCoordinator: AutoRecordingCoordinator(stopGracePeriod: preferences.autoRecordingGracePeriod)
         )
     }
 

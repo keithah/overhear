@@ -730,11 +730,10 @@ struct LiveNotesView: View {
                 }
                 llmIsReady = true
             }
-            // Avoid verbose logging when the model is healthy; only log transitions into failure states.
-            if !llmStateDescription.lowercased().contains("ready"),
-               !llmIsReady,
-               llmStateDescription != lastLoggedLLMState {
-                FileLogger.log(category: "LiveNotesView", message: "LLM state updated UI: \(llmStateDescription)")
+            if llmIsReady {
+                // Ready is the steady-state; avoid noisy logs.
+                lastLoggedLLMState = llmStateDescription
+                return
             }
             lastLoggedLLMState = llmStateDescription
         }
@@ -764,11 +763,13 @@ struct LiveNotesView: View {
     private func startLLMStatePolling() {
         llmStatePollTask?.cancel()
         guard !llmIsReady else { return }
-        llmStatePollTask = Task {
+        llmStatePollTask = Task { @MainActor in
             var attempts = 0
+            defer { llmStatePollTask = nil }
             while !Task.isCancelled && !llmIsReady && attempts < 120 {
                 attempts += 1
                 await refreshLLMState()
+                if llmIsReady { break }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }

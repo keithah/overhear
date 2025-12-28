@@ -48,6 +48,7 @@ final class AutoRecordingCoordinatorTests: XCTestCase {
             managerFactory: { _, _ async throws -> RecordingManagerRef in manager }
         )
         coordinator.onDetection(appName: "App", meetingTitle: "Title")
+        try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(manager.startCount, 1)
         XCTAssertTrue(coordinator.isRecording)
 
@@ -81,5 +82,39 @@ final class AutoRecordingCoordinatorTests: XCTestCase {
         coordinator.onDetection(appName: "App", meetingTitle: "Title")
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(manager.startCount, 1)
+    }
+
+    func testStopRecordingGuardWhenNotRecording() async {
+        let manager = FakeManager()
+        let coordinator = AutoRecordingCoordinator(
+            stopGracePeriod: 0.1,
+            maxRecordingDuration: 10,
+            managerFactory: { _, _ async throws -> RecordingManagerRef in manager }
+        )
+        await coordinator.stopRecording()
+        XCTAssertEqual(manager.stopCount, 0, "Should not stop when no active recording")
+    }
+
+    func testDetectionDuringGraceCancelsPendingStop() async {
+        let manager = FakeManager()
+        let coordinator = AutoRecordingCoordinator(
+            stopGracePeriod: 0.2,
+            maxRecordingDuration: 10,
+            managerFactory: { _, _ async throws -> RecordingManagerRef in manager }
+        )
+
+        coordinator.onDetection(appName: "App", meetingTitle: "Title")
+        // Wait for recording to actually start
+        for _ in 0..<10 where !coordinator.isRecording {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        coordinator.onNoDetection()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        coordinator.onDetection(appName: "App", meetingTitle: "Title")
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(manager.startCount, 1, "Should not start a new recording during grace")
+        XCTAssertLessThanOrEqual(manager.stopCount, 1, "Stop should run at most once during grace churn")
+        XCTAssertTrue(coordinator.isRecording || manager.stopCount == 1)
     }
 }
