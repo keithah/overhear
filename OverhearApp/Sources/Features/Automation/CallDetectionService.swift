@@ -119,6 +119,7 @@ final class CallDetectionService {
     }
 
     deinit {
+        // Best-effort cleanup; safe because the service is @MainActor.
         Task { @MainActor [weak self] in
             self?.stop()
         }
