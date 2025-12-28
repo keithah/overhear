@@ -86,15 +86,15 @@ final class AutoRecordingCoordinator: ObservableObject {
     func onNoDetection() {
         guard activeManager != nil, state == .recording else { return }
         // Schedule a graceful stop to avoid flapping on brief focus changes.
-        if stopTask == nil {
-            stopGeneration &+= 1
-            let generation = stopGeneration
-            stopTask = Task { [weak self] in
-                guard let self = self else { return }
-                guard generation == self.stopGeneration else { return }
-                try? await Task.sleep(nanoseconds: UInt64(self.stopGracePeriod * 1_000_000_000))
-                await self.stopRecording()
-            }
+        stopTask?.cancel()
+        stopTask = nil
+        stopGeneration &+= 1
+        let generation = stopGeneration
+        stopTask = Task { [weak self] in
+            guard let self = self else { return }
+            guard generation == self.stopGeneration else { return }
+            try? await Task.sleep(nanoseconds: UInt64(self.stopGracePeriod * 1_000_000_000))
+            await self.stopRecording()
         }
     }
 

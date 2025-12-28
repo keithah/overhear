@@ -23,6 +23,7 @@ final class CallDetectionService {
     private weak var preferences: PreferencesService?
     private var lastAXQueryDate: Date?
     private let minAXQueryInterval: TimeInterval = 0.5
+    private var lastMissingURLNotice: Date?
 
     // Known meeting bundle IDs (native apps) and browsers used for Meet.
     private let supportedMeetingBundles: Set<String> = [
@@ -163,6 +164,10 @@ final class CallDetectionService {
     private func pollFrontmostApp() async {
         pollGeneration &+= 1
         let generation = pollGeneration
+        if let previous = activePollTask {
+            previous.cancel()
+            await previous.value
+        }
         if let activePollTask {
             // Avoid overlapping polls; keep the latest request.
             activePollTask.cancel()
@@ -290,6 +295,13 @@ final class CallDetectionService {
         } else if let chromeURL = copyURLAttribute(window: windowElement, key: "AXDocument" as CFString) {
             urlDescription = chromeURL.normalizedForDetection()
             redactedURL = chromeURL.redactedForLogging()
+        } else {
+            let now = Date()
+            if lastMissingURLNotice == nil || now.timeIntervalSince(lastMissingURLNotice!) > 30 {
+                lastMissingURLNotice = now
+                let display = app.localizedName ?? "Browser"
+                NotificationHelper.sendMeetingPrompt(appName: display, meetingTitle: rawTitle)
+            }
         }
 
         // Require either a title or URL.
