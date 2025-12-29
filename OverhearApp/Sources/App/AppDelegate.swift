@@ -100,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Wait briefly to allow best-effort cleanup before process exit.
         _ = group.wait(timeout: .now() + 2)
+        cancellables.removeAll()
         UNUserNotificationCenter.current().delegate = nil
         menuBarController?.tearDown()
         context?.callDetectionService.stop(clearState: false)
@@ -335,6 +336,12 @@ final class RecordingOverlayController: NSObject, NSWindowDelegate {
 }
 
 private struct RecordingOverlayView: View {
+    private enum Layout {
+        static let width: CGFloat = 240
+        static let height: CGFloat = 96
+        static let padding: CGFloat = 14
+        static let cornerRadius: CGFloat = 14
+    }
     let title: String
     let mode: String
 
@@ -361,12 +368,12 @@ private struct RecordingOverlayView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
         }
-        .padding(14)
+        .padding(Layout.padding)
         .background(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: Layout.cornerRadius)
                 .fill(Color(nsColor: .windowBackgroundColor).opacity(0.9))
                 .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
         )
-        .frame(width: 240, alignment: .leading)
+        .frame(width: Layout.width, alignment: .leading)
     }
 }

@@ -252,7 +252,7 @@ extension NotificationHelper {
             .split(separator: "-", omittingEmptySubsequences: true)
             .joined(separator: "-")
         let finalSeed = sanitizedSeed.isEmpty ? UUID().uuidString : sanitizedSeed
-        let identifier = "com.overhear.notification.meeting-detected.\(finalSeed)"
+        let identifier = "com.overhear.notification.meeting-detected.\(finalSeed).\(UUID().uuidString)"
 
         let request = UNNotificationRequest(
             identifier: identifier,
@@ -311,8 +311,9 @@ extension NotificationHelper {
     }
 
     static func cleanMeetingTitle(from body: String) -> String {
+        let cappedBody = String(body.prefix(512))
         let prefix = "Start a New Note?"
-        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBody = cappedBody.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard trimmedBody.hasPrefix(prefix) else {
             return trimmedBody

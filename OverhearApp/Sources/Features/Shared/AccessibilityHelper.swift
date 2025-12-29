@@ -21,7 +21,9 @@ enum AccessibilityHelper {
         NSApp.activate(ignoringOtherApps: true)
         let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         let options: CFDictionary = [promptKey: true] as CFDictionary
-        log("Requesting Accessibility prompt for bundle \(Bundle.main.bundleIdentifier ?? "unknown") at path \(Bundle.main.bundleURL.path)")
+        let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
+        let bundlePath = Bundle.main.bundleURL.lastPathComponent
+        log("Requesting Accessibility prompt for bundle \(bundleID) at path \(bundlePath)")
         let alreadyTrusted = AXIsProcessTrustedWithOptions(options)
         if alreadyTrusted {
             log("AX already trusted; skipping prompt")
@@ -49,7 +51,7 @@ enum AccessibilityHelper {
 
     static func revealCurrentApp() {
         let bundleURL = Bundle.main.bundleURL.standardizedFileURL
-        log("Revealing app in Finder at \(bundleURL.path)")
+        log("Revealing app in Finder at \(bundleURL.lastPathComponent)")
         NSWorkspace.shared.activateFileViewerSelecting([bundleURL])
     }
 }

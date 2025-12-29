@@ -28,7 +28,13 @@ struct FileLogger {
                 _ = try? handle.seekToEnd()
                 try? handle.write(contentsOf: data)
             } else {
-                try? data.write(to: logURL, options: .atomic)
+                do {
+                    try data.write(to: logURL, options: .atomic)
+                    var attributes = [FileAttributeKey.posixPermissions: NSNumber(value: Int16(0o600))]
+                    try? FileManager.default.setAttributes(attributes, ofItemAtPath: logURL.path)
+                } catch {
+                    // Ignore file logging errors in release builds
+                }
             }
         }
     }

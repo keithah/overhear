@@ -22,7 +22,7 @@ actor LocalLLMPipeline {
     private var warmupTask: Task<Void, Never>?
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
     private let logCategory = "LocalLLMPipeline"
-    private let warmupTimeout: TimeInterval = 900
+    private let warmupTimeout: TimeInterval
     private let downloadWatchdogDelay: TimeInterval = 2
     private let failureCooldown: TimeInterval = 300
     private(set) var state: State
@@ -44,6 +44,8 @@ actor LocalLLMPipeline {
 
     init(client: MLXClient?) {
         self.client = client
+        let overrideTimeout = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
+        self.warmupTimeout = overrideTimeout > 0 ? overrideTimeout : 900
         if client == nil {
             state = .unavailable("MLX client not available")
         } else {
@@ -97,6 +99,7 @@ actor LocalLLMPipeline {
     private func promoteReadyAfterDownloadWatchdog() async {
         switch state {
         case .downloading, .warming:
+            logger.warning("MLX download reached 100% but warmup not completed; promoting to ready (watchdog)")
             FileLogger.log(category: logCategory, message: "Download reached 100% but warmup not completed; promoting to ready")
             state = .ready(modelID)
             notifyStateChanged()
@@ -273,6 +276,7 @@ actor LocalLLMPipeline {
             if attempts > 1 {
                 let backoffSeconds = pow(2.0, Double(attempts - 2))
                 try? await Task.sleep(nanoseconds: UInt64(backoffSeconds * 1_000_000_000))
+                if Task.isCancelled { return }
             }
 
             // Allow recovery from unavailable; only skip if we're already working or ready.

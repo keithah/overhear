@@ -38,7 +38,7 @@ final class AutoRecordingCoordinator: ObservableObject {
 
     init(
         stopGracePeriod: TimeInterval = 8.0,
-        maxRecordingDuration: TimeInterval = 4 * 3600,
+        maxRecordingDuration: TimeInterval = AutoRecordingCoordinator.defaultMaxRecordingDuration(),
         managerFactory: @escaping @MainActor (String, String?) async throws -> RecordingManagerRef = { id, title in
             try MeetingRecordingManager(meetingID: id, meetingTitle: title)
         }
@@ -170,6 +170,10 @@ final class AutoRecordingCoordinator: ObservableObject {
                 await stopRecording()
                 return
             }
+            if monitorStartDate == nil {
+                logger.info("Monitor loop missing start date; ending monitoring to avoid runaway loop")
+                return
+            }
             guard let currentManager = activeManager, currentManager === manager else { return }
             let status = currentManager.status
             switch status {
@@ -227,6 +231,11 @@ final class AutoRecordingCoordinator: ObservableObject {
         monitorTask = nil
         detectionTask?.cancel()
         detectionTask = nil
+    }
+
+    private static func defaultMaxRecordingDuration() -> TimeInterval {
+        let override = UserDefaults.standard.double(forKey: "overhear.maxRecordingDuration")
+        return override > 0 ? override : 4 * 3600
     }
 }
 

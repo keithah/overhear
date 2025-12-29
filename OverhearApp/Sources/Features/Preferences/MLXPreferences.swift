@@ -44,21 +44,22 @@ struct MLXPreferences {
             ]
 
             for url in scopedCaches {
-                let standardized = url.standardizedFileURL
-                guard standardized.path.hasPrefix(home.path) else {
-                    FileLogger.log(category: "MLXPreferences", message: "Skipped clearing MLX cache outside home: \(standardized.path)")
-                    continue
+            let standardized = url.standardizedFileURL
+            let path = standardized.path
+            if path.contains("/../") || path.contains("/./") || !path.hasPrefix(home.path) {
+                FileLogger.log(category: "MLXPreferences", message: "Skipped clearing suspicious MLX cache path: \(path)")
+                continue
+            }
+            do {
+                if FileManager.default.fileExists(atPath: path) {
+                    try FileManager.default.removeItem(at: standardized)
+                    FileLogger.log(category: "MLXPreferences", message: "Cleared MLX cache at \(path)")
                 }
-                do {
-                    if FileManager.default.fileExists(atPath: standardized.path) {
-                        try FileManager.default.removeItem(at: standardized)
-                        FileLogger.log(category: "MLXPreferences", message: "Cleared MLX cache at \(standardized.path)")
-                    }
-                } catch {
-                    FileLogger.log(category: "MLXPreferences", message: "Failed to clear MLX cache at \(standardized.path): \(error.localizedDescription)")
-                }
+            } catch {
+                FileLogger.log(category: "MLXPreferences", message: "Failed to clear MLX cache at \(path): \(error.localizedDescription)")
             }
         }
+    }
     }
 
     static func sanitize(_ raw: String) -> String? {

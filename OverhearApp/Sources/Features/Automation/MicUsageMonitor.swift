@@ -245,6 +245,7 @@ final class MicUsageMonitor {
         rebindTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.rebinding = false }
+            guard !Task.isCancelled else { return }
 
         // Tear down existing listener
             if self.listenerAdded, let block = self.listenerWrapper?.block, let device = self.observedDevice {

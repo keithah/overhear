@@ -54,14 +54,19 @@ final class CallDetectionService {
     private lazy var nativeMeetingBundles: Set<String> = supportedMeetingBundles.subtracting(browserBundles)
 
     private let permissionRetryDelay: TimeInterval = 5.0
-    private let titleLookupTimeout: TimeInterval = 1.0
-    private let maxTelemetryPerSession = 100
+    private let titleLookupTimeout: TimeInterval
+    private let maxTelemetryPerSession: Int
+    private let idlePollingBackoffThreshold: TimeInterval = 3600 // 1 hour
+    private var lastDetectionDate: Date?
     private var telemetryResetDate = Date()
     private var telemetryCount = 0
 
     init(pollInterval: TimeInterval = 3.0, axCheck: @escaping () -> Bool = { AXIsProcessTrusted() }) {
         self.pollInterval = pollInterval
         self.axCheck = axCheck
+        self.titleLookupTimeout = UserDefaults.standard.value(forKey: "overhear.titleLookupTimeout") as? TimeInterval ?? 1.0
+        let configuredTelemetryCap = UserDefaults.standard.integer(forKey: "overhear.telemetryMaxPerSession")
+        self.maxTelemetryPerSession = configuredTelemetryCap.nonZeroOrDefault(500)
     }
 
     @discardableResult
@@ -99,7 +104,7 @@ final class CallDetectionService {
         Task { @MainActor in
             await self.pollFrontmostApp()
         }
-        let timer = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: adjustedInterval(), repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.pollFrontmostApp()
             }
@@ -187,6 +192,7 @@ final class CallDetectionService {
             guard let app = NSWorkspace.shared.frontmostApplication,
                   let bundleID = app.bundleIdentifier else {
                 if await self.handleBackgroundDetection(excluding: nil) { return }
+                guard generation == self.pollGeneration else { return }
                 self.autoCoordinator?.onNoDetection()
                 self.logTelemetry(result: "no-app", bundleID: nil, host: nil)
                 return
@@ -195,25 +201,29 @@ final class CallDetectionService {
             guard self.supportedMeetingBundles.contains(bundleID) else {
                 self.resetLastNotification()
                 if await self.handleBackgroundDetection(excluding: bundleID) { return }
+                guard generation == self.pollGeneration else { return }
                 self.autoCoordinator?.onNoDetection()
                 self.logTelemetry(result: "unsupported-bundle", bundleID: bundleID, host: nil)
                 return
             }
 
-            guard self.isMicActive else {
-                if await self.handleBackgroundDetection(excluding: bundleID) { return }
-                self.autoCoordinator?.onNoDetection()
-                self.logTelemetry(result: "mic-inactive", bundleID: bundleID, host: nil)
-                return
-            }
+        guard self.isMicActive else {
+            if await self.handleBackgroundDetection(excluding: bundleID) { return }
+            guard generation == self.pollGeneration else { return }
+            self.autoCoordinator?.onNoDetection()
+            self.logTelemetry(result: "mic-inactive", bundleID: bundleID, host: nil)
+            return
+        }
 
             guard let titleInfo = await self.resolveTitleInfo(for: app) else {
                 if await self.handleBackgroundDetection(excluding: bundleID) { return }
+                guard generation == self.pollGeneration else { return }
                 self.autoCoordinator?.onNoDetection()
                 self.logTelemetry(result: "no-title", bundleID: bundleID, host: nil)
                 return
             }
 
+            guard generation == self.pollGeneration else { return }
             await self.processDetection(app: app, bundleID: bundleID, titleInfo: titleInfo)
         }
         activePollTask = task
@@ -230,6 +240,7 @@ final class CallDetectionService {
         let runningApps = await Task.detached(priority: .utility) {
             NSWorkspace.shared.runningApplications
         }.value
+        if Task.isCancelled { return false }
 
         let candidate = runningApps.first { app in
             guard let bid = app.bundleIdentifier else { return false }
@@ -284,7 +295,6 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement")
             return nil
         }
-        // Safe due to CFGetTypeID guard above.
         let windowElement = window as! AXUIElement
 
         var titleValue: AnyObject?
@@ -357,6 +367,10 @@ final class CallDetectionService {
             guard let self else { return nil }
             return await MainActor.run { self.activeWindowTitle(for: app) }
         }.value
+        if Task.isCancelled {
+            axQueryInFlight = false
+            return nil
+        }
         lastAXQueryDate = Date()
         axQueryInFlight = false
         return result
@@ -415,6 +429,7 @@ final class CallDetectionService {
 
         lastNotifiedApp = bundleID
         lastNotifiedTitle = titleInfo.displayTitle
+        lastDetectionDate = Date()
 
         let appName = app.localizedName ?? bundleID
         let meetingInfo = titleInfo.urlDescription ?? titleInfo.displayTitle
@@ -468,6 +483,15 @@ final class CallDetectionService {
         browserBundles.contains(bundleID)
     }
 
+    private func adjustedInterval() -> TimeInterval {
+        guard let lastDetectionDate else { return pollInterval }
+        let idleDuration = Date().timeIntervalSince(lastDetectionDate)
+        if idleDuration > idlePollingBackoffThreshold {
+            return max(pollInterval, 5.0)
+        }
+        return pollInterval
+    }
+
 }
 
 private extension CallDetectionService {
@@ -505,5 +529,11 @@ private extension String {
         components.query = nil
         components.fragment = nil
         return components.string ?? self
+    }
+}
+
+private extension Int {
+    func nonZeroOrDefault(_ fallback: Int) -> Int {
+        return self > 0 ? self : fallback
     }
 }
