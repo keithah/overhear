@@ -40,7 +40,7 @@ struct MLXPreferences {
             let home = FileManager.default.homeDirectoryForCurrentUser
             let scopedCaches: [URL] = [
                 appSupport.appendingPathComponent("com.overhear.app/MLXModels"),
-                home.appendingPathComponent("Library/Caches/MLXLLM")
+                home.appendingPathComponent("Library/Caches/com.overhear.app/MLXLLM")
             ]
 
             for url in scopedCaches {

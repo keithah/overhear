@@ -32,6 +32,7 @@ actor LocalLLMPipeline {
     private var cooldownUntil: Date?
     private var modelChangeObserver: NSObjectProtocol?
     private var lastLoggedState: State?
+    private var lastNotifiedState: State?
     private var modelID: String {
         MLXPreferences.modelID()
     }
@@ -360,6 +361,8 @@ actor LocalLLMPipeline {
     }
 
     private func notifyStateChanged() {
+        guard state != lastNotifiedState else { return }
+        lastNotifiedState = state
         if state != lastLoggedState {
             FileLogger.log(category: logCategory, message: "State changed to \(state)")
             lastLoggedState = state

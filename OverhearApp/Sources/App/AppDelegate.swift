@@ -89,8 +89,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await context?.autoRecordingCoordinator.stopRecording()
+            await context?.recordingCoordinator.stopRecording()
+        }
+        UNUserNotificationCenter.current().delegate = nil
         menuBarController?.tearDown()
-        context?.callDetectionService.stop()
+        context?.callDetectionService.stop(clearState: false)
+        context?.autoRecordingCoordinator.onNoDetection()
         recordingOverlay.hide()
     }
 
@@ -197,15 +204,19 @@ actor NotificationDeduper {
     }
 
     func record(_ id: String) -> Bool {
+        pruneExpired()
         if handled.contains(id) { return false }
         handled.insert(id)
         order.append(id)
         timestamps[id] = dateProvider()
-        pruneExpired()
-        while order.count > maxEntries, let oldest = order.first {
-            order.removeFirst()
-            handled.remove(oldest)
-            timestamps.removeValue(forKey: oldest)
+        let overflow = order.count - maxEntries
+        if overflow > 0 {
+            let dropped = order.prefix(overflow)
+            order.removeFirst(overflow)
+            dropped.forEach { id in
+                handled.remove(id)
+                timestamps.removeValue(forKey: id)
+            }
         }
         return true
     }

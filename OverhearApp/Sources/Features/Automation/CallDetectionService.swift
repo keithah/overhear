@@ -1,4 +1,5 @@
 import AppKit
+import CoreFoundation
 import os.log
 
 /// Observes the frontmost window to infer when the user is in a call and trigger
@@ -120,9 +121,8 @@ final class CallDetectionService {
     }
 
     deinit {
-        // Best-effort cleanup; safe because the service is @MainActor.
         Task { @MainActor [weak self] in
-            self?.stop()
+            self?.stop(clearState: false)
         }
     }
 
@@ -223,7 +223,11 @@ final class CallDetectionService {
         guard isMicActive else { return false }
         guard let preferences else { return false }
 
-        let candidate = NSWorkspace.shared.runningApplications.first { app in
+        let runningApps = await Task.detached(priority: .utility) {
+            NSWorkspace.shared.runningApplications
+        }.value
+
+        let candidate = runningApps.first { app in
             guard let bid = app.bundleIdentifier else { return false }
             if let bundleID, bid == bundleID { return false }
             return nativeMeetingBundles.contains(bid) && !app.isHidden && !app.isTerminated
@@ -265,6 +269,7 @@ final class CallDetectionService {
             return nil
         }
 
+        // CF objects returned here are bridged and released automatically.
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         var focusedWindow: AnyObject?
         let status = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)

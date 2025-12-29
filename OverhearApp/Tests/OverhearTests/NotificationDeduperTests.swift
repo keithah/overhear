@@ -19,4 +19,14 @@ final class NotificationDeduperTests: XCTestCase {
         handled = await deduper.record("a")
         XCTAssertTrue(handled)
     }
+
+    func testDeduperExpiresOldEntries() async {
+        let deduper = NotificationDeduper(maxEntries: 5, ttl: 1, cleanupInterval: 0.1)
+
+        let first = await deduper.record("expiring")
+        XCTAssertTrue(first)
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        let second = await deduper.record("expiring")
+        XCTAssertTrue(second, "Entry should expire after TTL and be treated as new")
+    }
 }

@@ -1,6 +1,13 @@
 @preconcurrency import CoreAudio
 import os.log
 
+private final class ListenerBlockWrapper {
+    let block: AudioObjectPropertyListenerBlock
+    init(_ block: @escaping AudioObjectPropertyListenerBlock) {
+        self.block = block
+    }
+}
+
 /// Thin wrapper around CoreAudio primitives to allow unit testing.
 struct AudioObjectClient {
     var defaultInputDeviceID: @Sendable () -> AudioObjectID?
@@ -71,8 +78,8 @@ final class MicUsageMonitor {
     private let logger = Logger(subsystem: "com.overhear.app", category: "MicUsageMonitor")
     private let client: AudioObjectClient
     private var listenerAdded = false
-    private var listenerBlock: AudioObjectPropertyListenerBlock?
-    private var defaultDeviceListener: AudioObjectPropertyListenerBlock?
+    private var listenerWrapper: ListenerBlockWrapper?
+    private var defaultDeviceWrapper: ListenerBlockWrapper?
     private var isActive = false {
         didSet {
             if oldValue != isActive {
@@ -102,14 +109,14 @@ final class MicUsageMonitor {
             mElement: kAudioObjectPropertyElementMain
         )
 
-        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+        let block = ListenerBlockWrapper { [weak self] _, _ in
             Task { @MainActor in
                 await self?.refreshState()
             }
         }
-        listenerBlock = block
+        listenerWrapper = block
 
-        let status = client.addListener(deviceID, &address, DispatchQueue.main, block)
+        let status = client.addListener(deviceID, &address, DispatchQueue.main, block.block)
         if status == noErr {
             listenerAdded = true
             logger.info("Mic usage listener added")
@@ -126,13 +133,13 @@ final class MicUsageMonitor {
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        let deviceChangeBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+        let deviceChangeBlock = ListenerBlockWrapper { [weak self] _, _ in
             Task { @MainActor in
                 await self?.rebindToCurrentDevice()
             }
         }
-        defaultDeviceListener = deviceChangeBlock
-        let deviceChangeStatus = client.addDefaultDeviceListener(&defaultDeviceAddress, DispatchQueue.main, deviceChangeBlock)
+        defaultDeviceWrapper = deviceChangeBlock
+        let deviceChangeStatus = client.addDefaultDeviceListener(&defaultDeviceAddress, DispatchQueue.main, deviceChangeBlock.block)
         if deviceChangeStatus != noErr {
             logger.error("Failed to add default device listener: \(deviceChangeStatus)")
         }
@@ -145,18 +152,19 @@ final class MicUsageMonitor {
             mScope: kAudioObjectPropertyScopeInput,
             mElement: kAudioObjectPropertyElementMain
         )
-        if let block = listenerBlock, let device = observedDevice {
+        if let block = listenerWrapper?.block, let device = observedDevice {
             let status = client.removeListener(device, &address, DispatchQueue.main, block)
-            if status != noErr {
+            if status == noErr {
+                listenerAdded = false
+                listenerWrapper = nil
+                observedDevice = nil
+                isActive = false
+            } else {
                 logger.error("Failed to remove mic usage listener: \(status)")
             }
         }
-        listenerAdded = false
-        listenerBlock = nil
-        observedDevice = nil
-        isActive = false
 
-        if let deviceChangeBlock = defaultDeviceListener {
+        if let deviceChangeBlock = defaultDeviceWrapper?.block {
             var defaultDeviceAddress = AudioObjectPropertyAddress(
                 mSelector: kAudioHardwarePropertyDefaultInputDevice,
                 mScope: kAudioObjectPropertyScopeGlobal,
@@ -167,7 +175,7 @@ final class MicUsageMonitor {
                 logger.error("Failed to remove default device listener: \(status)")
             }
         }
-        defaultDeviceListener = nil
+        defaultDeviceWrapper = nil
         rebindTask?.cancel()
         rebindTask = nil
     }
@@ -242,20 +250,20 @@ final class MicUsageMonitor {
             defer { self.rebinding = false }
 
         // Tear down existing listener
-            if self.listenerAdded, let block = self.listenerBlock, let device = self.observedDevice {
+            if self.listenerAdded, let block = self.listenerWrapper?.block, let device = self.observedDevice {
                 var address = AudioObjectPropertyAddress(
                     mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
                     mScope: kAudioObjectPropertyScopeInput,
                     mElement: kAudioObjectPropertyElementMain
                 )
-                let status = AudioObjectRemovePropertyListenerBlock(device, &address, DispatchQueue.main, block)
+                let status = self.client.removeListener(device, &address, DispatchQueue.main, block)
                 if status != noErr {
                     self.logger.error("Failed to remove mic listener during rebind: \(status)")
                     // Do not advance state; bail early to avoid leaks.
                     return
                 }
                 self.listenerAdded = false
-                self.listenerBlock = nil
+                self.listenerWrapper = nil
                 self.observedDevice = nil
             }
 
@@ -272,16 +280,16 @@ final class MicUsageMonitor {
                 mScope: kAudioObjectPropertyScopeInput,
                 mElement: kAudioObjectPropertyElementMain
             )
-            let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            let block = ListenerBlockWrapper { [weak self] _, _ in
                 Task { @MainActor in
                     await self?.refreshState()
                 }
             }
-            self.listenerBlock = block
-            let status = self.client.addListener(deviceID, &address, DispatchQueue.main, block)
+            self.listenerWrapper = block
+            let status = self.client.addListener(deviceID, &address, DispatchQueue.main, block.block)
             guard status == noErr else {
                 self.logger.error("Failed to rebind mic usage listener: \(status)")
-                self.listenerBlock = nil
+                self.listenerWrapper = nil
                 self.observedDevice = nil
                 self.isActive = false
                 return
