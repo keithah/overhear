@@ -79,6 +79,7 @@ final class AutoRecordingCoordinator: ObservableObject {
         let task: Task<Void, Never> = Task { [weak self] in
             guard let self else { return }
             guard !Task.isCancelled else { return }
+            // Defensive double-check: manual recording could start after the initial guard above but before this async task runs.
             await self.startRecording(appName: appName, meetingTitle: meetingTitle, generation: generation)
         }
         detectionTask = task
