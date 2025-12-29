@@ -118,6 +118,13 @@ final class AutoRecordingCoordinator: ObservableObject {
 
         do {
             let manager = try await managerFactory(id, title)
+            if manualRecordingCoordinator?.isRecording == true {
+                logger.info("Aborting auto-record start; manual recording began during setup")
+                await manager.stopRecording()
+                state = .idle
+                detectionTask = nil
+                return
+            }
             activeManager = manager
             onManagerUpdate?(manager)
             isRecording = true

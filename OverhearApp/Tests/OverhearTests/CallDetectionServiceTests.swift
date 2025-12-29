@@ -44,7 +44,7 @@ final class CallDetectionServiceTests: XCTestCase {
 
     func testBrowserHostSupport() {
         let service = CallDetectionService()
-        let hosts = [
+        let allowed = [
             "meet.google.com",
             "zoom.us",
             "us02web.zoom.us",
@@ -53,9 +53,18 @@ final class CallDetectionServiceTests: XCTestCase {
             "webex.com",
             "events.webex.com"
         ]
-        hosts.forEach { host in
+        allowed.forEach { host in
             XCTAssertTrue(service.isSupportedBrowserHost(host), "Expected host \(host) to be supported")
         }
-        XCTAssertFalse(service.isSupportedBrowserHost("example.com"))
+        let disallowed = [
+            "evil-meet.google.com",
+            "maliciouszoom.us",
+            "fake.zoom.us.attacker.com",
+            "teams.microsoft.com.evil.net",
+            "example.com"
+        ]
+        disallowed.forEach { host in
+            XCTAssertFalse(service.isSupportedBrowserHost(host), "Host \(host) should not be treated as supported")
+        }
     }
 }

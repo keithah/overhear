@@ -363,7 +363,9 @@ final class CallDetectionService {
             "webex.com",
             "webex.com.cn"
         ]
-        return supportedHosts.contains(where: { host.hasSuffix($0) })
+        return supportedHosts.contains { domain in
+            host == domain || host.hasSuffix(".\(domain)")
+        }
     }
 
     private var preferencesAllowNotifications: Bool {

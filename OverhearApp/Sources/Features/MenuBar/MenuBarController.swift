@@ -1,6 +1,5 @@
 @preconcurrency import AppKit
 @preconcurrency import Combine
-import AppKit
 import SwiftUI
 import Foundation
 import os.log

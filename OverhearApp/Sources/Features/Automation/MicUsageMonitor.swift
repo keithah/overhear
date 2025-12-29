@@ -184,9 +184,7 @@ final class MicUsageMonitor {
         if listenerAdded {
             logger.error("MicUsageMonitor deinit while listener still active; forcing stop()")
         }
-        Task { @MainActor [weak self] in
-            self?.stop()
-        }
+        MainActor.assumeIsolated { stop() }
     }
 
     private func refreshState() async {
