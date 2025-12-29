@@ -13,11 +13,27 @@ final class AppContext: ObservableObject {
     var menuBarController: MenuBarController?
     var hotkeyManager: HotkeyManager?
 
-    init() {
-        let permissions = PermissionsService()
+    @MainActor
+    static func makeDefault() -> AppContext {
         let preferences = PreferencesService()
-        let calendar = CalendarService()
-        let recordingCoordinator = MeetingRecordingCoordinator()
+        return AppContext(
+            permissions: PermissionsService(),
+            preferences: preferences,
+            calendar: CalendarService(),
+            recordingCoordinator: MeetingRecordingCoordinator(),
+            callDetectionService: CallDetectionService(pollInterval: preferences.detectionPollingInterval),
+            autoRecordingCoordinator: AutoRecordingCoordinator(stopGracePeriod: preferences.autoRecordingGracePeriod)
+        )
+    }
+
+    init(
+        permissions: PermissionsService,
+        preferences: PreferencesService,
+        calendar: CalendarService,
+        recordingCoordinator: MeetingRecordingCoordinator,
+        callDetectionService: CallDetectionService,
+        autoRecordingCoordinator: AutoRecordingCoordinator
+    ) {
         self.permissionsService = permissions
         self.preferencesService = preferences
         self.calendarService = calendar
@@ -26,7 +42,17 @@ final class AppContext: ObservableObject {
                                                       recordingCoordinator: recordingCoordinator)
         self.recordingCoordinator = recordingCoordinator
         self.preferencesWindowController = PreferencesWindowController(preferences: preferences, calendarService: calendar)
-        self.callDetectionService = CallDetectionService()
-        self.autoRecordingCoordinator = AutoRecordingCoordinator()
+        self.callDetectionService = callDetectionService
+        self.autoRecordingCoordinator = autoRecordingCoordinator
+        wireCoordinators()
+    }
+
+    private func wireCoordinators() {
+        // Link weakly in one place to avoid accidental circular strong references.
+        // MeetingRecordingCoordinator.autoRecordingCoordinator is weak, as is
+        // AutoRecordingCoordinator.manualRecordingCoordinator, so this wiring
+        // does not introduce retain cycles.
+        recordingCoordinator.autoRecordingCoordinator = autoRecordingCoordinator
+        autoRecordingCoordinator.manualRecordingCoordinator = recordingCoordinator
     }
 }

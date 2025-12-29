@@ -122,10 +122,8 @@ extension AppError {
     /// Convert service-specific error to AppError
     /// Useful for error handling at service boundaries
     static func convertAudioError(_ error: Error) -> AppError {
-        if let nsError = error as? NSError {
-            return .audioCaptureFailed(nsError.localizedDescription)
-        }
-        return .audioCaptureFailed(error.localizedDescription)
+        let nsError = error as NSError
+        return .audioCaptureFailed(nsError.localizedDescription)
     }
     
     static func convertFileError(_ error: Error) -> AppError {
@@ -141,9 +139,7 @@ extension AppError {
     }
     
     static func convertCalendarError(_ error: Error) -> AppError {
-        if let nsError = error as? NSError {
-            return .calendarAccessFailed(nsError.localizedDescription)
-        }
-        return .calendarAccessFailed(error.localizedDescription)
+        let nsError = error as NSError
+        return .calendarAccessFailed(nsError.localizedDescription)
     }
 }

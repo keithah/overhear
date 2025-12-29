@@ -200,13 +200,73 @@ struct TranscriptDetailView: View {
             .background(Color(nsColor: .controlColor))
             .border(Color(nsColor: .separatorColor), width: 1)
             
-            // Transcript content
+            // Transcript + AI summary content
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(transcript.transcript)
-                        .font(.system(size: 12, design: .monospaced))
-                        .lineLimit(nil)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let summary = transcript.summary {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Summary")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text(summary.summary)
+                                .font(.system(size: 12))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if !summary.highlights.isEmpty {
+                                Divider()
+                                Text("Highlights")
+                                    .font(.system(size: 12, weight: .semibold))
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(summary.highlights, id: \.self) { highlight in
+                                        HStack(alignment: .top, spacing: 6) {
+                                            Image(systemName: "circle.fill")
+                                                .font(.system(size: 6))
+                                                .foregroundColor(.secondary)
+                                                .padding(.top, 4)
+                                            Text(highlight)
+                                                .font(.system(size: 12))
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if !summary.actionItems.isEmpty {
+                                Divider()
+                                Text("Action items")
+                                    .font(.system(size: 12, weight: .semibold))
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(summary.actionItems, id: \.self) { item in
+                                        HStack(alignment: .top, spacing: 6) {
+                                            Image(systemName: "checkmark.circle")
+                                                .foregroundColor(.green)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(item.description)
+                                                    .font(.system(size: 12))
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                                if let owner = item.owner, !owner.isEmpty {
+                                                    Text("Owner: \(owner)")
+                                                        .font(.system(size: 11))
+                                                        .foregroundColor(.secondary)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(12)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Transcript")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(transcript.transcript)
+                            .font(.system(size: 12, design: .monospaced))
+                            .lineLimit(nil)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.top, transcript.summary == nil ? 0 : 4)
                 }
                 .padding(16)
             }

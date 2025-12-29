@@ -7,13 +7,15 @@ let package = Package(
         .macOS(.v14)
     ],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", .upToNextMajor(from: "0.7.11"))
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", .upToNextMajor(from: "0.7.11")),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", .upToNextMinor(from: "2.29.1"))
     ],
     targets: [
         .executableTarget(
             name: "Overhear",
             dependencies: [
-                .product(name: "FluidAudio", package: "FluidAudio")
+                .product(name: "FluidAudio", package: "FluidAudio"),
+                .product(name: "MLXLLM", package: "mlx-swift-lm")
             ],
             path: ".",
             exclude: [

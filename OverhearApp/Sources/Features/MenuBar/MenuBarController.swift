@@ -1,6 +1,5 @@
 @preconcurrency import AppKit
 @preconcurrency import Combine
-import AppKit
 import SwiftUI
 import Foundation
 import os.log
@@ -107,6 +106,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             .sink { [weak self] _ in
                 self?.updateStatusItemIcon()
             }
+        autoRecordingCoordinator.onManagerUpdate = { manager in
+            if let manager = manager as? MeetingRecordingManager {
+                LiveNotesWindowController.shared.show(autoManager: manager)
+            }
+        }
         
          // Update menubar icon immediately (will update again when data loads)
          Task { @MainActor in

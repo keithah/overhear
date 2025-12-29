@@ -64,11 +64,20 @@ All processing is **local-first** and privacy-conscious.
 - Confluence
 - Slack
 
-## Requirements
+## Requirements & Permissions
 - macOS 14+ on Apple Silicon (Big Sur or later clients may still be supported, but new AVAudio/FluidAudio flows assume macOS 14 APIs).
-- Accessibility permissions for the global hotkeys.
-- Calendar access so the menu bar can read/launch events, and Notification permission for reminders.
+- Accessibility permission is required for meeting-window detection and global hotkeys. The app will prompt and can deep-link to the Accessibility pane; without this the “auto start/stop when meeting window detected” feature will not work.
+- Calendar access so the menu bar can read/launch events, and Notification permission for reminders and MLX fallback notices.
+- Microphone access is required for recording and for auto-detection (auto-recording will not start unless the mic is active to avoid false positives). This is intentional for privacy; see below.
+- Meeting detection supports native Zoom/Teams/Webex apps plus Google Meet in Safari/Chrome/Edge/Arc/Firefox/Brave (active tab only). Other browser hosts are currently ignored to avoid false positives.
 - The local MLX runtime expects small low-memory models (SmolLM2 1.7B or Llama 3.2 1B) and runs fully offline.
+- Logging convention: `Logger` writes to the unified system log for operational events; `FileLogger` is opt-in (via `OVERHEAR_FILE_LOGS=1`) and reserved for verbose diagnostics such as streaming and MLX state.
+
+## Privacy & Security Model
+- **Local-first:** Audio capture, transcription, diarization, and MLX summarization all run on-device; transcripts are AES-GCM encrypted on disk.
+- **No meeting content is uploaded.** Model downloads are pulled from public model hubs (FluidAudio CoreML bundles and MLX models) but transcript/content never leaves the machine.
+- **Minimized logging:** URLs are sanitized before logging to avoid leaking room codes; UI log spam for LLM readiness is suppressed. File logging is opt-in via `OVERHEAR_FILE_LOGS=1`.
+- **Explicit permissions:** Accessibility permission is only used to read the frontmost window title/URL for meeting detection; microphone usage is gated to avoid accidental captures. Notification data redacts meeting titles where possible.
 
 ## Developer toggles
 

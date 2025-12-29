@@ -60,8 +60,9 @@ final class MeetingRecordingManager: ObservableObject {
             }
         }
     }
-    
+
     let meetingID: String
+    private let fileSafeMeetingID: String
     
     @Published private(set) var status: Status = .idle
     @Published private(set) var transcript: String = ""
@@ -70,11 +71,13 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var audioFileURL: URL?
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     @Published private(set) var summary: MeetingSummary?
+    private(set) var transcriptID: String?
+    private var pendingNotes: String?
 
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline
     private let recordingDirectory: URL
-    private let meetingTitle: String
+    let meetingTitle: String
     private let meetingDate: Date
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingManager")
     
@@ -91,6 +94,7 @@ final class MeetingRecordingManager: ObservableObject {
     private var consecutiveEmptyStreamingUpdates = 0
     private var streamingStartDate: Date?
     private var loggedFirstStreamingToken = false
+    private var isRegeneratingSummary = false
 
     private var isStreamingEnabled: Bool {
         FluidAudioAdapter.isEnabled
@@ -108,6 +112,7 @@ final class MeetingRecordingManager: ObservableObject {
         summarizationService: SummarizationService = SummarizationService()
     ) throws {
         self.meetingID = meetingID
+        self.fileSafeMeetingID = MeetingRecordingManager.makeFileSafeID(meetingID)
         self.captureService = captureService
         self.meetingTitle = meetingTitle ?? meetingID
         self.meetingDate = meetingDate
@@ -153,7 +158,7 @@ final class MeetingRecordingManager: ObservableObject {
 #endif
         
         let outputURL = recordingDirectory
-            .appendingPathComponent("\(meetingID)-\(ISO8601DateFormatter().string(from: Date()))")
+            .appendingPathComponent("\(fileSafeMeetingID)-\(ISO8601DateFormatter().string(from: Date()))")
             .appendingPathExtension("wav")
         
         do {
@@ -202,6 +207,52 @@ final class MeetingRecordingManager: ObservableObject {
         }
         status = .completed
     }
+
+    var displayTitle: String {
+        meetingTitle
+    }
+
+    func regenerateSummary(template: PromptTemplate? = nil) async {
+        guard !isRegeneratingSummary else { return }
+        isRegeneratingSummary = true
+        defer { isRegeneratingSummary = false }
+        let transcriptValue = transcript
+        let segmentsValue = speakerSegments
+        let summaryResult = await pipeline.regenerateSummary(transcript: transcriptValue, segments: segmentsValue, template: template)
+        await MainActor.run {
+            self.summary = summaryResult
+        }
+        await persistRegeneratedSummary(summaryResult)
+    }
+
+    func saveNotes(_ notes: String) async {
+        // Always remember the latest notes in case the transcript ID is not yet assigned.
+        pendingNotes = notes
+        guard let transcriptID = transcriptID else {
+            FileLogger.log(category: "MeetingRecordingManager", message: "Deferring notes persist until transcriptID is available")
+            return
+        }
+        do {
+            try await pipeline.updateTranscript(id: transcriptID) { stored in
+                StoredTranscript(
+                    id: stored.id,
+                    meetingID: stored.meetingID,
+                    title: stored.title,
+                    date: stored.date,
+                    transcript: stored.transcript,
+                    duration: stored.duration,
+                    audioFilePath: stored.audioFilePath,
+                    segments: stored.segments,
+                    summary: stored.summary,
+                    notes: notes
+                )
+            }
+            FileLogger.log(category: "MeetingRecordingManager", message: "Persisted notes for \(transcriptID)")
+            pendingNotes = nil
+        } catch {
+            FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes: \(error.localizedDescription)")
+        }
+    }
     
     // MARK: - Private
     
@@ -231,6 +282,7 @@ final class MeetingRecordingManager: ObservableObject {
         }
 
         let transcriptID = UUID().uuidString
+        self.transcriptID = transcriptID
         // Save immediately using best-effort text (or a placeholder) so UI can flip to Ready.
         let quickTextToSave = bestEffortText.isEmpty ? "Transcription pending…" : bestEffortText
         do {
@@ -262,12 +314,15 @@ final class MeetingRecordingManager: ObservableObject {
                 category: "MeetingRecordingManager",
                 message: "Quick transcript saved for \(metadata.meetingID); scheduling background refresh"
             )
+            await persistPendingNotesIfNeeded()
         } catch {
             FileLogger.log(
                 category: "MeetingRecordingManager",
                 message: "Quick transcript save failed for \(metadata.meetingID): \(error.localizedDescription)"
             )
             status = .failed(RecordingError.transcriptionService(error))
+            self.transcriptID = nil
+            pendingNotes = nil
             return
         }
 
@@ -354,20 +409,44 @@ final class MeetingRecordingManager: ObservableObject {
         self.transcriptionTask = processingTask
         _ = await processingTask.result
     }
+
+    private func persistPendingNotesIfNeeded() async {
+        guard let pendingNotes, let transcriptID else { return }
+        do {
+            try await pipeline.updateTranscript(id: transcriptID) { stored in
+                StoredTranscript(
+                    id: stored.id,
+                    meetingID: stored.meetingID,
+                    title: stored.title,
+                    date: stored.date,
+                    transcript: stored.transcript,
+                    duration: stored.duration,
+                    audioFilePath: stored.audioFilePath,
+                    segments: stored.segments,
+                    summary: stored.summary,
+                    notes: pendingNotes
+                )
+            }
+            FileLogger.log(category: "MeetingRecordingManager", message: "Persisted pending notes for \(transcriptID)")
+            self.pendingNotes = nil
+        } catch {
+            FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist pending notes: \(error.localizedDescription)")
+        }
+    }
 }
 
 #if canImport(FluidAudio)
 private extension MeetingRecordingManager {
     /// Streaming configuration tuned for balanced accuracy/latency for live transcripts.
     private var streamingConfig: StreamingAsrConfig {
+        // Favor accuracy/stability: longer chunks and context so we stop dropping words.
         StreamingAsrConfig(
-            // Bias toward lower latency for first tokens and confirmations.
-            chunkSeconds: 3.5,
-            hypothesisChunkSeconds: 0.5,
-            leftContextSeconds: 0.7,
-            rightContextSeconds: 0.5,
-            minContextForConfirmation: 1.6,
-            confirmationThreshold: 0.55
+            chunkSeconds: 10.0,              // near FluidAudio's recommended 10–11s windows
+            hypothesisChunkSeconds: 0.8,     // quick partials
+            leftContextSeconds: 2.0,         // carry enough history for word boundaries
+            rightContextSeconds: 1.5,        // small lookahead to avoid clipping endings
+            minContextForConfirmation: 8.0,  // wait for context before finalizing
+            confirmationThreshold: 0.80      // higher confidence before locking text
         )
     }
 
@@ -397,6 +476,7 @@ private extension MeetingRecordingManager {
                             category: "MeetingRecordingManager",
                             message: String(format: "First streaming update after %.2fs", delta)
                         )
+                        logger.info("Streaming first token latency: \(delta, privacy: .public)s")
                     }
                     await self.handleStreamingUpdate(update)
                 }
@@ -412,9 +492,9 @@ private extension MeetingRecordingManager {
 
             streamingObserverToken = await captureService.registerBufferObserver { [weak manager] buffer in
                 guard let manager else { return }
-                guard let copy = buffer.cloned() else { return }
-                Task { @MainActor in
-                    await manager.streamAudio(copy)
+                // Buffer provided by AVAudioCaptureService is already cloned per observer; forward off the main thread.
+                Task.detached(priority: .userInitiated) {
+                    await manager.streamAudio(buffer)
                 }
             }
 
@@ -449,7 +529,9 @@ private extension MeetingRecordingManager {
         streamingTask = nil
 
         if let token = streamingObserverToken {
+            defer { streamingObserverToken = nil }
             await captureService.unregisterBufferObserver(token)
+        } else {
             streamingObserverToken = nil
         }
 
@@ -566,6 +648,36 @@ private extension MeetingRecordingManager {
             combined.append(hyp)
         }
         liveSegments = combined
+        if let last = combined.last {
+            liveTranscript = combined.map(\.text).joined(separator: "\n")
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Streaming live update: confirmed=\(streamingConfirmedSegments.count) hypLength=\(last.text.count)"
+            )
+        }
+    }
+
+    private func persistRegeneratedSummary(_ summary: MeetingSummary) async {
+        guard let transcriptID else { return }
+        do {
+            try await pipeline.updateTranscript(id: transcriptID) { stored in
+                StoredTranscript(
+                    id: stored.id,
+                    meetingID: stored.meetingID,
+                    title: stored.title,
+                    date: stored.date,
+                    transcript: stored.transcript,
+                    duration: stored.duration,
+                    audioFilePath: stored.audioFilePath,
+                    segments: stored.segments,
+                    summary: summary,
+                    notes: stored.notes
+                )
+            }
+            FileLogger.log(category: "MeetingRecordingManager", message: "Persisted regenerated summary for \(transcriptID)")
+        } catch {
+            FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist regenerated summary: \(error.localizedDescription)")
+        }
     }
 }
 #else
@@ -574,3 +686,12 @@ private extension MeetingRecordingManager {
     func stopLiveStreaming() async {}
 }
 #endif
+
+private extension MeetingRecordingManager {
+    static func makeFileSafeID(_ raw: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let sanitized = raw.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
+        let result = String(sanitized).trimmingCharacters(in: CharacterSet(charactersIn: "._"))
+        return result.isEmpty ? "meeting" : result
+    }
+}

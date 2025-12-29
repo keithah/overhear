@@ -58,7 +58,8 @@ actor MeetingRecordingPipeline {
             duration: duration,
             audioFilePath: nil,
             segments: [],
-            summary: nil
+            summary: nil,
+            notes: nil
         )
         try await persist(stored, meetingID: metadata.meetingID)
         logger.info("Quick transcript saved for \(metadata.title, privacy: .public)")
@@ -102,6 +103,10 @@ actor MeetingRecordingPipeline {
         let transcriptValue = transcriptText ?? ""
         let segments = await diarizationService.analyze(audioURL: audioURL)
         let summary = await summarizationService.summarize(transcript: transcriptValue, segments: segments)
+        FileLogger.log(
+            category: "MeetingRecordingPipeline",
+            message: "Summarization complete for \(metadata.meetingID); summaryChars=\(summary.summary.count) highlights=\(summary.highlights.count) actions=\(summary.actionItems.count) segments=\(segments.count)"
+        )
 
         let stored = StoredTranscript(
             id: transcriptID,
@@ -112,7 +117,8 @@ actor MeetingRecordingPipeline {
             duration: duration,
             audioFilePath: audioURL.path,
             segments: segments,
-            summary: summary
+            summary: summary,
+            notes: nil
         )
 
         try await persist(stored, meetingID: metadata.meetingID)
@@ -140,5 +146,13 @@ actor MeetingRecordingPipeline {
             )
             throw error
         }
+    }
+
+    func regenerateSummary(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async -> MeetingSummary {
+        await summarizationService.summarize(transcript: transcript, segments: segments, template: template)
+    }
+
+    func updateTranscript(id: String, transform: @Sendable (StoredTranscript) -> StoredTranscript) async throws {
+        try await transcriptStore.update(id: id, transform: transform)
     }
 }

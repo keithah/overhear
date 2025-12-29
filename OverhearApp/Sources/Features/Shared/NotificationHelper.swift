@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @preconcurrency import UserNotifications
 import os.log
@@ -8,8 +9,19 @@ enum NotificationHelper {
     // Maximum length at which a notification body that starts with the prompt is
     // still considered to be just the prompt text without a meeting title.
     private static let maxPromptOnlyBodyLength = 30
+    private static let accessibilityWarningKey = "com.overhear.notification.accessibilityWarningShown"
+    private static let browserUrlWarningKey = "com.overhear.notification.browserUrlWarningShown"
+    private static var supportsUserNotifications: Bool {
+#if DEBUG
+        // Unit tests and non-app hosts (Xcode toolchain) cannot schedule UNUserNotifications.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return false
+        }
+#endif
+        return Bundle.main.bundleURL.pathExtension == "app"
+    }
 
-    static func requestPermission() {
+    static func requestPermission(completion: (@Sendable () -> Void)? = nil) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
@@ -19,22 +31,32 @@ enum NotificationHelper {
                     } else {
                         logger.info("Notification permissions granted: \(granted, privacy: .public)")
                     }
+                    DispatchQueue.main.async { completion?() }
                 }
             case .denied:
                 logger.info("Notifications denied; open System Settings > Notifications to enable.")
+                DispatchQueue.main.async {
+                    showNotificationDeniedAlert()
+                    completion?()
+                }
             default:
-                break
+                DispatchQueue.main.async { completion?() }
             }
         }
     }
     
-    static func sendTestNotification() {
+    static func sendTestNotification(completion: (@Sendable () -> Void)? = nil) {
+        guard supportsUserNotifications else {
+            completion?()
+            return
+        }
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     if let error {
                         logger.error("Notification permission error during test: \(error.localizedDescription, privacy: .public)")
+                        DispatchQueue.main.async { completion?() }
                         return
                     }
                     
@@ -43,12 +65,33 @@ enum NotificationHelper {
                     } else {
                         logger.info("Notifications denied during test prompt; cannot show test notification.")
                     }
+                    DispatchQueue.main.async { completion?() }
                 }
             case .denied:
                 logger.info("Notifications denied; cannot show test notification.")
+                DispatchQueue.main.async {
+                    showNotificationDeniedAlert()
+                    completion?()
+                }
             default:
                 scheduleTestNotification()
+                DispatchQueue.main.async { completion?() }
             }
+        }
+    }
+    
+    @MainActor
+    private static func showNotificationDeniedAlert() {
+        guard supportsUserNotifications else { return }
+        let alert = NSAlert()
+        alert.messageText = "Notifications are disabled"
+        alert.informativeText = "Open System Settings > Notifications and enable Overhear to receive meeting reminders and recording prompts."
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Dismiss")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn,
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+            NSWorkspace.shared.open(url)
         }
     }
     
@@ -100,7 +143,62 @@ enum NotificationHelper {
 }
 
 extension NotificationHelper {
+    static func sendAccessibilityPermissionNeededIfNeeded() {
+        guard supportsUserNotifications else { return }
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: accessibilityWarningKey) {
+            return
+        }
+        defaults.set(true, forKey: accessibilityWarningKey)
+
+        let content = UNMutableNotificationContent()
+        content.title = "Allow Accessibility for meeting detection"
+        content.body = "Enable Overhear in System Settings > Privacy & Security > Accessibility to detect meeting windows."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "com.overhear.notification.accessibility-permission",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule accessibility warning: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    static func sendBrowserUrlMissingIfNeeded() {
+        guard supportsUserNotifications else { return }
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: browserUrlWarningKey) {
+            return
+        }
+        defaults.set(true, forKey: browserUrlWarningKey)
+
+        let content = UNMutableNotificationContent()
+        content.title = "Unable to detect meeting tab"
+        content.body = "Switch to the active Meet tab or refresh the page so Overhear can detect the meeting window."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "com.overhear.notification.browser-url-missing",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule browser URL warning: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+}
+
+extension NotificationHelper {
     static func sendRecordingCompleted(title: String, transcriptReady: Bool) {
+        guard supportsUserNotifications else { return }
         let content = UNMutableNotificationContent()
         if transcriptReady {
             content.title = "New Note ready"
@@ -127,15 +225,20 @@ extension NotificationHelper {
 
 extension NotificationHelper {
     static func sendMeetingPrompt(appName: String, meetingTitle: String?) {
+        guard supportsUserNotifications else { return }
         let content = UNMutableNotificationContent()
-        content.title = "Meeting window detected (\(appName))"
+        let safeApp = sanitizeText(appName)
         let cleanedTitle = meetingTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let bodyTitle = (cleanedTitle?.isEmpty == false) ? cleanedTitle : nil
-        content.body = bodyTitle.map { "Start a New Note for \($0)?" } ?? "Start a New Note for this meeting?"
+        let truncatedTitle = cleanedTitle.map { String($0.prefix(60)) }
+        let safeTitle = truncatedTitle.map { sanitizeText($0) }
+        let shouldRedact = UserDefaults.standard.bool(forKey: PreferenceKey.redactMeetingTitles.rawValue)
+        let bodyTitle = (safeTitle?.isEmpty == false) ? safeTitle : nil
+        content.title = "Meeting window detected (\(safeApp))"
+        content.body = shouldRedact ? "Start a New Note for this meeting?" : "Start a New Note for \(safeApp)?"
         content.sound = .default
         content.userInfo = [
-            "appName": appName,
-            "meetingTitle": bodyTitle ?? ""
+            "appName": safeApp,
+            "meetingTitle": shouldRedact ? "" : (bodyTitle ?? "")
         ]
 
         // Add action buttons
@@ -173,7 +276,7 @@ extension NotificationHelper {
             .split(separator: "-", omittingEmptySubsequences: true)
             .joined(separator: "-")
         let finalSeed = sanitizedSeed.isEmpty ? UUID().uuidString : sanitizedSeed
-        let identifier = "com.overhear.notification.meeting-detected.\(finalSeed)"
+        let identifier = "com.overhear.notification.meeting-detected.\(finalSeed).\(UUID().uuidString)"
 
         let request = UNNotificationRequest(
             identifier: identifier,
@@ -188,9 +291,53 @@ extension NotificationHelper {
         }
     }
 
+    static func sendBrowserURLMissingIfNeeded(appName: String) {
+        guard supportsUserNotifications else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Waiting for meeting URL"
+        content.body = "Open your meeting tab in \(appName) to start auto detection."
+        content.sound = .default
+        let identifier = "com.overhear.notification.browser-url-missing.\(appName)"
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule browser URL missing prompt: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    static func sendLLMFallback(original: String, fallback: String) {
+        guard supportsUserNotifications else {
+            logger.debug("Skipping LLM fallback notification outside app host")
+            return
+        }
+        let content = UNMutableNotificationContent()
+        content.title = "LLM model fallback"
+        content.body = "Using \(fallback) because \(original) failed to load."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "com.overhear.notification.llm-fallback.\(UUID().uuidString)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule LLM fallback notification: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
     static func cleanMeetingTitle(from body: String) -> String {
+        let cappedBody = String(body.prefix(512))
         let prefix = "Start a New Note?"
-        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBody = cappedBody.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard trimmedBody.hasPrefix(prefix) else {
             return trimmedBody
@@ -204,5 +351,16 @@ extension NotificationHelper {
         }
 
         return remainder.isEmpty ? trimmedBody : remainder
+    }
+
+    private static func sanitizeText(_ value: String) -> String {
+        let filtered = value.unicodeScalars.filter { scalar in
+            guard !CharacterSet.controlCharacters.contains(scalar) else { return false }
+            if scalar.isASCII {
+                return scalar.value >= 0x20 && scalar.value != 0x7F
+            }
+            return true
+        }
+        return String(String.UnicodeScalarView(filtered)).prefix(256).description
     }
 }

@@ -5,7 +5,9 @@ import AppKit
 
 struct PreferencesView: View {
     @ObservedObject var preferences: PreferencesService
+    @State private var mlxModelID: String = MLXPreferences.modelID()
     @ObservedObject var calendarService: CalendarService
+    @State private var accessibilityTrusted: Bool = AccessibilityHelper.isTrusted()
 
     @State private var calendarsBySource: [(source: EKSource, calendars: [EKCalendar])] = []
     @State private var isLoadingCalendars = false
@@ -185,6 +187,8 @@ struct PreferencesView: View {
                     Text("\(preferences.notificationMinutesBefore)")
                         .frame(minWidth: 20, alignment: .trailing)
                 }
+                Toggle("Redact meeting titles in notifications", isOn: $preferences.redactMeetingTitles)
+                    .toggleStyle(.switch)
                 Text("Notifications fire before your next meeting; countdown appears in the menu bar if enabled.")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -192,12 +196,84 @@ struct PreferencesView: View {
 
             Section(header: Text("Auto recording")) {
                 Toggle("Auto start/stop when meeting window detected", isOn: $preferences.autoRecordingEnabled)
-                Text("Requires Accessibility permission to detect meeting windows and an active microphone (you being in a call); auto-recording won't start if either is missing. Currently supports Zoom, Teams, Webex, and Meet in Safari/Chrome/Edge.")
+                HStack {
+                    Text("Polling interval (seconds)")
+                    Spacer()
+                    Stepper("", value: $preferences.detectionPollingInterval, in: 1...10, step: 1)
+                        .labelsHidden()
+                    Text(String(format: "%.0f", preferences.detectionPollingInterval))
+                        .frame(minWidth: 20, alignment: .trailing)
+                }
+                HStack {
+                    Text("Stop grace period (seconds)")
+                    Spacer()
+                    Stepper("", value: $preferences.autoRecordingGracePeriod, in: 0...30, step: 1)
+                        .labelsHidden()
+                    Text(String(format: "%.0f", preferences.autoRecordingGracePeriod))
+                        .frame(minWidth: 20, alignment: .trailing)
+                }
+                Text("Requires Accessibility permission to detect meeting windows and an active microphone (you being in a call); auto-recording won't start if either is missing. Currently supports Zoom, Teams, Webex, and Meet in Safari/Chrome/Edge across native apps and browsers.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
 
+            Section(header: Text("Live Notes")) {
+                Toggle("Auto-open Live Notes when recording starts", isOn: $preferences.autoShowLiveNotes)
+                Text("Power users can disable the automatic window popover and open Live Notes manually from the menu bar.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Text("On-device LLM (MLX)")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Model ID (e.g. mlx-community/Llama-3.2-1B-Instruct-4bit)", text: $mlxModelID)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 420)
+                    HStack(spacing: 12) {
+                        Button("Save model ID") {
+                            MLXPreferences.setModelID(mlxModelID)
+                        }
+                        Button("Clear cached models") {
+                            MLXPreferences.clearModelCache()
+                        }
+                    }
+                    .controlSize(.small)
+                    Text("Used for on-device summaries and prompt templates. Point to any MLX-compatible model ID; clearing cache removes downloaded weights so they can re-download.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             Section(header: Text("Permissions")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Accessibility")
+                        Spacer()
+                        Text(accessibilityStatusText)
+                            .foregroundColor(.secondary)
+                    }
+                    HStack(spacing: 12) {
+                        Button("Request accessibility") {
+                            Task { @MainActor in
+                                let trusted = await AccessibilityHelper.requestPermissionPrompt()
+                                await refreshAccessibilityStatus()
+                                if !trusted {
+                                    AccessibilityHelper.openSystemSettings()
+                                    AccessibilityHelper.revealCurrentApp()
+                                }
+                            }
+                        }
+                        Button("Open Accessibility Settings") {
+                            AccessibilityHelper.openSystemSettings()
+                        }
+                        Button("Reveal app in Finder") {
+                            AccessibilityHelper.revealCurrentApp()
+                        }
+                    }
+                    .controlSize(.small)
+                }
+
                 HStack {
                     Text("Status")
                     Spacer()
@@ -206,10 +282,18 @@ struct PreferencesView: View {
                 }
                 HStack(spacing: 12) {
                     Button("Request permission") {
-                        NotificationHelper.requestPermission()
+                        NotificationHelper.requestPermission {
+                            Task { @MainActor in
+                                refreshNotificationStatus()
+                            }
+                        }
                     }
                     Button("Send test notification") {
-                        NotificationHelper.sendTestNotification()
+                        NotificationHelper.sendTestNotification {
+                            Task { @MainActor in
+                                refreshNotificationStatus()
+                            }
+                        }
                     }
                     Button("Open System Settings") {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
@@ -221,6 +305,7 @@ struct PreferencesView: View {
             }
             .onAppear { refreshNotificationStatus() }
         }
+        .formStyle(.grouped)
     }
 
     private var advancedTab: some View {
@@ -268,6 +353,7 @@ struct PreferencesView: View {
                 }
             }
         }
+        .formStyle(.grouped)
     }
 
     private var aboutTab: some View {
@@ -361,6 +447,17 @@ struct PreferencesView: View {
                 self.notificationStatus = status
             }
         }
+    }
+
+    private var accessibilityStatusText: String {
+        accessibilityTrusted ? "Allowed" : "Not granted"
+    }
+
+    @MainActor
+    private func refreshAccessibilityStatus() async {
+        // The system prompt is async; check again after a short delay.
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        accessibilityTrusted = AccessibilityHelper.isTrusted()
     }
 }
 

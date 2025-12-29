@@ -13,6 +13,7 @@ struct StoredTranscript: Codable, Identifiable {
     let audioFilePath: String?
     let segments: [SpeakerSegment]
     let summary: MeetingSummary?
+    let notes: String?
     
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -124,7 +125,7 @@ actor TranscriptStore {
         do {
             FileLogger.log(
                 category: "TranscriptStore",
-                message: "save() writing \(fileURL.lastPathComponent)"
+                message: "save() writing \(fileURL.lastPathComponent) summaryChars=\(transcript.summary?.summary.count ?? 0) highlights=\(transcript.summary?.highlights.count ?? 0) actions=\(transcript.summary?.actionItems.count ?? 0)"
             )
             let data = try encoder.encode(transcript)
             let encrypted = try Self.encryptData(data, using: encryptionKey)
@@ -149,6 +150,13 @@ actor TranscriptStore {
         
         let data = try Data(contentsOf: fileURL)
         return try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
+    }
+
+    /// Update an existing transcript by applying a transform; persists the updated record.
+    func update(id: String, transform: @Sendable (StoredTranscript) -> StoredTranscript) async throws {
+        var transcript = try await retrieve(id: id)
+        transcript = transform(transcript)
+        try await save(transcript)
     }
     
     /// Get all stored transcripts (decrypted)
@@ -355,13 +363,16 @@ actor TranscriptStore {
             if data.count == 32 {
                 return SymmetricKey(data: data)
             } else {
-                // Corrupted key size - delete and recreate
-                print("Warning: Encryption key has invalid size (\(data.count) bytes). Previously encrypted transcripts may become unrecoverable.")
-                let deleteQuery: [String: Any] = [
+                FileLogger.log(category: "TranscriptStore", message: "Encryption key invalid size (\(data.count)); keeping old key for recovery and generating new one")
+                // Keep old key for potential recovery; store under a legacy tag.
+                let legacyTag = "\(keyTag).legacy.\(UUID().uuidString)"
+                let addLegacy: [String: Any] = [
                     kSecClass as String: kSecClassGenericPassword,
-                    kSecAttrAccount as String: keyTag
+                    kSecAttrAccount as String: legacyTag,
+                    kSecValueData as String: data,
+                    kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
                 ]
-                SecItemDelete(deleteQuery as CFDictionary)
+                _ = SecItemAdd(addLegacy as CFDictionary, nil)
                 // Fall through to create new key
             }
         }

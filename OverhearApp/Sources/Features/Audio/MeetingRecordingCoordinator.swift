@@ -9,6 +9,7 @@ final class MeetingRecordingCoordinator: ObservableObject {
     @Published private(set) var liveTranscript: String = ""
     @Published private(set) var liveSegments: [LiveTranscriptSegment] = []
     @Published var liveNotes: String = ""
+    @Published private(set) var summary: MeetingSummary?
 
     private var recordingManager: MeetingRecordingManager?
     private var recordingTask: Task<Void, Never>?
@@ -20,8 +21,10 @@ final class MeetingRecordingCoordinator: ObservableObject {
     private var manualRecordingTemplate: Meeting?
     private var manualRecordingEmitted: Bool = false
     private var hasRecordedOnce = false
+    var onRecordingStatusChange: ((Bool, String?) -> Void)?
 
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingCoordinator")
+    weak var autoRecordingCoordinator: AutoRecordingCoordinator?
 
     var isRecording: Bool {
         switch status {
@@ -30,6 +33,10 @@ final class MeetingRecordingCoordinator: ObservableObject {
         default:
             return false
         }
+    }
+
+    var transcriptID: String? {
+        recordingManager?.transcriptID
     }
 
     var manualRecordingCompletionPublisher: AnyPublisher<Meeting, Never> {
@@ -63,6 +70,13 @@ final class MeetingRecordingCoordinator: ObservableObject {
 
     private func startRecordingInternal(for meeting: Meeting) async {
         logger.debug("Starting recording for \(meeting.title, privacy: .public)")
+
+        // Stop auto-recording if active - manual recording takes precedence
+        if autoRecordingCoordinator?.isRecording == true {
+            logger.info("Stopping auto-recording to start manual recording")
+            await autoRecordingCoordinator?.stopRecording()
+        }
+
         await stopRecordingInternal()
         liveTranscript = ""
         liveSegments = []
@@ -86,6 +100,10 @@ final class MeetingRecordingCoordinator: ObservableObject {
                 .receive(on: RunLoop.main)
                 .sink { [weak self] in self?.liveSegments = $0 }
                 .store(in: &cancellables)
+            manager.$summary
+                .receive(on: RunLoop.main)
+                .sink { [weak self] in self?.summary = $0 }
+                .store(in: &cancellables)
 
             status = manager.status
 
@@ -94,6 +112,17 @@ final class MeetingRecordingCoordinator: ObservableObject {
                 .sink { [weak self, manager] newStatus in
                     guard let self else { return }
                     self.status = newStatus
+                    let isActive: Bool
+                    switch newStatus {
+                    case .capturing, .transcribing:
+                        isActive = true
+                    default:
+                        isActive = false
+                    }
+                    if let onRecordingStatusChange {
+                        let title = self.activeMeeting?.title ?? manager.displayTitle
+                        onRecordingStatusChange(isActive, title)
+                    }
                     switch newStatus {
                     case .capturing, .transcribing:
                         self.hasRecordedOnce = true
@@ -135,6 +164,14 @@ final class MeetingRecordingCoordinator: ObservableObject {
         emitManualRecordingIfNeeded(reason: "stop")
     }
 
+    func regenerateSummary(template: PromptTemplate? = nil) async {
+        await recordingManager?.regenerateSummary(template: template)
+    }
+
+    func saveNotes(_ notes: String) async {
+        await recordingManager?.saveNotes(notes)
+    }
+
     private func cleanupAfterRecordingIfNeeded() {
         recordingManager = nil
         recordingTask = nil
@@ -143,6 +180,7 @@ final class MeetingRecordingCoordinator: ObservableObject {
         transcriptSubscription?.cancel()
         transcriptSubscription = nil
         liveSegments = []
+        summary = nil
     }
 
     private func completeManualRecordingIfNeeded() {

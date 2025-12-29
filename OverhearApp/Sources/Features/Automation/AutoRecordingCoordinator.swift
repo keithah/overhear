@@ -1,56 +1,119 @@
-import Foundation
+@preconcurrency import Foundation
 import Combine
 import os.log
 
 /// Coordinates auto-recording sessions that start from meeting-window detection.
 /// Runs on the main actor so UI bindings stay consistent and avoids actor hops when
 /// interacting with AppKit and SwiftUI.
+typealias RecordingManagerRef = any RecordingManagerType
+
 @MainActor
 final class AutoRecordingCoordinator: ObservableObject {
+    private enum RecordingState {
+        case idle
+        case starting
+        case recording
+        case stopping
+    }
+
     private let logger = Logger(subsystem: "com.overhear.app", category: "AutoRecordingCoordinator")
-    private var activeManager: MeetingRecordingManager?
-    private var stopWorkItem: DispatchWorkItem?
-    // Grace period before stopping to avoid flapping on brief focus changes.
-    // 8 seconds was chosen as a balance between responsiveness (stop soon after
-    // a meeting ends) and stability (ignore transient focus changes).
-    private let stopGracePeriod: TimeInterval = 8.0
-    // Backstop duration to prevent runaway recordings; auto-stop via detection
-    // should normally end sessions first.
-    private let maxRecordingDuration: TimeInterval = 4 * 3600
+    private var stopGracePeriod: TimeInterval
+    private let maxRecordingDuration: TimeInterval
+    private let monitorBuffer: TimeInterval = 60 // Allow pipeline a short tail window beyond requested duration.
+    private let managerFactory: @MainActor (String, String?) async throws -> RecordingManagerRef
+    private var activeManager: RecordingManagerRef?
+    private var stopTask: Task<Void, Never>?
+    private var detectionTask: Task<Void, Never>?
+    private var stopGeneration: Int = 0
     private var activeTitle: String?
     private var monitorTask: Task<Void, Never>?
+    private var monitorStartDate: Date?
+    private var state: RecordingState = .idle
     @Published private(set) var isRecording: Bool = false
+    private var detectionGeneration: Int = 0
+    var onManagerUpdate: ((RecordingManagerRef?) -> Void)?
     var onCompleted: (() -> Void)?
     var onStatusUpdate: ((String, Bool) -> Void)?
+    weak var manualRecordingCoordinator: MeetingRecordingCoordinator?
+
+    init(
+        stopGracePeriod: TimeInterval = 8.0,
+        maxRecordingDuration: TimeInterval = AutoRecordingCoordinator.defaultMaxRecordingDuration(),
+        managerFactory: @escaping @MainActor (String, String?) async throws -> RecordingManagerRef = { id, title in
+            try MeetingRecordingManager(meetingID: id, meetingTitle: title)
+        }
+    ) {
+        self.stopGracePeriod = stopGracePeriod
+        self.maxRecordingDuration = maxRecordingDuration
+        self.managerFactory = managerFactory
+    }
+
+    func updateGracePeriod(_ seconds: TimeInterval) {
+        stopGracePeriod = max(0, seconds)
+    }
 
     func onDetection(appName: String, meetingTitle: String?) {
-        // Cancel any pending stop since we have a fresh detection.
-        stopWorkItem?.cancel()
-        stopWorkItem = nil
-
-        if activeManager != nil {
-            isRecording = true
-            return // Already recording; keep going.
+        // Snapshot manual state to reduce TOCTOU windows.
+        let manualActiveAtEntry = manualRecordingCoordinator?.isRecording == true
+        if manualActiveAtEntry {
+            logger.info("Skipping auto-record detection; manual recording active")
+            return
+        }
+        if manualRecordingCoordinator?.isRecording == true {
+            logger.info("Manual recording started during detection; skipping")
+            return
         }
 
-        startRecording(appName: appName, meetingTitle: meetingTitle)
+        // Cancel any pending stop since we have a fresh detection.
+        stopTask?.cancel()
+        stopTask = nil
+
+        switch state {
+        case .recording:
+            isRecording = true
+            return
+        case .starting, .stopping:
+            return
+        case .idle:
+            state = .starting
+        }
+
+        detectionTask?.cancel()
+        detectionGeneration &+= 1
+        let generation = detectionGeneration
+        let task: Task<Void, Never> = Task { [weak self] in
+            guard let self else { return }
+            guard !Task.isCancelled else { return }
+            // Defensive double-check: manual recording could start after the initial guard above but before this async task runs.
+            await self.startRecording(appName: appName, meetingTitle: meetingTitle, generation: generation)
+        }
+        detectionTask = task
     }
 
     func onNoDetection() {
-        guard activeManager != nil else { return }
+        guard activeManager != nil, state == .recording else { return }
         // Schedule a graceful stop to avoid flapping on brief focus changes.
-        if stopWorkItem == nil {
-            let item = DispatchWorkItem { [weak self] in
-                Task { @MainActor in
-                    await self?.stopRecording()
-                }
-            }
-            stopWorkItem = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + stopGracePeriod, execute: item)
+        stopTask?.cancel()
+        stopTask = nil
+        stopGeneration &+= 1
+        let generation = stopGeneration
+        stopTask = Task { [weak self] in
+            guard let self = self else { return }
+            guard generation == self.stopGeneration else { return }
+            try? await Task.sleep(nanoseconds: UInt64(self.stopGracePeriod * 1_000_000_000))
+            await self.stopRecording()
         }
     }
 
-    private func startRecording(appName: String, meetingTitle: String?) {
+    private func startRecording(appName: String, meetingTitle: String?, generation: Int) async {
+        guard state == .starting, generation == detectionGeneration else { return }
+        guard !Task.isCancelled else { return }
+        if manualRecordingCoordinator?.isRecording == true {
+            state = .idle
+            detectionTask = nil
+            // Intentional duplication with entry guard to avoid TOCTOU: manual may start after detection was enqueued.
+            return
+        }
         let id = "detected-\(Int(Date().timeIntervalSince1970))"
         let title: String
         if let meetingTitle, !meetingTitle.isEmpty {
@@ -61,15 +124,22 @@ final class AutoRecordingCoordinator: ObservableObject {
         activeTitle = title
 
         do {
-            let manager = try MeetingRecordingManager(
-                meetingID: id,
-                meetingTitle: title
-            )
+            let manager = try await managerFactory(id, title)
+            if manualRecordingCoordinator?.isRecording == true {
+                logger.info("Aborting auto-record start; manual recording began during setup")
+                await manager.stopRecording()
+                state = .idle
+                detectionTask = nil
+                return
+            }
             activeManager = manager
+            onManagerUpdate?(manager)
             isRecording = true
+            state = .recording
             logger.info("Auto-record start for \(title, privacy: .public)")
             onStatusUpdate?(title, true)
-            Task {
+            Task { [weak self] in
+                guard let self else { return }
                 await self.startAndMonitor(manager: manager)
             }
         } catch {
@@ -77,21 +147,38 @@ final class AutoRecordingCoordinator: ObservableObject {
             activeManager = nil
             activeTitle = nil
             isRecording = false
+            state = .idle
         }
     }
 
-    private func startAndMonitor(manager: MeetingRecordingManager) async {
+    private func startAndMonitor(manager: RecordingManagerRef) async {
         monitorTask = Task { [weak self, weak manager] in
             guard let manager else { return }
             await self?.monitorStatus(manager: manager)
         }
+        monitorStartDate = Date()
         await manager.startRecording(duration: maxRecordingDuration)
+        if case .failed = manager.status {
+            monitorTask?.cancel()
+            monitorTask = nil
+            await clearState(transcriptReady: false)
+            return
+        }
         await monitorTask?.value
     }
 
-    private func monitorStatus(manager: MeetingRecordingManager) async {
+    private func monitorStatus(manager: RecordingManagerRef) async {
         guard let current = activeManager, current === manager else { return }
         while !Task.isCancelled {
+            if let started = monitorStartDate, Date().timeIntervalSince(started) > maxRecordingDuration + monitorBuffer {
+                logger.info("Auto-record monitor timeout (+\(self.monitorBuffer)s buffer); stopping recording")
+                await stopRecording()
+                return
+            }
+            if monitorStartDate == nil {
+                logger.info("Monitor loop missing start date; ending monitoring to avoid runaway loop")
+                return
+            }
             guard let currentManager = activeManager, currentManager === manager else { return }
             let status = currentManager.status
             switch status {
@@ -109,12 +196,18 @@ final class AutoRecordingCoordinator: ObservableObject {
     private func clearState(transcriptReady: Bool = false) async {
         monitorTask?.cancel()
         monitorTask = nil
-        stopWorkItem?.cancel()
-        stopWorkItem = nil
+        monitorStartDate = nil
+        stopTask?.cancel()
+        stopTask = nil
+        state = .idle
         let endedTitle = activeTitle
+        let endedManager = activeManager
         activeManager = nil
         activeTitle = nil
         isRecording = false
+        if endedManager != nil {
+            onManagerUpdate?(nil)
+        }
         if let endedTitle {
             onStatusUpdate?(endedTitle, false)
             NotificationHelper.sendRecordingCompleted(title: endedTitle, transcriptReady: transcriptReady)
@@ -123,10 +216,11 @@ final class AutoRecordingCoordinator: ObservableObject {
     }
 
     func stopRecording() async {
-        stopWorkItem?.cancel()
-        stopWorkItem = nil
-        guard let manager = activeManager else { return }
+        stopTask?.cancel()
+        stopTask = nil
+        guard state == .recording, let manager = activeManager else { return }
         logger.info("Auto-record stopping")
+        state = .stopping
         await manager.stopRecording()
         await clearState()
     }
@@ -134,4 +228,35 @@ final class AutoRecordingCoordinator: ObservableObject {
     func currentRecordingTitle() -> String? {
         activeTitle
     }
+
+    deinit {
+        stopTask?.cancel()
+        stopTask = nil
+        monitorTask?.cancel()
+        monitorTask = nil
+        detectionTask?.cancel()
+        detectionTask = nil
+    }
+
+    nonisolated private static func defaultMaxRecordingDuration() -> TimeInterval {
+        let override = UserDefaults.standard.double(forKey: "overhear.maxRecordingDuration")
+        return override > 0 ? override : 4 * 3600
+    }
 }
+
+@MainActor
+protocol RecordingManagerType: AnyObject, ObservableObject {
+    var status: MeetingRecordingManager.Status { get }
+    var displayTitle: String { get }
+    var meetingTitle: String { get }
+    var transcriptID: String? { get }
+    var liveTranscript: String { get }
+    var liveSegments: [LiveTranscriptSegment] { get }
+    var summary: MeetingSummary? { get }
+    func startRecording(duration: TimeInterval) async
+    func stopRecording() async
+    func regenerateSummary(template: PromptTemplate?) async
+    func saveNotes(_ notes: String) async
+}
+
+extension MeetingRecordingManager: RecordingManagerType {}
