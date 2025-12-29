@@ -59,6 +59,10 @@ final class AutoRecordingCoordinator: ObservableObject {
             logger.info("Skipping auto-record detection; manual recording active")
             return
         }
+        if manualRecordingCoordinator?.isRecording == true {
+            logger.info("Manual recording started during detection; skipping")
+            return
+        }
 
         // Cancel any pending stop since we have a fresh detection.
         stopTask?.cancel()

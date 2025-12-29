@@ -80,6 +80,7 @@ final class MicUsageMonitor {
     private var listenerAdded = false
     private var listenerWrapper: ListenerBlockWrapper?
     private var defaultDeviceWrapper: ListenerBlockWrapper?
+    private var pendingRebind = false
     private var isActive = false {
         didSet {
             if oldValue != isActive {
@@ -135,7 +136,12 @@ final class MicUsageMonitor {
         )
         let deviceChangeBlock = ListenerBlockWrapper { [weak self] _, _ in
             Task { @MainActor in
-                await self?.rebindToCurrentDevice()
+                guard let self else { return }
+                if let task = self.rebindTask, !task.isCancelled {
+                    self.pendingRebind = true
+                    return
+                }
+                await self.rebindToCurrentDevice()
             }
         }
         defaultDeviceWrapper = deviceChangeBlock
@@ -177,11 +183,12 @@ final class MicUsageMonitor {
         defaultDeviceWrapper = nil
         rebindTask?.cancel()
         rebindTask = nil
+        pendingRebind = false
     }
 
     deinit {
         if listenerAdded {
-            logger.error("MicUsageMonitor deinit while listener still active; scheduling stop()")
+            logger.error("MicUsageMonitor deinit while listener still active; forcing stop()")
             Task { @MainActor [weak self] in
                 self?.stop()
             }
@@ -227,7 +234,11 @@ final class MicUsageMonitor {
     private var rebindTask: Task<Void, Never>?
 
     private func rebindToCurrentDevice() async {
-        guard !rebinding, rebindTask == nil else { return }
+        if rebinding {
+            pendingRebind = true
+            return
+        }
+        guard rebindTask == nil else { return }
         rebinding = true
 
         let oldTask = rebindTask
@@ -301,6 +312,10 @@ final class MicUsageMonitor {
             self.listenerAdded = true
             self.logger.info("Rebound mic usage listener to new input device")
             await self.refreshState()
+            if self.pendingRebind {
+                self.pendingRebind = false
+                await self.rebindToCurrentDevice()
+            }
         }
     }
 }

@@ -53,7 +53,7 @@ final class CallDetectionService {
     ]
     private lazy var nativeMeetingBundles: Set<String> = supportedMeetingBundles.subtracting(browserBundles)
 
-    private let permissionRetryDelay: TimeInterval = 5.0
+    private var permissionRetryDelay: TimeInterval = 5.0
     private let titleLookupTimeout: TimeInterval
     private let maxTelemetryPerSession: Int
     private let idlePollingBackoffThreshold: TimeInterval = 3600 // 1 hour
@@ -163,14 +163,18 @@ final class CallDetectionService {
 
     private func schedulePermissionRetry(autoCoordinator: AutoRecordingCoordinator?, preferences: PreferencesService) {
         permissionRetryTask?.cancel()
+        let attempt = permissionRetryAttempts + 1
+        let delay = min(permissionRetryDelay * pow(2.0, Double(attempt - 1)), 300)
         permissionRetryTask = Task.detached { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(self?.permissionRetryDelay ?? 5.0 * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                guard self.permissionRetryAttempts < self.maxPermissionRetries else { return }
-                self.permissionRetryAttempts += 1
-                guard self.axCheck() else { return }
-                _ = self.start(autoCoordinator: autoCoordinator, preferences: preferences)
+                self.permissionRetryAttempts = attempt
+                if self.axCheck() {
+                    _ = self.start(autoCoordinator: autoCoordinator, preferences: preferences)
+                } else {
+                    self.schedulePermissionRetry(autoCoordinator: autoCoordinator, preferences: preferences)
+                }
             }
         }
     }

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @preconcurrency import UserNotifications
 import os.log
@@ -34,7 +35,10 @@ enum NotificationHelper {
                 }
             case .denied:
                 logger.info("Notifications denied; open System Settings > Notifications to enable.")
-                DispatchQueue.main.async { completion?() }
+                DispatchQueue.main.async {
+                    showNotificationDeniedAlert()
+                    completion?()
+                }
             default:
                 DispatchQueue.main.async { completion?() }
             }
@@ -65,11 +69,29 @@ enum NotificationHelper {
                 }
             case .denied:
                 logger.info("Notifications denied; cannot show test notification.")
-                DispatchQueue.main.async { completion?() }
+                DispatchQueue.main.async {
+                    showNotificationDeniedAlert()
+                    completion?()
+                }
             default:
                 scheduleTestNotification()
                 DispatchQueue.main.async { completion?() }
             }
+        }
+    }
+    
+    @MainActor
+    private static func showNotificationDeniedAlert() {
+        guard supportsUserNotifications else { return }
+        let alert = NSAlert()
+        alert.messageText = "Notifications are disabled"
+        alert.informativeText = "Open System Settings > Notifications and enable Overhear to receive meeting reminders and recording prompts."
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Dismiss")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn,
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+            NSWorkspace.shared.open(url)
         }
     }
     
