@@ -19,6 +19,7 @@ actor LocalLLMPipeline {
     )
 
     private let client: MLXClient?
+    private var warmupTask: Task<Void, Never>?
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
     private let logCategory = "LocalLLMPipeline"
     private let warmupTimeout: TimeInterval = 900
@@ -52,7 +53,23 @@ actor LocalLLMPipeline {
 
     /// Warms the local model (best-effort). Safe to call multiple times.
     func warmup() async {
-        await warmupInternal(maxAttempts: 3, timeout: warmupTimeout)
+        warmupTask?.cancel()
+        let previous = warmupTask
+        warmupTask = nil
+        await previous?.value
+
+        warmupGeneration &+= 1
+        let generation = warmupGeneration
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.warmupInternal(generation: generation, maxAttempts: 3, timeout: self.warmupTimeout)
+        }
+        warmupTask = task
+        await task.value
+        if warmupGeneration == generation {
+            warmupTask = nil
+        }
     }
 
     private func setDownloading(_ progress: Double, generation: Int) {
@@ -210,7 +227,7 @@ actor LocalLLMPipeline {
         case timeout
     }
 
-    private func warmupInternal(maxAttempts: Int = 3, timeout: TimeInterval = 600) async {
+    private func warmupInternal(generation: Int, maxAttempts: Int = 3, timeout: TimeInterval = 600) async {
         ensureModelObserver()
         guard let client else { return }
 
@@ -224,8 +241,6 @@ actor LocalLLMPipeline {
         var allowCacheRetry = true
         var attemptedFallback = false
         var modelInUse = modelID
-        warmupGeneration &+= 1
-        let generation = warmupGeneration
         let warmupStart = Date()
 
         func runWarmupWithTimeout() async throws {

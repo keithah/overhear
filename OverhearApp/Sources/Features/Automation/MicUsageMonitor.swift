@@ -179,11 +179,11 @@ final class MicUsageMonitor {
         rebindTask = nil
     }
 
-    deinit {
+    @MainActor deinit {
         if listenerAdded {
             logger.error("MicUsageMonitor deinit while listener still active; forcing stop()")
         }
-        MainActor.assumeIsolated { stop() }
+        stop()
     }
 
     private func refreshState() async {
@@ -256,7 +256,10 @@ final class MicUsageMonitor {
                 let status = self.client.removeListener(device, &address, DispatchQueue.main, block)
                 if status != noErr {
                     self.logger.error("Failed to remove mic listener during rebind: \(status)")
-                    // Do not advance state; bail early to avoid leaks.
+                    self.listenerAdded = false
+                    self.listenerWrapper = nil
+                    self.observedDevice = nil
+                    self.isActive = false
                     return
                 }
                 self.listenerAdded = false

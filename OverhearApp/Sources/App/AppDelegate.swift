@@ -89,11 +89,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        let group = DispatchGroup()
+        group.enter()
         Task { @MainActor [weak self] in
-            guard let self else { return }
-            await context?.autoRecordingCoordinator.stopRecording()
-            await context?.recordingCoordinator.stopRecording()
+            if let context = self?.context {
+                await context.autoRecordingCoordinator.stopRecording()
+                await context.recordingCoordinator.stopRecording()
+            }
+            group.leave()
         }
+        // Wait briefly to allow best-effort cleanup before process exit.
+        _ = group.wait(timeout: .now() + 2)
         UNUserNotificationCenter.current().delegate = nil
         menuBarController?.tearDown()
         context?.callDetectionService.stop(clearState: false)

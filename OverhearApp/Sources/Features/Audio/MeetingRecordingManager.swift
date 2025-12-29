@@ -529,7 +529,9 @@ private extension MeetingRecordingManager {
         streamingTask = nil
 
         if let token = streamingObserverToken {
+            defer { streamingObserverToken = nil }
             await captureService.unregisterBufferObserver(token)
+        } else {
             streamingObserverToken = nil
         }
 

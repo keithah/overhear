@@ -17,7 +17,7 @@ final class CallDetectionService {
     private var permissionRetryTask: Task<Void, Never>?
     private var lastNotifiedApp: String?
     private var lastNotifiedTitle: String?
-    private let micMonitor = MicUsageMonitor()
+    private var micMonitor: MicUsageMonitor?
     private var isMicActive = false
     private var activePollTask: Task<Void, Never>?
     private weak var autoCoordinator: AutoRecordingCoordinator?
@@ -25,6 +25,9 @@ final class CallDetectionService {
     private var lastAXQueryDate: Date?
     private let minAXQueryInterval: TimeInterval = 0.5
     private var lastMissingURLNotice: Date?
+    private var permissionRetryAttempts = 0
+    private let maxPermissionRetries = 3
+    private var axQueryInFlight = false
 
     // Known meeting bundle IDs (native apps) and browsers used for Meet.
     private let supportedMeetingBundles: Set<String> = [
@@ -72,13 +75,17 @@ final class CallDetectionService {
             return false
         }
         permissionDenied = false
+        permissionRetryAttempts = 0
         self.autoCoordinator = autoCoordinator
         self.preferences = preferences
-        micMonitor.onChange = { [weak self] active in
+        if micMonitor == nil {
+            micMonitor = MicUsageMonitor()
+        }
+        micMonitor?.onChange = { [weak self] active in
             self?.isMicActive = active
         }
-        micMonitor.start()
-        micMonitor.healthCheck()
+        micMonitor?.start()
+        micMonitor?.healthCheck()
         telemetryCount = 0
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -115,16 +122,10 @@ final class CallDetectionService {
             lastNotifiedTitle = nil
             telemetryCount = 0
         }
-        micMonitor.stop()
+        micMonitor?.stop()
         permissionRetryTask?.cancel()
         permissionRetryTask = nil
         logger.info("Call detection polling stopped")
-    }
-
-    deinit {
-        Task { @MainActor [weak self] in
-            self?.stop(clearState: false)
-        }
     }
 
     /// Best-effort retry entrypoint that attempts to start once permission becomes available.
@@ -154,8 +155,10 @@ final class CallDetectionService {
         permissionRetryTask?.cancel()
         permissionRetryTask = Task.detached { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(self?.permissionRetryDelay ?? 5.0 * 1_000_000_000))
-            guard let self else { return }
-            await MainActor.run {
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                guard self.permissionRetryAttempts < self.maxPermissionRetries else { return }
+                self.permissionRetryAttempts += 1
                 guard self.axCheck() else { return }
                 _ = self.start(autoCoordinator: autoCoordinator, preferences: preferences)
             }
@@ -270,7 +273,6 @@ final class CallDetectionService {
             return nil
         }
 
-        // CF objects returned here are bridged and released automatically.
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         var focusedWindow: AnyObject?
         let status = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
@@ -282,7 +284,8 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement")
             return nil
         }
-        let windowElement: AXUIElement = unsafeDowncast(window, to: AXUIElement.self)
+        // Safe due to CFGetTypeID guard above.
+        let windowElement = window as! AXUIElement
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)
@@ -300,7 +303,7 @@ final class CallDetectionService {
         } else {
             let now = Date()
             let lastNotice = lastMissingURLNotice ?? .distantPast
-            if now.timeIntervalSince(lastNotice) > 30 {
+            if now.timeIntervalSince(lastNotice) > 300 {
                 lastMissingURLNotice = now
                 let display = app.localizedName ?? "Browser"
                 NotificationHelper.sendBrowserURLMissingIfNeeded(appName: display)
@@ -341,16 +344,22 @@ final class CallDetectionService {
 
     private func titleInfoOffMain(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         let now = Date()
+        if axQueryInFlight {
+            logger.debug("AX query already in flight; throttling")
+            return nil
+        }
         if let last = lastAXQueryDate, now.timeIntervalSince(last) < minAXQueryInterval {
             logger.debug("AX query throttled to avoid rapid polling")
             return nil
         }
-        lastAXQueryDate = now
-
-        return await Task.detached(priority: .utility) { [weak self] in
+        axQueryInFlight = true
+        let result = await Task.detached(priority: .utility) { [weak self] () -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
             guard let self else { return nil }
             return await MainActor.run { self.activeWindowTitle(for: app) }
         }.value
+        lastAXQueryDate = Date()
+        axQueryInFlight = false
+        return result
     }
 
     nonisolated func isSupportedBrowserHost(_ host: String) -> Bool {
