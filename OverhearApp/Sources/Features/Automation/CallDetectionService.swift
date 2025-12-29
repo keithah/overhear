@@ -373,15 +373,14 @@ final class CallDetectionService {
             return nil
         }
         axQueryInFlight = true
-        lastAXQueryDate = now
-        let result = await Task.detached(priority: .utility) { [weak self] () -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
-            guard let self else { return nil }
-            return await MainActor.run { self.activeWindowTitle(for: app) }
-        }.value
         defer {
             axQueryInFlight = false
             lastAXQueryDate = Date()
         }
+        let result = await Task.detached(priority: .utility) { [weak self] () -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
+            guard let self else { return nil }
+            return await MainActor.run { self.activeWindowTitle(for: app) }
+        }.value
         if Task.isCancelled {
             return nil
         }

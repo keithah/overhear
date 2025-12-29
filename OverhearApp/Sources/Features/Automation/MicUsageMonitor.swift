@@ -188,10 +188,7 @@ final class MicUsageMonitor {
 
     deinit {
         if listenerAdded {
-            logger.error("MicUsageMonitor deinit while listener still active; forcing stop()")
-            Task { @MainActor [weak self] in
-                self?.stop()
-            }
+            logger.error("MicUsageMonitor deinit while listener still active; stop() should be called explicitly")
         }
     }
 

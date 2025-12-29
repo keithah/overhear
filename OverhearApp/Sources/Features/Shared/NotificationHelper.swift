@@ -227,15 +227,17 @@ extension NotificationHelper {
     static func sendMeetingPrompt(appName: String, meetingTitle: String?) {
         guard supportsUserNotifications else { return }
         let content = UNMutableNotificationContent()
-        content.title = "Meeting window detected (\(appName))"
+        let safeApp = sanitizeText(appName)
         let cleanedTitle = meetingTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
         let truncatedTitle = cleanedTitle.map { String($0.prefix(60)) }
+        let safeTitle = truncatedTitle.map { sanitizeText($0) }
         let shouldRedact = UserDefaults.standard.bool(forKey: PreferenceKey.redactMeetingTitles.rawValue)
-        let bodyTitle = (truncatedTitle?.isEmpty == false) ? truncatedTitle : nil
-        content.body = shouldRedact ? "Start a New Note?" : "Start a New Note for \(appName)?"
+        let bodyTitle = (safeTitle?.isEmpty == false) ? safeTitle : nil
+        content.title = "Meeting window detected (\(safeApp))"
+        content.body = shouldRedact ? "Start a New Note for this meeting?" : "Start a New Note for \(safeApp)?"
         content.sound = .default
         content.userInfo = [
-            "appName": appName,
+            "appName": safeApp,
             "meetingTitle": shouldRedact ? "" : (bodyTitle ?? "")
         ]
 
@@ -349,5 +351,16 @@ extension NotificationHelper {
         }
 
         return remainder.isEmpty ? trimmedBody : remainder
+    }
+
+    private static func sanitizeText(_ value: String) -> String {
+        let filtered = value.unicodeScalars.filter { scalar in
+            guard !CharacterSet.controlCharacters.contains(scalar) else { return false }
+            if scalar.isASCII {
+                return scalar.value >= 0x20 && scalar.value != 0x7F
+            }
+            return true
+        }
+        return String(String.UnicodeScalarView(filtered)).prefix(256).description
     }
 }

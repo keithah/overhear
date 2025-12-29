@@ -12,10 +12,12 @@ struct MenuBarContentView: View {
      @ObservedObject var viewModel: MeetingListViewModel
      @ObservedObject var preferences: PreferencesService
      @ObservedObject var recordingCoordinator: MeetingRecordingCoordinator
-     @ObservedObject var autoRecordingCoordinator: AutoRecordingCoordinator
-     var openPreferences: () -> Void
-     var onToggleRecording: () -> Void
+    @ObservedObject var autoRecordingCoordinator: AutoRecordingCoordinator
+    var openPreferences: () -> Void
+    var onToggleRecording: () -> Void
     @State private var didAutoShowLiveNotes = false
+    @State private var groupedCacheKey: Int = 0
+    @State private var groupedCache: [(date: Date, meetings: [Meeting])] = []
 
      var body: some View {
         VStack(spacing: 0) {
@@ -195,24 +197,14 @@ if viewModel.isLoading {
             .flatMap { $0.meetings }
     }
     
-private var groupedMeetings: [(date: Date, meetings: [Meeting])] {
-         let grouped = Dictionary(grouping: allMeetings) { meeting -> Date in
-              Calendar.current.startOfDay(for: meeting.startDate)
-         }
-         
-         // Sort by date
-         let sorted = grouped.sorted { $0.key < $1.key }
-         let mapped = sorted.map { (date: $0.key, meetings: $0.value.sorted { $0.startDate < $1.startDate }) }
-         
-          // Separate past, today, and future
-          let today = todayDate
-          let past = mapped.filter { $0.date < today }  // Past in chronological order (oldest first)
-          let todayAndFuture = mapped.filter { $0.date >= today }
-          
-          // Return: past first (at top), then today and future
-          // This way Wednesday is at top, Thursday below it, then Friday, Sunday, etc.
-          return past + todayAndFuture
-     }
+    private var groupedMeetings: [(date: Date, meetings: [Meeting])] {
+        let key = meetingsHash(allMeetings)
+        if key != groupedCacheKey {
+            groupedCacheKey = key
+            groupedCache = computeGroupedMeetings(allMeetings)
+        }
+        return groupedCache
+    }
     
     private var todayDate: Date {
         Calendar.current.startOfDay(for: Date())
@@ -229,6 +221,29 @@ private let dateIdentifierFormatter: DateFormatter = {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
+
+    private func computeGroupedMeetings(_ meetings: [Meeting]) -> [(date: Date, meetings: [Meeting])] {
+        let grouped = Dictionary(grouping: meetings) { meeting -> Date in
+            Calendar.current.startOfDay(for: meeting.startDate)
+        }
+        let sorted = grouped.sorted { $0.key < $1.key }
+        let mapped = sorted.map { (date: $0.key, meetings: $0.value.sorted { $0.startDate < $1.startDate }) }
+
+        let today = todayDate
+        let past = mapped.filter { $0.date < today }
+        let todayAndFuture = mapped.filter { $0.date >= today }
+        return past + todayAndFuture
+    }
+
+    private func meetingsHash(_ meetings: [Meeting]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(meetings.count)
+        for meeting in meetings {
+            hasher.combine(meeting.id)
+            hasher.combine(meeting.startDate.timeIntervalSince1970)
+        }
+        return hasher.finalize()
+    }
     
     private let formattedDateFormatter: DateFormatter = {
         let formatter = DateFormatter()

@@ -93,18 +93,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         group.enter()
         Task { @MainActor [weak self] in
             if let context = self?.context {
+                await context.callDetectionService.stop(clearState: false)
                 await context.autoRecordingCoordinator.stopRecording()
                 await context.recordingCoordinator.stopRecording()
             }
             group.leave()
         }
-        // Wait briefly to allow best-effort cleanup before process exit.
-        _ = group.wait(timeout: .now() + 2)
+        // Wait longer for best-effort cleanup before process exit.
+        _ = group.wait(timeout: .now() + 5)
         cancellables.removeAll()
         UNUserNotificationCenter.current().delegate = nil
         menuBarController?.tearDown()
-        context?.callDetectionService.stop(clearState: false)
-        context?.autoRecordingCoordinator.onNoDetection()
         recordingOverlay.hide()
     }
 

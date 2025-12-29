@@ -34,6 +34,7 @@ actor LocalLLMPipeline {
     private var modelChangeObserver: NSObjectProtocol?
     private var lastLoggedState: State?
     private var lastNotifiedState: State?
+    private var downloadWatchGeneration: Int = 0
     private var modelID: String {
         MLXPreferences.modelID()
     }
@@ -88,15 +89,23 @@ actor LocalLLMPipeline {
         if progress >= 0.999 {
             downloadWatchTask?.cancel()
             downloadWatchTask = nil
+            downloadWatchGeneration = generation
             let watchTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64((self?.downloadWatchdogDelay ?? 2) * 1_000_000_000))
-                await self?.promoteReadyAfterDownloadWatchdog()
+                await self?.handleDownloadWatchdog(generation: generation)
             }
             downloadWatchTask = watchTask
         }
     }
 
-    private func promoteReadyAfterDownloadWatchdog() async {
+    private func handleDownloadWatchdog(generation: Int) async {
+        guard generation == warmupGeneration,
+              generation == downloadWatchGeneration else { return }
+        await promoteReadyAfterDownloadWatchdog(generation: generation)
+    }
+
+    private func promoteReadyAfterDownloadWatchdog(generation: Int) async {
+        guard generation == warmupGeneration else { return }
         switch state {
         case .downloading, .warming:
             logger.warning("MLX download reached 100% but warmup not completed; promoting to ready (watchdog)")
