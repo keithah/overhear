@@ -251,6 +251,8 @@ final class MicUsageMonitor {
                 let status = AudioObjectRemovePropertyListenerBlock(device, &address, DispatchQueue.main, block)
                 if status != noErr {
                     self.logger.error("Failed to remove mic listener during rebind: \(status)")
+                    // Do not advance state; bail early to avoid leaks.
+                    return
                 }
                 self.listenerAdded = false
                 self.listenerBlock = nil

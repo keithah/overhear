@@ -267,6 +267,26 @@ extension NotificationHelper {
         }
     }
 
+    static func sendBrowserURLMissingIfNeeded(appName: String) {
+        guard supportsUserNotifications else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Waiting for meeting URL"
+        content.body = "Open your meeting tab in \(appName) to start auto detection."
+        content.sound = .default
+        let identifier = "com.overhear.notification.browser-url-missing.\(appName)"
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("Failed to schedule browser URL missing prompt: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
     static func sendLLMFallback(original: String, fallback: String) {
         guard supportsUserNotifications else {
             logger.debug("Skipping LLM fallback notification outside app host")

@@ -104,6 +104,7 @@ final class AutoRecordingCoordinator: ObservableObject {
         if manualRecordingCoordinator?.isRecording == true {
             state = .idle
             detectionTask = nil
+            // Intentional duplication with entry guard to avoid TOCTOU: manual may start after detection was enqueued.
             return
         }
         let id = "detected-\(Int(Date().timeIntervalSince1970))"

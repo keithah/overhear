@@ -168,10 +168,6 @@ final class CallDetectionService {
             previous.cancel()
             await previous.value
         }
-        if let activePollTask {
-            // Avoid overlapping polls; keep the latest request.
-            activePollTask.cancel()
-        }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             guard generation == self.pollGeneration else { return }
@@ -297,10 +293,11 @@ final class CallDetectionService {
             redactedURL = chromeURL.redactedForLogging()
         } else {
             let now = Date()
-            if lastMissingURLNotice == nil || now.timeIntervalSince(lastMissingURLNotice!) > 30 {
+            let lastNotice = lastMissingURLNotice ?? .distantPast
+            if now.timeIntervalSince(lastNotice) > 30 {
                 lastMissingURLNotice = now
                 let display = app.localizedName ?? "Browser"
-                NotificationHelper.sendMeetingPrompt(appName: display, meetingTitle: rawTitle)
+                NotificationHelper.sendBrowserURLMissingIfNeeded(appName: display)
             }
         }
 
@@ -337,15 +334,12 @@ final class CallDetectionService {
     }
 
     private func titleInfoOffMain(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
-        let canQuery = await MainActor.run { () -> Bool in
-        if let last = lastAXQueryDate, Date().timeIntervalSince(last) < minAXQueryInterval {
+        let now = Date()
+        if let last = lastAXQueryDate, now.timeIntervalSince(last) < minAXQueryInterval {
             logger.debug("AX query throttled to avoid rapid polling")
-            return false
+            return nil
         }
-            lastAXQueryDate = Date()
-            return true
-        }
-        guard canQuery else { return nil }
+        lastAXQueryDate = now
 
         return await Task.detached(priority: .utility) { [weak self] in
             guard let self else { return nil }

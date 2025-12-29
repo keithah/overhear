@@ -1,4 +1,4 @@
-import Foundation
+@preconcurrency import Foundation
 import os.log
 
 /// Single entry point for on-device LLM (MLX) usage across summaries, action items,
@@ -392,4 +392,9 @@ actor LocalLLMPipeline {
         }
     }
 
+    deinit {
+        if let observer = modelChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
 }
