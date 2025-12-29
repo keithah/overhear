@@ -238,7 +238,7 @@ final class AutoRecordingCoordinator: ObservableObject {
         detectionTask = nil
     }
 
-    private static func defaultMaxRecordingDuration() -> TimeInterval {
+    nonisolated private static func defaultMaxRecordingDuration() -> TimeInterval {
         let override = UserDefaults.standard.double(forKey: "overhear.maxRecordingDuration")
         return override > 0 ? override : 4 * 3600
     }
