@@ -154,15 +154,14 @@ final class MicUsageMonitor {
         )
         if let block = listenerWrapper?.block, let device = observedDevice {
             let status = client.removeListener(device, &address, DispatchQueue.main, block)
-            if status == noErr {
-                listenerAdded = false
-                listenerWrapper = nil
-                observedDevice = nil
-                isActive = false
-            } else {
+            if status != noErr {
                 logger.error("Failed to remove mic usage listener: \(status)")
             }
         }
+        listenerAdded = false
+        listenerWrapper = nil
+        observedDevice = nil
+        isActive = false
 
         if let deviceChangeBlock = defaultDeviceWrapper?.block {
             var defaultDeviceAddress = AudioObjectPropertyAddress(

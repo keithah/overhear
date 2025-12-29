@@ -36,6 +36,10 @@ actor LocalLLMPipeline {
     private var modelID: String {
         MLXPreferences.modelID()
     }
+    private func runIfCurrentGeneration<T>(_ generation: Int, operation: @escaping @Sendable () async -> T) async -> T? {
+        guard generation == warmupGeneration else { return nil }
+        return await operation()
+    }
 
     init(client: MLXClient?) {
         self.client = client
@@ -230,7 +234,10 @@ actor LocalLLMPipeline {
                 group.addTask {
                     try await client.warmup(progress: { [weak self] progress in
                         Task.detached(priority: .utility) { [weak self] in
-                            await self?.setDownloading(progress, generation: generation)
+                            guard let self else { return }
+                            await self.runIfCurrentGeneration(generation) {
+                                await self.setDownloading(progress, generation: generation)
+                            }
                         }
                     })
                 }
@@ -299,7 +306,7 @@ actor LocalLLMPipeline {
                     allowCacheRetry = false
                     logger.info("MLX warmup retry after clearing cache (error: \(error.localizedDescription, privacy: .public))")
                     FileLogger.log(category: logCategory, message: "Clearing MLX cache and retrying warmup")
-                    MLXPreferences.clearModelCache()
+                    Task.detached { MLXPreferences.clearModelCache() }
                     state = .idle
                     notifyStateChanged()
                     continue

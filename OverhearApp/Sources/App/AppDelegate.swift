@@ -305,7 +305,9 @@ final class RecordingOverlayController: NSObject, NSWindowDelegate {
     }
 
     private func position(panel: NSPanel) {
-        guard let screen = NSScreen.main else { return }
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main
+        guard let screen else { return }
         let panelSize = panel.frame.size
         let insets: NSEdgeInsets
         if #available(macOS 12.0, *) {

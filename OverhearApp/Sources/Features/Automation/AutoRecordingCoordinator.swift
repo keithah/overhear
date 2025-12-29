@@ -19,6 +19,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     private let logger = Logger(subsystem: "com.overhear.app", category: "AutoRecordingCoordinator")
     private var stopGracePeriod: TimeInterval
     private let maxRecordingDuration: TimeInterval
+    private let monitorBuffer: TimeInterval = 60 // Allow pipeline a short tail window beyond requested duration.
     private let managerFactory: @MainActor (String, String?) async throws -> RecordingManagerRef
     private var activeManager: RecordingManagerRef?
     private var stopTask: Task<Void, Never>?
@@ -163,8 +164,8 @@ final class AutoRecordingCoordinator: ObservableObject {
     private func monitorStatus(manager: RecordingManagerRef) async {
         guard let current = activeManager, current === manager else { return }
         while !Task.isCancelled {
-            if let started = monitorStartDate, Date().timeIntervalSince(started) > maxRecordingDuration + 60 {
-                logger.info("Auto-record monitor timeout; stopping recording")
+            if let started = monitorStartDate, Date().timeIntervalSince(started) > maxRecordingDuration + monitorBuffer {
+                logger.info("Auto-record monitor timeout (+\(self.monitorBuffer)s buffer); stopping recording")
                 await stopRecording()
                 return
             }

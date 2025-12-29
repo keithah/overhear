@@ -53,6 +53,7 @@ final class CallDetectionService {
     private let permissionRetryDelay: TimeInterval = 5.0
     private let titleLookupTimeout: TimeInterval = 1.0
     private let maxTelemetryPerSession = 100
+    private var telemetryResetDate = Date()
     private var telemetryCount = 0
 
     init(pollInterval: TimeInterval = 3.0, axCheck: @escaping () -> Bool = { AXIsProcessTrusted() }) {
@@ -462,6 +463,11 @@ final class CallDetectionService {
 
 private extension CallDetectionService {
     func logTelemetry(result: String, bundleID: String?, host: String?) {
+        let now = Date()
+        if now.timeIntervalSince(telemetryResetDate) > 3600 {
+            telemetryResetDate = now
+            telemetryCount = 0
+        }
         guard telemetryCount < maxTelemetryPerSession else { return }
         telemetryCount += 1
         let safeHost = host ?? "unknown"
