@@ -55,10 +55,11 @@ actor LocalLLMPipeline {
 
     /// Warms the local model (best-effort). Safe to call multiple times.
     func warmup() async {
+        if let task = warmupTask {
+            await task.value
+            return
+        }
         warmupTask?.cancel()
-        let previous = warmupTask
-        warmupTask = nil
-        await previous?.value
 
         warmupGeneration &+= 1
         let generation = warmupGeneration

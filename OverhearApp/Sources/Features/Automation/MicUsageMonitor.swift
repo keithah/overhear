@@ -179,11 +179,13 @@ final class MicUsageMonitor {
         rebindTask = nil
     }
 
-    @MainActor deinit {
+    deinit {
         if listenerAdded {
-            logger.error("MicUsageMonitor deinit while listener still active; forcing stop()")
+            logger.error("MicUsageMonitor deinit while listener still active; scheduling stop()")
+            Task { @MainActor [weak self] in
+                self?.stop()
+            }
         }
-        stop()
     }
 
     private func refreshState() async {

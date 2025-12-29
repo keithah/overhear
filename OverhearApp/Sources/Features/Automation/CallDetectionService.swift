@@ -104,13 +104,7 @@ final class CallDetectionService {
         Task { @MainActor in
             await self.pollFrontmostApp()
         }
-        let timer = Timer(timeInterval: adjustedInterval(), repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                await self?.pollFrontmostApp()
-            }
-        }
-        RunLoop.main.add(timer, forMode: .default)
-        pollTimer = timer
+        startTimer()
         logger.info("Call detection started with activation observer")
         return true
     }
@@ -131,6 +125,17 @@ final class CallDetectionService {
         permissionRetryTask?.cancel()
         permissionRetryTask = nil
         logger.info("Call detection polling stopped")
+    }
+
+    private func startTimer() {
+        pollTimer?.invalidate()
+        let timer = Timer(timeInterval: adjustedInterval(), repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.pollFrontmostApp()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .default)
+        pollTimer = timer
     }
 
     /// Best-effort retry entrypoint that attempts to start once permission becomes available.
@@ -292,10 +297,11 @@ final class CallDetectionService {
             return nil
         }
         guard CFGetTypeID(window) == AXUIElementGetTypeID() else {
-            logger.error("Focused window is not an AXUIElement")
+            logger.error("Focused window is not an AXUIElement (type=\(CFGetTypeID(window)))")
             return nil
         }
-        let windowElement = window as! AXUIElement
+        // Safe due to CFTypeID guard above.
+        let windowElement = unsafeDowncast(window as AnyObject, to: AXUIElement.self)
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)
@@ -363,16 +369,18 @@ final class CallDetectionService {
             return nil
         }
         axQueryInFlight = true
+        lastAXQueryDate = now
         let result = await Task.detached(priority: .utility) { [weak self] () -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
             guard let self else { return nil }
             return await MainActor.run { self.activeWindowTitle(for: app) }
         }.value
-        if Task.isCancelled {
+        defer {
             axQueryInFlight = false
+            lastAXQueryDate = Date()
+        }
+        if Task.isCancelled {
             return nil
         }
-        lastAXQueryDate = Date()
-        axQueryInFlight = false
         return result
     }
 
@@ -503,7 +511,7 @@ private extension CallDetectionService {
         }
         guard telemetryCount < maxTelemetryPerSession else { return }
         telemetryCount += 1
-        let safeHost = host ?? "unknown"
+        let safeHost = (host ?? "unknown").redactedForLogging()
         let safeBundle = bundleID ?? "unknown"
         FileLogger.log(category: "CallDetectionTelemetry", message: "result=\(result) bundle=\(safeBundle) host=\(safeHost) mic=\(isMicActive)")
     }

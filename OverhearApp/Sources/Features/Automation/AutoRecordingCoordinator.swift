@@ -53,8 +53,9 @@ final class AutoRecordingCoordinator: ObservableObject {
     }
 
     func onDetection(appName: String, meetingTitle: String?) {
-        // Skip if manual recording is active - don't interfere with user-initiated sessions
-        if manualRecordingCoordinator?.isRecording == true {
+        // Snapshot manual state to reduce TOCTOU windows.
+        let manualActiveAtEntry = manualRecordingCoordinator?.isRecording == true
+        if manualActiveAtEntry {
             logger.info("Skipping auto-record detection; manual recording active")
             return
         }
