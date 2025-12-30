@@ -197,7 +197,8 @@ actor NotificationDeduper {
     ) {
         let hardCap = 500
         self.maxEntries = min(max(maxEntries, 1), hardCap)
-        self.ttl = max(1, ttl)
+        let configuredTTL = UserDefaults.standard.double(forKey: "overhear.notificationDeduperTTL")
+        self.ttl = max(1, configuredTTL > 0 ? configuredTTL : ttl)
         self.dateProvider = dateProvider
         #if DEBUG
         self.cleanupInterval = cleanupInterval
@@ -258,7 +259,8 @@ actor NotificationDeduper {
                 #if DEBUG
                 interval = cleanupInterval
                 #else
-                interval = 600 // 10 minutes
+                let configured = UserDefaults.standard.double(forKey: "overhear.notificationDeduperCleanupInterval")
+                interval = configured > 0 ? configured : 600 // 10 minutes
                 #endif
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 await self.pruneExpired()

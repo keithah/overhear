@@ -6,7 +6,11 @@ struct FileLogger {
         let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Logs/com.overhear.app", isDirectory: true)
         let directory = base ?? URL(fileURLWithPath: "/tmp", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [FileAttributeKey.posixPermissions: NSNumber(value: Int16(0o700))]
+        )
         return directory.appendingPathComponent("overhear.log")
     }()
     private static let maxLogBytes: Int = 5 * 1024 * 1024
