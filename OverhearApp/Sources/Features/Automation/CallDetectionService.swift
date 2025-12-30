@@ -340,7 +340,6 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement (type=\(CFGetTypeID(window)))")
             return nil
         }
-        // Safe after CFTypeID guard.
         let windowElement = unsafeDowncast(window as AnyObject, to: AXUIElement.self)
 
         var titleValue: AnyObject?

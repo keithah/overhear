@@ -213,6 +213,7 @@ actor NotificationDeduper {
     }
 
     func record(_ id: String) -> Bool {
+        startCleanupIfNeeded()
         pruneExpired()
         if handled.contains(id) { return false }
         handled.insert(id)

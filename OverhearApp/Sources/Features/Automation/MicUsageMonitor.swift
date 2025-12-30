@@ -226,7 +226,8 @@ final class MicUsageMonitor {
     private var rebindTask: Task<Void, Never>?
 
     private func enqueueRebind() {
-        pendingRebinds += 1
+        // Avoid unbounded growth if the system flaps devices rapidly.
+        pendingRebinds = min(pendingRebinds + 1, 5)
         guard rebindTask == nil else { return }
         rebindTask = Task { @MainActor [weak self] in
             guard let self else { return }

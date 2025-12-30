@@ -12,12 +12,6 @@ actor RecordingStateGate {
         return true
     }
 
-    /// Force manual to win by clearing auto when the caller intentionally preempts auto-recording.
-    func forceManual() {
-        manualActive = true
-        autoActive = false
-    }
-
     func endManual() {
         manualActive = false
     }
