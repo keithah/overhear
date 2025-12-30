@@ -13,6 +13,7 @@ final class MicUsageMonitorTests: XCTestCase {
         var getPropertyDataCalls = 0
         var lastDevice: AudioObjectID?
         var runningFlag: UInt32 = 0
+        var addListenerDelayMicros: useconds_t = 0
         var addListenerStatus: OSStatus = noErr
         var removeListenerStatus: OSStatus = noErr
         var addDefaultStatus: OSStatus = noErr
@@ -27,6 +28,9 @@ final class MicUsageMonitorTests: XCTestCase {
                 defaultInputDeviceID: { [weak self] in self?.currentDefault },
                 addListener: { [weak self] device, address, _, block in
                     guard let self else { return kAudioHardwareBadDeviceError }
+                    if self.addListenerDelayMicros > 0 {
+                        usleep(self.addListenerDelayMicros)
+                    }
                     self.addListenerCalls += 1
                     self.micListener = block
                     self.lastDevice = device
@@ -96,5 +100,27 @@ final class MicUsageMonitorTests: XCTestCase {
 
         XCTAssertEqual(fake.lastDevice, 2)
         XCTAssertEqual(fake.addListenerCalls, 2, "Rebind should add a new listener on device change")
+    }
+
+    func testQueuedRebindsProcessSequentially() async {
+        let fake = FakeAudioClient()
+        // Slow down addListener to keep the first rebind in-flight when the second request arrives.
+        fake.addListenerDelayMicros = 60_000
+        let monitor = MicUsageMonitor(client: fake.client)
+
+        monitor.start()
+        await Task.yield()
+        XCTAssertEqual(fake.lastDevice, 1)
+
+        fake.currentDefault = 2
+        fake.triggerDefaultDeviceChange()
+        // Immediately queue another change while the first rebind is still running.
+        fake.currentDefault = 3
+        fake.triggerDefaultDeviceChange()
+
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(fake.lastDevice, 3, "Last rebind should target the final default device")
+        XCTAssertEqual(fake.addListenerCalls, 3, "Queued rebind should add listener for each change")
     }
 }

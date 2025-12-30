@@ -210,6 +210,9 @@ actor NotificationDeduper {
     }
 
     func record(_ id: String) -> Bool {
+        if cleanupTask == nil {
+            startCleanup()
+        }
         pruneExpired()
         if handled.contains(id) { return false }
         handled.insert(id)

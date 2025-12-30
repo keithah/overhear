@@ -1,5 +1,6 @@
 import Foundation
 
+/// Abstraction for delivering meeting-related notifications so detection logic can be tested.
 protocol MeetingNotificationRouting {
     func sendMeetingPrompt(appName: String, meetingTitle: String?)
     func sendBrowserUrlMissing(appName: String)

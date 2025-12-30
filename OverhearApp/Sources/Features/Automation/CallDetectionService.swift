@@ -297,23 +297,23 @@ final class CallDetectionService {
     }
 
     @MainActor
-    private func activeWindowTitle(for app: NSRunningApplication, timeout: TimeInterval? = nil) -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
+    private func activeWindowTitle(for app: NSRunningApplication, timeout: TimeInterval? = nil) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         guard AXIsProcessTrusted() else {
             logger.error("Accessibility not granted; cannot inspect windows for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
             return nil
         }
         if let timeout, timeout > 0 {
-            var result: (displayTitle: String, urlDescription: String?, redacted: String?)?
-            let semaphore = DispatchSemaphore(value: 0)
-            DispatchQueue.main.async {
-                result = self.activeWindowTitle(for: app, timeout: nil)
-                semaphore.signal()
+            return await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group in
+                group.addTask { [weak self] in
+                    guard let self else { return nil }
+                    return await self.activeWindowTitle(for: app, timeout: nil)
+                }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    return nil
+                }
+                return await group.next() ?? nil
             }
-            if semaphore.wait(timeout: .now() + timeout) == .timedOut {
-                logger.error("AX query timed out for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
-                return nil
-            }
-            return result
         }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         var focusedWindow: AnyObject?
@@ -326,8 +326,7 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement (type=\(CFGetTypeID(window)))")
             return nil
         }
-        // Cast is safe after CFTypeID guard.
-        let windowElement = unsafeDowncast(window as AnyObject, to: AXUIElement.self)
+        let windowElement = window as! AXUIElement
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)
@@ -401,9 +400,7 @@ final class CallDetectionService {
         }
         let result = await Task.detached(priority: .utility) { [weak self] () -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
             guard let self else { return nil }
-            return await MainActor.run {
-                self.activeWindowTitle(for: app, timeout: self.titleLookupTimeout)
-            }
+            return await self.activeWindowTitle(for: app, timeout: self.titleLookupTimeout)
         }.value
         if Task.isCancelled {
             return nil

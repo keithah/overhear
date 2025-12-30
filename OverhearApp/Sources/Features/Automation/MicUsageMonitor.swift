@@ -238,7 +238,6 @@ final class MicUsageMonitor {
         if let existing = rebindTask {
             pendingRebind = true
             await existing.value
-            pendingRebind = false
         }
 
         rebinding = true
