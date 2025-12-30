@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   claude-review:
-    runs-on: ubicloud-standard-2
+    runs-on: tenki-standard-medium-4c-8g
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
