@@ -56,6 +56,7 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
 
     /// Stops the active recording, if any, and finalizes manual entries as needed.
     func stopRecording() async {
+        // Release the gate up front so auto-recording can resume quickly; cleanup continues below.
         await recordingGate?.endManual()
         await stopRecordingInternal()
     }

@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var context: AppContext?
     var menuBarController: MenuBarController?
     let recordingOverlay = RecordingOverlayController()
-    private var notificationDeduper = NotificationDeduper(maxEntries: 200)
+    private var notificationDeduper: NotificationDeduper!
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let context = AppContext.makeDefault()
         self.context = context
+        self.notificationDeduper = context.notificationDeduper
+        // Start cleanup eagerly to avoid lazy races; actor isolation makes this atomic.
         Task { await notificationDeduper.startCleanupIfNeeded() }
 
         // Request calendar permissions with proper app focus; retry once if needed.
@@ -182,10 +184,8 @@ actor NotificationDeduper {
     private var timestamps: [String: Date] = [:]
     let maxEntries: Int
     let ttl: TimeInterval
-    #if DEBUG
-    /// Optional override for cleanup cadence to make tests deterministic.
+    /// Cleanup cadence (seconds). Debug builds use a shorter default for deterministic tests.
     let cleanupInterval: TimeInterval
-    #endif
     private let dateProvider: () -> Date
     private var cleanupTask: Task<Void, Never>?
 
@@ -193,19 +193,14 @@ actor NotificationDeduper {
         maxEntries: Int,
         ttl: TimeInterval = 60 * 60,
         dateProvider: @escaping () -> Date = { Date() },
-        cleanupInterval: TimeInterval = 120
+        cleanupInterval: TimeInterval = 600
     ) {
         let hardCap = 500
         self.maxEntries = min(max(maxEntries, 1), hardCap)
-        // TTL/debug keys are developer toggles (documented in README).
-        let configuredTTL = UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDeduperTTL)
         let maxTTL: TimeInterval = 24 * 60 * 60 // 24h clamp to avoid unbounded growth
-        let requestedTTL = configuredTTL > 0 ? configuredTTL : ttl
-        self.ttl = min(max(1, requestedTTL), maxTTL)
+        self.ttl = min(max(1, ttl), maxTTL)
         self.dateProvider = dateProvider
-        #if DEBUG
         self.cleanupInterval = cleanupInterval
-        #endif
     }
 
     deinit {
@@ -249,6 +244,7 @@ actor NotificationDeduper {
     }
 
     func startCleanupIfNeeded() {
+        // Actor-isolated; the guard is effectively atomic.
         guard cleanupTask == nil else { return }
         cleanupTask = Task { [weak self] in
             await self?.runCleanupLoop()
@@ -257,13 +253,7 @@ actor NotificationDeduper {
 
     private func runCleanupLoop() async {
         while !Task.isCancelled {
-            let interval: TimeInterval
-            #if DEBUG
-            interval = cleanupInterval
-            #else
-            let configured = UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDeduperCleanupInterval)
-            interval = configured > 0 ? configured : 600 // 10 minutes
-            #endif
+            let interval = cleanupInterval
             try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             pruneExpired()
         }

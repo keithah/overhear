@@ -11,12 +11,14 @@ final class AppContext: ObservableObject {
     let preferencesWindowController: PreferencesWindowController
     let callDetectionService: CallDetectionService
     let autoRecordingCoordinator: AutoRecordingCoordinator
+    let notificationDeduper: NotificationDeduper
     var menuBarController: MenuBarController?
     var hotkeyManager: HotkeyManager?
 
     @MainActor
     static func makeDefault() -> AppContext {
         let preferences = PreferencesService()
+        let deduper = NotificationDeduperFactory.makeFromDefaults()
         return AppContext(
             permissions: PermissionsService(),
             preferences: preferences,
@@ -27,7 +29,8 @@ final class AppContext: ObservableObject {
                 axCheck: { AXIsProcessTrusted() },
                 notifier: NotificationHelperAdapter()
             ),
-            autoRecordingCoordinator: AutoRecordingCoordinator(stopGracePeriod: preferences.autoRecordingGracePeriod)
+            autoRecordingCoordinator: AutoRecordingCoordinator(stopGracePeriod: preferences.autoRecordingGracePeriod),
+            notificationDeduper: deduper
         )
     }
 
@@ -37,7 +40,8 @@ final class AppContext: ObservableObject {
         calendar: CalendarService,
         recordingCoordinator: MeetingRecordingCoordinator,
         callDetectionService: CallDetectionService,
-        autoRecordingCoordinator: AutoRecordingCoordinator
+        autoRecordingCoordinator: AutoRecordingCoordinator,
+        notificationDeduper: NotificationDeduper = NotificationDeduperFactory.makeFromDefaults()
     ) {
         self.permissionsService = permissions
         self.preferencesService = preferences
@@ -49,6 +53,7 @@ final class AppContext: ObservableObject {
         self.preferencesWindowController = PreferencesWindowController(preferences: preferences, calendarService: calendar)
         self.callDetectionService = callDetectionService
         self.autoRecordingCoordinator = autoRecordingCoordinator
+        self.notificationDeduper = notificationDeduper
         wireCoordinators()
     }
 

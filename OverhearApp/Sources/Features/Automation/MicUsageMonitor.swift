@@ -268,7 +268,7 @@ final class MicUsageMonitor {
             logger.error("Rebind failed: no default input device")
             let wasActive = isActive
             isActive = false
-            if !wasActive {
+            if wasActive {
                 onChange?(false)
             }
             return
@@ -293,7 +293,7 @@ final class MicUsageMonitor {
             observedDevice = nil
             let wasActive = isActive
             isActive = false
-            if !wasActive {
+            if wasActive {
                 onChange?(false)
             }
             return
