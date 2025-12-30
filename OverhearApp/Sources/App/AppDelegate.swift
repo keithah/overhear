@@ -202,6 +202,9 @@ actor NotificationDeduper {
         #if DEBUG
         self.cleanupInterval = cleanupInterval
         #endif
+        Task { [weak self] in
+            await self?.startCleanup()
+        }
     }
 
     deinit {

@@ -304,6 +304,7 @@ final class CallDetectionService {
         }
         if let timeout, timeout > 0 {
             return await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group in
+                defer { group.cancelAll() }
                 group.addTask { [weak self] in
                     guard let self else { return nil }
                     return await self.activeWindowTitle(for: app, timeout: nil)
@@ -326,6 +327,7 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement (type=\(CFGetTypeID(window)))")
             return nil
         }
+        // Cast is safe after CFTypeID guard.
         let windowElement = window as! AXUIElement
 
         var titleValue: AnyObject?
