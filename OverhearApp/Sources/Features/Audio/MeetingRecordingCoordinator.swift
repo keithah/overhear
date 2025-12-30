@@ -3,7 +3,7 @@ import Combine
 import os.log
 
 @MainActor
-final class MeetingRecordingCoordinator: ObservableObject {
+final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProviding {
     @Published private(set) var status: MeetingRecordingManager.Status = .idle
     @Published private(set) var activeMeeting: Meeting?
     @Published private(set) var liveTranscript: String = ""

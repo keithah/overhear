@@ -34,7 +34,7 @@ final class AutoRecordingCoordinator: ObservableObject {
     var onManagerUpdate: ((RecordingManagerRef?) -> Void)?
     var onCompleted: (() -> Void)?
     var onStatusUpdate: ((String, Bool) -> Void)?
-    weak var manualRecordingCoordinator: MeetingRecordingCoordinator?
+    weak var manualRecordingCoordinator: (any RecordingStateProviding)?
 
     init(
         stopGracePeriod: TimeInterval = 8.0,
@@ -57,11 +57,6 @@ final class AutoRecordingCoordinator: ObservableObject {
         let manualActiveAtEntry = manualRecordingCoordinator?.isRecording == true
         if manualActiveAtEntry {
             logger.info("Skipping auto-record detection; manual recording active")
-            return
-        }
-        // Re-check immediately to narrow the race window.
-        if manualRecordingCoordinator?.isRecording == true {
-            logger.info("Manual recording started during detection; skipping")
             return
         }
 

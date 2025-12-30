@@ -93,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         group.enter()
         Task { @MainActor [weak self] in
             if let context = self?.context {
-                _ = context.callDetectionService.stop(clearState: false)
+                context.callDetectionService.stop(clearState: false)
                 await context.autoRecordingCoordinator.stopRecording()
                 await context.recordingCoordinator.stopRecording()
             }
