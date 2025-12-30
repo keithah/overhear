@@ -5,6 +5,9 @@ final class TranscriptStoreUpdateTests: XCTestCase {
     func testUpdateNotesPersists() async throws {
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: tmpDir)
+        }
         let store = try TranscriptStore(storageDirectory: tmpDir)
 
         let transcript = StoredTranscript(

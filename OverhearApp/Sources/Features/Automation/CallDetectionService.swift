@@ -372,7 +372,7 @@ final class CallDetectionService {
             if now.timeIntervalSince(lastNotice) > 300 {
                 lastMissingURLNotice = now
                 let display = app.localizedName ?? "Browser"
-            notifier?.sendBrowserUrlMissing(appName: display)
+                notifier?.sendBrowserUrlMissing(appName: display)
             }
         }
 
@@ -503,7 +503,7 @@ final class CallDetectionService {
                   isSupportedBrowserHost(host) else {
                 if titleInfo.urlDescription == nil {
                     logger.info("Skipped browser detection: missing URL attribute; ensure Meet tab is active")
-            notifier?.sendBrowserUrlMissing(appName: app.localizedName ?? "Browser")
+                    notifier?.sendBrowserUrlMissing(appName: app.localizedName ?? "Browser")
                 }
                 autoCoordinator?.onNoDetection()
                 logTelemetry(result: "browser-unsupported-host", bundleID: bundleID, host: titleInfo.redacted)

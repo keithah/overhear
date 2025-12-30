@@ -15,6 +15,10 @@ actor RecordingStateGate {
         if autoActive {
             if let stopAuto {
                 await stopAuto()
+                // Defensive: if the caller forgets to end auto on this gate, deny manual acquisition.
+                if autoActive {
+                    return false
+                }
             } else {
                 return false
             }
