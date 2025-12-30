@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+    # macos-14 is required for MLX/Metal headers (Accelerate/CryptoKit).
     runs-on: macos-14
 
     steps:
