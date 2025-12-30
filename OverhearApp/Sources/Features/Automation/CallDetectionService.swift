@@ -84,7 +84,12 @@ final class CallDetectionService {
         self.axCheck = axCheck
         self.notifier = notifier
         self.customWindowResolver = windowResolver
-        self.titleLookupTimeout = UserDefaults.standard.value(forKey: UserDefaultsKeys.titleLookupTimeout) as? TimeInterval ?? 1.0
+        let configuredTimeout = UserDefaults.standard.value(forKey: UserDefaultsKeys.titleLookupTimeout) as? TimeInterval
+        // Default to 2s to reduce false negatives on slower machines; allow clamped override for testing.
+        let defaultTimeout: TimeInterval = 2.0
+        let maxTimeout: TimeInterval = 10.0
+        let timeout = configuredTimeout ?? defaultTimeout
+        self.titleLookupTimeout = min(max(0.5, timeout), maxTimeout)
         let configuredTelemetryCap = UserDefaults.standard.integer(forKey: "overhear.telemetryMaxPerSession")
         self.maxTelemetryPerSession = configuredTelemetryCap.nonZeroOrDefault(500)
     }
