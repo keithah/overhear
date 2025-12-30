@@ -93,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         group.enter()
         Task { @MainActor [weak self] in
             if let context = self?.context {
-                await context.callDetectionService.stop(clearState: false)
+                _ = context.callDetectionService.stop(clearState: false)
                 await context.autoRecordingCoordinator.stopRecording()
                 await context.recordingCoordinator.stopRecording()
             }
@@ -193,7 +193,7 @@ actor NotificationDeduper {
         maxEntries: Int,
         ttl: TimeInterval = 60 * 60,
         dateProvider: @escaping () -> Date = { Date() },
-        cleanupInterval: TimeInterval = 600
+        cleanupInterval: TimeInterval = 120
     ) {
         let hardCap = 500
         self.maxEntries = min(max(maxEntries, 1), hardCap)

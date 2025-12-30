@@ -1,4 +1,5 @@
 import Foundation
+import ApplicationServices
 
 @MainActor
 final class AppContext: ObservableObject {
@@ -21,7 +22,11 @@ final class AppContext: ObservableObject {
             preferences: preferences,
             calendar: CalendarService(),
             recordingCoordinator: MeetingRecordingCoordinator(),
-            callDetectionService: CallDetectionService(pollInterval: preferences.detectionPollingInterval),
+            callDetectionService: CallDetectionService(
+                pollInterval: preferences.detectionPollingInterval,
+                axCheck: { AXIsProcessTrusted() },
+                notifier: NotificationHelperAdapter()
+            ),
             autoRecordingCoordinator: AutoRecordingCoordinator(stopGracePeriod: preferences.autoRecordingGracePeriod)
         )
     }

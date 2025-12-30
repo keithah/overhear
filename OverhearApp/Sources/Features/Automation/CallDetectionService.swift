@@ -22,6 +22,7 @@ final class CallDetectionService {
     private var activePollTask: Task<Void, Never>?
     private var initialPollTask: Task<Void, Never>?
     private weak var autoCoordinator: AutoRecordingCoordinator?
+    private var notifier: MeetingNotificationRouting?
     private weak var preferences: PreferencesService?
     private var lastAXQueryDate: Date?
     private let minAXQueryInterval: TimeInterval = 0.5
@@ -62,9 +63,14 @@ final class CallDetectionService {
     private var telemetryResetDate = Date()
     private var telemetryCount = 0
 
-    init(pollInterval: TimeInterval = 3.0, axCheck: @escaping () -> Bool = { AXIsProcessTrusted() }) {
+    init(
+        pollInterval: TimeInterval = 3.0,
+        axCheck: @escaping () -> Bool = { AXIsProcessTrusted() },
+        notifier: MeetingNotificationRouting? = NotificationHelperAdapter()
+    ) {
         self.pollInterval = pollInterval
         self.axCheck = axCheck
+        self.notifier = notifier
         self.titleLookupTimeout = UserDefaults.standard.value(forKey: "overhear.titleLookupTimeout") as? TimeInterval ?? 1.0
         let configuredTelemetryCap = UserDefaults.standard.integer(forKey: "overhear.telemetryMaxPerSession")
         self.maxTelemetryPerSession = configuredTelemetryCap.nonZeroOrDefault(500)
@@ -75,7 +81,7 @@ final class CallDetectionService {
         guard activationObserver == nil, pollTimer == nil else { return true }
         guard axCheck() else {
             logger.error("Accessibility not granted; call detection will not start.")
-            NotificationHelper.sendAccessibilityPermissionNeededIfNeeded()
+            notifier?.sendAccessibilityNeeded()
             permissionDenied = true
             schedulePermissionRetry(autoCoordinator: autoCoordinator, preferences: preferences)
             return false
@@ -291,12 +297,24 @@ final class CallDetectionService {
     }
 
     @MainActor
-    private func activeWindowTitle(for app: NSRunningApplication) -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
+    private func activeWindowTitle(for app: NSRunningApplication, timeout: TimeInterval? = nil) -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         guard AXIsProcessTrusted() else {
             logger.error("Accessibility not granted; cannot inspect windows for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
             return nil
         }
-
+        if let timeout, timeout > 0 {
+            var result: (displayTitle: String, urlDescription: String?, redacted: String?)?
+            let semaphore = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async {
+                result = self.activeWindowTitle(for: app, timeout: nil)
+                semaphore.signal()
+            }
+            if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+                logger.error("AX query timed out for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
+                return nil
+            }
+            return result
+        }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         var focusedWindow: AnyObject?
         let status = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
@@ -330,7 +348,7 @@ final class CallDetectionService {
             if now.timeIntervalSince(lastNotice) > 300 {
                 lastMissingURLNotice = now
                 let display = app.localizedName ?? "Browser"
-                NotificationHelper.sendBrowserURLMissingIfNeeded(appName: display)
+            notifier?.sendBrowserUrlMissing(appName: display)
             }
         }
 
@@ -383,7 +401,9 @@ final class CallDetectionService {
         }
         let result = await Task.detached(priority: .utility) { [weak self] () -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
             guard let self else { return nil }
-            return await MainActor.run { self.activeWindowTitle(for: app) }
+            return await MainActor.run {
+                self.activeWindowTitle(for: app, timeout: self.titleLookupTimeout)
+            }
         }.value
         if Task.isCancelled {
             return nil
@@ -464,7 +484,7 @@ final class CallDetectionService {
                   isSupportedBrowserHost(host) else {
                 if titleInfo.urlDescription == nil {
                     logger.info("Skipped browser detection: missing URL attribute; ensure Meet tab is active")
-                    NotificationHelper.sendBrowserUrlMissingIfNeeded()
+            notifier?.sendBrowserUrlMissing(appName: app.localizedName ?? "Browser")
                 }
                 autoCoordinator?.onNoDetection()
                 logTelemetry(result: "browser-unsupported-host", bundleID: bundleID, host: titleInfo.redacted)
@@ -483,7 +503,7 @@ final class CallDetectionService {
 
         let cleanTitle = NotificationHelper.cleanMeetingTitle(from: meetingInfo)
         if shouldNotify {
-            NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
+            notifier?.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
         }
         if shouldAutoRecord {
             autoCoordinator?.onDetection(appName: appName, meetingTitle: cleanTitle)
