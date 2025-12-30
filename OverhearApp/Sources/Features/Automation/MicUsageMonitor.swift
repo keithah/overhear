@@ -257,7 +257,11 @@ final class MicUsageMonitor {
 
         guard let deviceID = client.defaultInputDeviceID() else {
             logger.error("Rebind failed: no default input device")
+            let wasActive = isActive
             isActive = false
+            if !wasActive {
+                onChange?(false)
+            }
             return
         }
         observedDevice = deviceID
@@ -278,7 +282,11 @@ final class MicUsageMonitor {
             logger.error("Failed to rebind mic usage listener: \(status)")
             listenerWrapper = nil
             observedDevice = nil
+            let wasActive = isActive
             isActive = false
+            if !wasActive {
+                onChange?(false)
+            }
             return
         }
 

@@ -67,7 +67,12 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
         manualRecordingTemplate = manualMeeting
         manualRecordingEmitted = false
         NotificationHelper.scheduleManualRecordingReminder()
-        await recordingGate?.beginManual()
+        if let gate = recordingGate {
+            if await !gate.beginManual() {
+                // Manual takes precedence; clear auto if needed then claim the gate.
+                await gate.forceManual()
+            }
+        }
         await startRecordingInternal(for: manualMeeting)
     }
 

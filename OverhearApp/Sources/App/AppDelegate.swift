@@ -24,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let context = AppContext.makeDefault()
         self.context = context
-        Task { await notificationDeduper.startCleanup() }
+        Task { await notificationDeduper.startCleanupIfNeeded() }
 
         // Request calendar permissions with proper app focus; retry once if needed.
         Task { @MainActor in
@@ -198,14 +198,13 @@ actor NotificationDeduper {
         let hardCap = 500
         self.maxEntries = min(max(maxEntries, 1), hardCap)
         let configuredTTL = UserDefaults.standard.double(forKey: "overhear.notificationDeduperTTL")
-        self.ttl = max(1, configuredTTL > 0 ? configuredTTL : ttl)
+        let maxTTL: TimeInterval = 24 * 60 * 60 // 24h clamp to avoid unbounded growth
+        let requestedTTL = configuredTTL > 0 ? configuredTTL : ttl
+        self.ttl = min(max(1, requestedTTL), maxTTL)
         self.dateProvider = dateProvider
         #if DEBUG
         self.cleanupInterval = cleanupInterval
         #endif
-        Task { [weak self] in
-            await self?.startCleanup()
-        }
     }
 
     deinit {
@@ -214,9 +213,6 @@ actor NotificationDeduper {
     }
 
     func record(_ id: String) -> Bool {
-        if cleanupTask == nil {
-            startCleanup()
-        }
         pruneExpired()
         if handled.contains(id) { return false }
         handled.insert(id)
@@ -250,21 +246,24 @@ actor NotificationDeduper {
         }
     }
 
-    func startCleanup() {
+    func startCleanupIfNeeded() {
         guard cleanupTask == nil else { return }
         cleanupTask = Task { [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled {
-                let interval: TimeInterval
-                #if DEBUG
-                interval = cleanupInterval
-                #else
-                let configured = UserDefaults.standard.double(forKey: "overhear.notificationDeduperCleanupInterval")
-                interval = configured > 0 ? configured : 600 // 10 minutes
-                #endif
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                await self.pruneExpired()
-            }
+            await self?.runCleanupLoop()
+        }
+    }
+
+    private func runCleanupLoop() async {
+        while !Task.isCancelled {
+            let interval: TimeInterval
+            #if DEBUG
+            interval = cleanupInterval
+            #else
+            let configured = UserDefaults.standard.double(forKey: "overhear.notificationDeduperCleanupInterval")
+            interval = configured > 0 ? configured : 600 // 10 minutes
+            #endif
+            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            pruneExpired()
         }
     }
 }

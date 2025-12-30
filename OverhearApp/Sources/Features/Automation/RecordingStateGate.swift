@@ -5,7 +5,15 @@ actor RecordingStateGate {
     private var manualActive = false
     private var autoActive = false
 
-    func beginManual() {
+    /// Attempts to begin manual recording; returns false if auto is active.
+    func beginManual() -> Bool {
+        guard !autoActive else { return false }
+        manualActive = true
+        return true
+    }
+
+    /// Force manual to win by clearing auto when the caller intentionally preempts auto-recording.
+    func forceManual() {
         manualActive = true
         autoActive = false
     }
