@@ -67,4 +67,17 @@ final class CallDetectionServiceTests: XCTestCase {
             XCTAssertFalse(service.isSupportedBrowserHost(host), "Host \(host) should not be treated as supported")
         }
     }
+
+    func testTimeoutResolverReturnsNil() async {
+        let slowResolver: CallDetectionService.WindowResolver = { _, timeout in
+            if let timeout {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000 * 2))
+            }
+            return (displayTitle: "ShouldNotReturn", urlDescription: nil, redacted: nil)
+        }
+        let service = CallDetectionService(windowResolver: slowResolver)
+        let app = NSRunningApplication.current
+        let result = await service.resolveTitleInfo(for: app)
+        XCTAssertNil(result, "Slow resolver should respect timeout and return nil")
+    }
 }

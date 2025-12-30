@@ -25,6 +25,7 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
 
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingCoordinator")
     weak var autoRecordingCoordinator: AutoRecordingCoordinator?
+    var recordingGate: RecordingStateGate?
 
     var isRecording: Bool {
         switch status {
@@ -56,6 +57,7 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
     /// Stops the active recording, if any, and finalizes manual entries as needed.
     func stopRecording() async {
         await stopRecordingInternal()
+        await recordingGate?.endManual()
     }
 
     private func startManualRecordingInternal() async {
@@ -65,6 +67,7 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
         manualRecordingTemplate = manualMeeting
         manualRecordingEmitted = false
         NotificationHelper.scheduleManualRecordingReminder()
+        await recordingGate?.beginManual()
         await startRecordingInternal(for: manualMeeting)
     }
 

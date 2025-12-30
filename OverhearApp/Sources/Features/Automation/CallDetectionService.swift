@@ -13,6 +13,17 @@ final class CallDetectionService {
     private var pollTimer: Timer?
     private var pollInterval: TimeInterval
     private let axCheck: () -> Bool
+    typealias WindowResolver = (NSRunningApplication, TimeInterval?) async -> (displayTitle: String, urlDescription: String?, redacted: String?)?
+    private let customWindowResolver: WindowResolver?
+    private lazy var windowResolver: WindowResolver = {
+        if let resolver = customWindowResolver {
+            return resolver
+        }
+        return { [weak self] app, timeout in
+            guard let self else { return nil }
+            return await self.activeWindowTitle(for: app, timeout: timeout)
+        }
+    }()
     private var permissionDenied = false
     private var permissionRetryTask: Task<Void, Never>?
     private var lastNotifiedApp: String?
@@ -66,11 +77,13 @@ final class CallDetectionService {
     init(
         pollInterval: TimeInterval = 3.0,
         axCheck: @escaping () -> Bool = { AXIsProcessTrusted() },
-        notifier: MeetingNotificationRouting? = NotificationHelperAdapter()
+        notifier: MeetingNotificationRouting? = NotificationHelperAdapter(),
+        windowResolver: WindowResolver? = nil
     ) {
         self.pollInterval = pollInterval
         self.axCheck = axCheck
         self.notifier = notifier
+        self.customWindowResolver = windowResolver
         self.titleLookupTimeout = UserDefaults.standard.value(forKey: "overhear.titleLookupTimeout") as? TimeInterval ?? 1.0
         let configuredTelemetryCap = UserDefaults.standard.integer(forKey: "overhear.telemetryMaxPerSession")
         self.maxTelemetryPerSession = configuredTelemetryCap.nonZeroOrDefault(500)
@@ -297,7 +310,7 @@ final class CallDetectionService {
     }
 
     @MainActor
-    private func activeWindowTitle(for app: NSRunningApplication, timeout: TimeInterval? = nil) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
+    func activeWindowTitle(for app: NSRunningApplication, timeout: TimeInterval? = nil) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         guard AXIsProcessTrusted() else {
             logger.error("Accessibility not granted; cannot inspect windows for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
             return nil
@@ -400,10 +413,7 @@ final class CallDetectionService {
             axQueryInFlight = false
             lastAXQueryDate = Date()
         }
-        let result = await Task.detached(priority: .utility) { [weak self] () -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
-            guard let self else { return nil }
-            return await self.activeWindowTitle(for: app, timeout: self.titleLookupTimeout)
-        }.value
+        let result = await windowResolver(app, titleLookupTimeout)
         if Task.isCancelled {
             return nil
         }
@@ -436,7 +446,7 @@ final class CallDetectionService {
         lastNotifiedTitle = nil
     }
 
-    private func resolveTitleInfo(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
+    func resolveTitleInfo(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
             group.addTask { [weak self] in
                 guard let self else { return nil }

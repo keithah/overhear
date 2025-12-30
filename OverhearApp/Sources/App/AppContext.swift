@@ -53,6 +53,9 @@ final class AppContext: ObservableObject {
     }
 
     private func wireCoordinators() {
+        let gate = RecordingStateGate()
+        recordingCoordinator.recordingGate = gate
+        autoRecordingCoordinator.recordingGate = gate
         // Link weakly in one place to avoid accidental circular strong references.
         // MeetingRecordingCoordinator.autoRecordingCoordinator is weak, as is
         // AutoRecordingCoordinator.manualRecordingCoordinator, so this wiring
