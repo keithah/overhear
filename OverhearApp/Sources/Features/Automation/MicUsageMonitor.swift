@@ -235,29 +235,27 @@ final class MicUsageMonitor {
             pendingRebind = true
             return
         }
-        guard rebindTask == nil else { return }
-        rebinding = true
-
-        let oldTask = rebindTask
-        rebindTask = nil
-        oldTask?.cancel()
-        if let oldTask {
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { await oldTask.value }
-                group.addTask {
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                }
-                _ = await group.next()
-                group.cancelAll()
-            }
+        if let existing = rebindTask {
+            pendingRebind = true
+            await existing.value
+            pendingRebind = false
         }
 
+        rebinding = true
         rebindTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.rebinding = false }
+            defer {
+                self.rebinding = false
+                self.rebindTask = nil
+                if self.pendingRebind {
+                    self.pendingRebind = false
+                    Task { @MainActor in
+                        await self.rebindToCurrentDevice()
+                    }
+                }
+            }
             guard !Task.isCancelled else { return }
 
-        // Tear down existing listener
             if self.listenerAdded, let block = self.listenerWrapper?.block, let device = self.observedDevice {
                 var address = AudioObjectPropertyAddress(
                     mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
@@ -267,18 +265,13 @@ final class MicUsageMonitor {
                 let status = self.client.removeListener(device, &address, DispatchQueue.main, block)
                 if status != noErr {
                     self.logger.error("Failed to remove mic listener during rebind: \(status)")
-                    self.listenerAdded = false
-                    self.listenerWrapper = nil
-                    self.observedDevice = nil
-                    self.isActive = false
-                    return
                 }
                 self.listenerAdded = false
                 self.listenerWrapper = nil
                 self.observedDevice = nil
+                self.isActive = false
             }
 
-        // Re-register on the new default device
             guard let deviceID = self.client.defaultInputDeviceID() else {
                 self.logger.error("Rebind failed: no default input device")
                 self.isActive = false
@@ -309,10 +302,6 @@ final class MicUsageMonitor {
             self.listenerAdded = true
             self.logger.info("Rebound mic usage listener to new input device")
             await self.refreshState()
-            if self.pendingRebind {
-                self.pendingRebind = false
-                await self.rebindToCurrentDevice()
-            }
         }
     }
 }

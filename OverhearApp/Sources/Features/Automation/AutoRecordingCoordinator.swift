@@ -59,6 +59,7 @@ final class AutoRecordingCoordinator: ObservableObject {
             logger.info("Skipping auto-record detection; manual recording active")
             return
         }
+        // Re-check immediately to narrow the race window.
         if manualRecordingCoordinator?.isRecording == true {
             logger.info("Manual recording started during detection; skipping")
             return

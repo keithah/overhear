@@ -20,6 +20,7 @@ final class CallDetectionService {
     private var micMonitor: MicUsageMonitor?
     private var isMicActive = false
     private var activePollTask: Task<Void, Never>?
+    private var initialPollTask: Task<Void, Never>?
     private weak var autoCoordinator: AutoRecordingCoordinator?
     private weak var preferences: PreferencesService?
     private var lastAXQueryDate: Date?
@@ -101,8 +102,9 @@ final class CallDetectionService {
                 await self?.pollFrontmostApp()
             }
         }
-        Task { @MainActor in
-            await self.pollFrontmostApp()
+        initialPollTask?.cancel()
+        initialPollTask = Task { @MainActor [weak self] in
+            await self?.pollFrontmostApp()
         }
         startTimer()
         logger.info("Call detection started with activation observer")
@@ -121,6 +123,8 @@ final class CallDetectionService {
             lastNotifiedTitle = nil
             telemetryCount = 0
         }
+        initialPollTask?.cancel()
+        initialPollTask = nil
         micMonitor?.stop()
         permissionRetryTask?.cancel()
         permissionRetryTask = nil
@@ -304,7 +308,7 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement (type=\(CFGetTypeID(window)))")
             return nil
         }
-        // Safe due to CFTypeID guard above.
+        // Cast is safe after CFTypeID guard.
         let windowElement = unsafeDowncast(window as AnyObject, to: AXUIElement.self)
 
         var titleValue: AnyObject?
