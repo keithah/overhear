@@ -84,7 +84,7 @@ final class CallDetectionService {
         self.axCheck = axCheck
         self.notifier = notifier
         self.customWindowResolver = windowResolver
-        self.titleLookupTimeout = UserDefaults.standard.value(forKey: "overhear.titleLookupTimeout") as? TimeInterval ?? 1.0
+        self.titleLookupTimeout = UserDefaults.standard.value(forKey: UserDefaultsKeys.titleLookupTimeout) as? TimeInterval ?? 1.0
         let configuredTelemetryCap = UserDefaults.standard.integer(forKey: "overhear.telemetryMaxPerSession")
         self.maxTelemetryPerSession = configuredTelemetryCap.nonZeroOrDefault(500)
     }
@@ -345,6 +345,7 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement (type=\(CFGetTypeID(window)))")
             return nil
         }
+        // Safe after CFTypeID guard; using unsafeDowncast to avoid CF bridging warnings.
         let windowElement = unsafeDowncast(window as AnyObject, to: AXUIElement.self)
 
         var titleValue: AnyObject?

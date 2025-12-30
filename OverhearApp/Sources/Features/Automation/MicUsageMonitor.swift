@@ -75,6 +75,9 @@ struct AudioObjectClient {
 /// and publishes changes on the main actor so UI and detection logic can react without hopping threads.
 @MainActor
 final class MicUsageMonitor {
+    private enum Constants {
+        static let maxPendingRebinds = 5
+    }
     private let logger = Logger(subsystem: "com.overhear.app", category: "MicUsageMonitor")
     private let client: AudioObjectClient
     private var listenerAdded = false
@@ -227,8 +230,8 @@ final class MicUsageMonitor {
 
     private func enqueueRebind() {
         // Avoid unbounded growth if the system flaps devices rapidly; coalesce to the latest device.
-        let newCount = min(pendingRebinds + 1, 5)
-        if newCount == 5, pendingRebinds < 5 {
+        let newCount = min(pendingRebinds + 1, Constants.maxPendingRebinds)
+        if newCount == Constants.maxPendingRebinds, pendingRebinds < Constants.maxPendingRebinds {
             logger.warning("Mic rebind queue saturated; coalescing rapid device changes")
         }
         pendingRebinds = newCount
@@ -253,6 +256,7 @@ final class MicUsageMonitor {
             let status = client.removeListener(device, &address, DispatchQueue.main, block)
             if status != noErr {
                 logger.error("Failed to remove mic listener during rebind: \(status)")
+                return
             }
             listenerAdded = false
             listenerWrapper = nil

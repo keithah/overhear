@@ -198,7 +198,7 @@ actor NotificationDeduper {
         let hardCap = 500
         self.maxEntries = min(max(maxEntries, 1), hardCap)
         // TTL/debug keys are developer toggles (documented in README).
-        let configuredTTL = UserDefaults.standard.double(forKey: "overhear.notificationDeduperTTL")
+        let configuredTTL = UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDeduperTTL)
         let maxTTL: TimeInterval = 24 * 60 * 60 // 24h clamp to avoid unbounded growth
         let requestedTTL = configuredTTL > 0 ? configuredTTL : ttl
         self.ttl = min(max(1, requestedTTL), maxTTL)
@@ -261,7 +261,7 @@ actor NotificationDeduper {
             #if DEBUG
             interval = cleanupInterval
             #else
-            let configured = UserDefaults.standard.double(forKey: "overhear.notificationDeduperCleanupInterval")
+            let configured = UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDeduperCleanupInterval)
             interval = configured > 0 ? configured : 600 // 10 minutes
             #endif
             try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))

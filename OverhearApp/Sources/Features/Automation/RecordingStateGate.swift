@@ -10,8 +10,16 @@ actor RecordingStateGate {
     private var autoActive = false
 
     /// Attempts to begin manual recording; returns false if auto is active.
-    func beginManual() -> Bool {
-        guard !autoActive else { return false }
+    func beginManual(stopAuto: (@Sendable () async -> Void)? = nil) async -> Bool {
+        if autoActive {
+            if let stopAuto {
+                await stopAuto()
+                autoActive = false
+            } else {
+                return false
+            }
+        }
+        guard !manualActive else { return false }
         manualActive = true
         return true
     }
@@ -31,7 +39,6 @@ actor RecordingStateGate {
         autoActive = false
     }
 
-    var isManualActive: Bool {
-        manualActive
-    }
+    var isManualActive: Bool { manualActive }
+    var isAutoActive: Bool { autoActive }
 }
