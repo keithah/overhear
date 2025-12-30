@@ -33,7 +33,7 @@ final class CallDetectionService {
     private var activePollTask: Task<Void, Never>?
     private var initialPollTask: Task<Void, Never>?
     private weak var autoCoordinator: AutoRecordingCoordinator?
-    private var notifier: MeetingNotificationRouting?
+    private weak var notifier: MeetingNotificationRouting?
     private weak var preferences: PreferencesService?
     private var lastAXQueryDate: Date?
     private let minAXQueryInterval: TimeInterval = 0.5
@@ -123,7 +123,8 @@ final class CallDetectionService {
         }
         initialPollTask?.cancel()
         initialPollTask = Task { @MainActor [weak self] in
-            await self?.pollFrontmostApp()
+            guard let self, !Task.isCancelled else { return }
+            await self.pollFrontmostApp()
         }
         startTimer()
         logger.info("Call detection started with activation observer")
@@ -298,7 +299,7 @@ final class CallDetectionService {
         lastNotifiedTitle = cleanTitle
 
         if preferences.meetingNotificationsEnabled {
-            NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
+            notifier?.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
         }
         if preferences.autoRecordingEnabled {
             autoCoordinator?.onDetection(appName: appName, meetingTitle: cleanTitle)
@@ -322,8 +323,12 @@ final class CallDetectionService {
                     guard let self else { return nil }
                     return await self.activeWindowTitle(for: app, timeout: nil)
                 }
-                group.addTask {
+                group.addTask { [weak self] in
                     try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    if let self {
+                        let bundle = app.bundleIdentifier ?? "unknown"
+                        self.logger.warning("AX query timed out after \(timeout)s for \(bundle, privacy: .public)")
+                    }
                     return nil
                 }
                 return await group.next() ?? nil

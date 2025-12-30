@@ -197,6 +197,7 @@ actor NotificationDeduper {
     ) {
         let hardCap = 500
         self.maxEntries = min(max(maxEntries, 1), hardCap)
+        // TTL/debug keys are developer toggles (documented in README).
         let configuredTTL = UserDefaults.standard.double(forKey: "overhear.notificationDeduperTTL")
         let maxTTL: TimeInterval = 24 * 60 * 60 // 24h clamp to avoid unbounded growth
         let requestedTTL = configuredTTL > 0 ? configuredTTL : ttl

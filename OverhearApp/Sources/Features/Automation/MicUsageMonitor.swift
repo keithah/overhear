@@ -226,8 +226,12 @@ final class MicUsageMonitor {
     private var rebindTask: Task<Void, Never>?
 
     private func enqueueRebind() {
-        // Avoid unbounded growth if the system flaps devices rapidly.
-        pendingRebinds = min(pendingRebinds + 1, 5)
+        // Avoid unbounded growth if the system flaps devices rapidly; coalesce to the latest device.
+        let newCount = min(pendingRebinds + 1, 5)
+        if newCount == 5, pendingRebinds < 5 {
+            logger.warning("Mic rebind queue saturated; coalescing rapid device changes")
+        }
+        pendingRebinds = newCount
         guard rebindTask == nil else { return }
         rebindTask = Task { @MainActor [weak self] in
             guard let self else { return }

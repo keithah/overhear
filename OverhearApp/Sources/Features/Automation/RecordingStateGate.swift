@@ -1,6 +1,10 @@
 import Foundation
 
 /// Central gate to coordinate manual and auto recording so only one is active at a time.
+/// Usage:
+/// - Manual: call `beginManual()` before starting; if false, abort. Always call `endManual()`.
+/// - Auto: call `beginAuto()` before starting; if false, abort. Always call `endAuto()`.
+/// Manual is expected to stop auto before taking the gate; this actor only arbitrates state.
 actor RecordingStateGate {
     private var manualActive = false
     private var autoActive = false
