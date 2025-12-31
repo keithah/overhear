@@ -74,7 +74,6 @@ actor TranscriptStore {
     private let persistenceEnabled: Bool
 
     private static let meetingIDDelimiter = "__"
-    private nonisolated(unsafe) static var ephemeralKey: SymmetricKey?
     
     init(storageDirectory: URL? = nil) throws {
         guard Self.isStorageEnabled else {
@@ -347,13 +346,13 @@ actor TranscriptStore {
     // MARK: - Encryption
     
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
-        // In CI/test environments, avoid Keychain dependencies by using an in-memory key.
+        // In CI/test environments, avoid Keychain dependencies by using a per-instance in-memory key.
         let env = ProcessInfo.processInfo.environment
-        if env["OVERHEAR_INSECURE_NO_KEYCHAIN"] == "1" || env["CI"] == "true" {
-            if let key = ephemeralKey { return key }
-            let newKey = SymmetricKey(size: .bits256)
-            ephemeralKey = newKey
-            return newKey
+        let isExplicitBypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"] == "1"
+        let isGithubCI = env["CI"] == "true" && env["GITHUB_ACTIONS"] == "true"
+        if isExplicitBypass || isGithubCI {
+            // One-time key scoped to this store instance; OK for tests/CI where persistence is ephemeral.
+            return SymmetricKey(size: .bits256)
         }
 
         let keyTag = "com.overhear.app.transcripts.key"
