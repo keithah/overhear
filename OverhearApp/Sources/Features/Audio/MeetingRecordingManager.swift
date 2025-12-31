@@ -95,10 +95,29 @@ final class MeetingRecordingManager: ObservableObject {
     private var streamingStartDate: Date?
     private var loggedFirstStreamingToken = false
     private var isRegeneratingSummary = false
+    private let stallThresholdSeconds: TimeInterval = 8
+    private let monitorIntervalSeconds: TimeInterval = 2
 
     private var isStreamingEnabled: Bool {
         FluidAudioAdapter.isEnabled
     }
+
+    struct StreamingHealth: Equatable {
+        enum State: Equatable {
+            case idle
+            case connecting
+            case active
+            case stalled
+            case failed(String)
+        }
+        var state: State
+        var lastUpdate: Date?
+        var firstTokenLatency: TimeInterval?
+    }
+
+    @Published private(set) var streamingHealth: StreamingHealth = .init(state: .idle)
+    private var streamingMonitorTask: Task<Void, Never>?
+    private var streamingLastUpdate: Date?
 #endif
     
     init(
@@ -152,6 +171,9 @@ final class MeetingRecordingManager: ObservableObject {
 #if canImport(FluidAudio)
         streamingConfirmedSegments = []
         streamingHypothesis = nil
+        streamingHealth = .init(state: .idle)
+        streamingLastUpdate = nil
+        loggedFirstStreamingToken = false
         if isStreamingEnabled {
             await startLiveStreaming()
         }
@@ -459,6 +481,8 @@ private extension MeetingRecordingManager {
             streamingConfirmedSegments = []
             streamingHypothesis = nil
             consecutiveEmptyStreamingUpdates = 0
+            streamingLastUpdate = nil
+            streamingHealth = .init(state: .connecting, lastUpdate: nil, firstTokenLatency: nil)
 
             let manager = StreamingAsrManager(config: streamingConfig)
             streamingManager = manager
@@ -477,7 +501,12 @@ private extension MeetingRecordingManager {
                             message: String(format: "First streaming update after %.2fs", delta)
                         )
                         logger.info("Streaming first token latency: \(delta, privacy: .public)s")
+                        streamingHealth.firstTokenLatency = delta
+                        streamingHealth.state = .active
                     }
+                    streamingLastUpdate = Date()
+                    streamingHealth.state = .active
+                    streamingHealth.lastUpdate = streamingLastUpdate
                     await self.handleStreamingUpdate(update)
                 }
                 logger.info("Streaming updates stream ended")
@@ -500,8 +529,10 @@ private extension MeetingRecordingManager {
 
             try await manager.start()
             FileLogger.log(category: "MeetingRecordingManager", message: "Streaming ASR started")
+            startStreamingMonitor()
         } catch {
             logger.error("Streaming ASR failed to start: \(error.localizedDescription, privacy: .public)")
+            streamingHealth.state = .failed(error.localizedDescription)
             await stopLiveStreaming()
         }
     }
@@ -527,6 +558,8 @@ private extension MeetingRecordingManager {
 
         streamingTask?.cancel()
         streamingTask = nil
+        streamingMonitorTask?.cancel()
+        streamingMonitorTask = nil
 
         if let token = streamingObserverToken {
             defer { streamingObserverToken = nil }
@@ -536,6 +569,38 @@ private extension MeetingRecordingManager {
         }
 
         streamingManager = nil
+        streamingHealth = .init(state: .idle, lastUpdate: nil, firstTokenLatency: streamingHealth.firstTokenLatency)
+    }
+
+    func startStreamingMonitor() {
+        streamingMonitorTask?.cancel()
+        streamingMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
+                guard let self, let start = streamingStartDate else { return }
+                guard streamingManager != nil else { return }
+                let last = streamingLastUpdate ?? start
+                let delta = Date().timeIntervalSince(last)
+                if delta > stallThresholdSeconds {
+                    if streamingHealth.state != .stalled {
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: String(format: "Streaming stalled; last update %.2fs ago", delta)
+                        )
+                    }
+                    streamingHealth.state = .stalled
+                } else {
+                    if streamingHealth.state == .stalled {
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: "Streaming recovered after stall"
+                        )
+                    }
+                    streamingHealth.state = loggedFirstStreamingToken ? .active : .connecting
+                }
+                streamingHealth.lastUpdate = streamingLastUpdate ?? start
+            }
+        }
     }
 
     @MainActor
