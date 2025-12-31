@@ -2,15 +2,13 @@ name: Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
-
 jobs:
   build:
-    # macos-14 is required for MLX/Metal headers (Accelerate/CryptoKit).
-    runs-on: macos-14
+    runs-on: tenki-macos-latest-medium
 
     steps:
     - name: Select latest Xcode 16.x
