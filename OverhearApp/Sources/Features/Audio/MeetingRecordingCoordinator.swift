@@ -4,11 +4,17 @@ import os.log
 
 @MainActor
 final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProviding {
+    enum NotesSaveState {
+        case idle
+        case saving
+        case failed(String)
+    }
     @Published private(set) var status: MeetingRecordingManager.Status = .idle
     @Published private(set) var activeMeeting: Meeting?
     @Published private(set) var liveTranscript: String = ""
     @Published private(set) var liveSegments: [LiveTranscriptSegment] = []
     @Published var liveNotes: String = ""
+    @Published private(set) var notesSaveState: MeetingRecordingManager.NotesSaveState = .idle
     @Published private(set) var summary: MeetingSummary?
     @Published private(set) var streamingHealth: MeetingRecordingManager.StreamingHealth = .init(state: .idle)
 
@@ -196,7 +202,10 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
     }
 
     func saveNotes(_ notes: String) async {
-        await recordingManager?.saveNotes(notes)
+        guard let manager = recordingManager else { return }
+        notesSaveState = .saving
+        await manager.saveNotes(notes)
+        notesSaveState = .idle
     }
 
     private func cleanupAfterRecordingIfNeeded() {

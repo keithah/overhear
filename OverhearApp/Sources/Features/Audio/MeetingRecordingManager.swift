@@ -61,6 +61,12 @@ final class MeetingRecordingManager: ObservableObject {
         }
     }
 
+    enum NotesSaveState: Equatable {
+        case idle
+        case saving
+        case failed(String)
+    }
+
     let meetingID: String
     private let fileSafeMeetingID: String
     
@@ -71,6 +77,7 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var audioFileURL: URL?
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     @Published private(set) var summary: MeetingSummary?
+    @Published private(set) var notesSaveState: NotesSaveState = .idle
     private(set) var transcriptID: String?
     private var pendingNotes: String?
 
@@ -84,6 +91,7 @@ final class MeetingRecordingManager: ObservableObject {
     private var captureStartTime: Date?
     private var transcriptionTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
+    private var lastNotesSavedAt: Date?
 
 #if canImport(FluidAudio)
     private var streamingManager: StreamingAsrManager?
@@ -255,6 +263,7 @@ final class MeetingRecordingManager: ObservableObject {
             return
         }
         do {
+            notesSaveState = .saving
             try await pipeline.updateTranscript(id: transcriptID) { stored in
                 StoredTranscript(
                     id: stored.id,
@@ -271,8 +280,11 @@ final class MeetingRecordingManager: ObservableObject {
             }
             FileLogger.log(category: "MeetingRecordingManager", message: "Persisted notes for \(transcriptID)")
             pendingNotes = nil
+            lastNotesSavedAt = Date()
+            notesSaveState = .idle
         } catch {
             FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes: \(error.localizedDescription)")
+            notesSaveState = .failed(error.localizedDescription)
         }
     }
     
@@ -458,7 +470,7 @@ final class MeetingRecordingManager: ObservableObject {
 }
 
 #if canImport(FluidAudio)
-private extension MeetingRecordingManager {
+extension MeetingRecordingManager {
     /// Streaming configuration tuned for balanced accuracy/latency for live transcripts.
     private var streamingConfig: StreamingAsrConfig {
         // Favor accuracy/stability: longer chunks and context so we stop dropping words.
@@ -539,7 +551,12 @@ private extension MeetingRecordingManager {
 
     func restartStreaming() async {
         guard isStreamingEnabled else { return }
-        guard case .capturing = status || case .transcribing = status else { return }
+        switch status {
+        case .capturing, .transcribing:
+            break
+        default:
+            return
+        }
         await stopLiveStreaming()
         streamingHealth = .init(state: .connecting, lastUpdate: nil, firstTokenLatency: nil)
         await startLiveStreaming()
@@ -584,8 +601,9 @@ private extension MeetingRecordingManager {
         streamingMonitorTask?.cancel()
         streamingMonitorTask = Task { [weak self] in
             while !Task.isCancelled {
+                guard let self else { return }
                 try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
-                guard let self, let start = streamingStartDate else { return }
+                guard let start = streamingStartDate else { return }
                 guard streamingManager != nil else { return }
                 let last = streamingLastUpdate ?? start
                 let delta = Date().timeIntervalSince(last)
