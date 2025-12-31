@@ -55,10 +55,14 @@
 		FD7D27932BBF20EA00A5CB6F /* CallDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27922BBF20EA00A5CB6F /* CallDetectionService.swift */; };
 		FD7D27952BBF20F500A5CB6F /* MicUsageMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27942BBF20F500A5CB6F /* MicUsageMonitor.swift */; };
 		FD7D27972BBF20FE00A5CB6F /* RecordingStateIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27962BBF20FE00A5CB6F /* RecordingStateIndicator.swift */; };
-	F1F5B2D21D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D11D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift */; };
-	F1F5B2D61D0A4FC3A5E1C0D1 /* MLXPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D51D0A4FC3A5E1C0D1 /* MLXPreferences.swift */; };
-	F1F5B2D81D0A4FC3A5E1C0D1 /* PromptTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D71D0A4FC3A5E1C0D1 /* PromptTemplate.swift */; };
-	F1F5B2DA1D0A4FC3A5E1C0D1 /* PromptTemplateRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D91D0A4FC3A5E1C0D1 /* PromptTemplateRunner.swift */; };
+		FD7D27A12BBF210001A5CB6F /* MeetingNotificationRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27A02BBF210001A5CB6F /* MeetingNotificationRouting.swift */; };
+		FD7D27A32BBF210001A5CB6F /* NotificationDeduperFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27A22BBF210001A5CB6F /* NotificationDeduperFactory.swift */; };
+		FD7D27A52BBF210001A5CB6F /* RecordingStateGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27A42BBF210001A5CB6F /* RecordingStateGate.swift */; };
+		FD7D27A72BBF210001A5CB6F /* RecordingStateProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27A62BBF210001A5CB6F /* RecordingStateProviding.swift */; };
+		F1F5B2D21D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D11D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift */; };
+		F1F5B2D61D0A4FC3A5E1C0D1 /* MLXPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D51D0A4FC3A5E1C0D1 /* MLXPreferences.swift */; };
+		F1F5B2D81D0A4FC3A5E1C0D1 /* PromptTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D71D0A4FC3A5E1C0D1 /* PromptTemplate.swift */; };
+		F1F5B2DA1D0A4FC3A5E1C0D1 /* PromptTemplateRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F5B2D91D0A4FC3A5E1C0D1 /* PromptTemplateRunner.swift */; };
 
 /* End PBXBuildFile section */
 
@@ -112,6 +116,10 @@
 		FD7D27922BBF20EA00A5CB6F /* CallDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/CallDetectionService.swift; sourceTree = "<group>"; };
 		FD7D27942BBF20F500A5CB6F /* MicUsageMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/MicUsageMonitor.swift; sourceTree = "<group>"; };
 		FD7D27962BBF20FE00A5CB6F /* RecordingStateIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/RecordingStateIndicator.swift; sourceTree = "<group>"; };
+		FD7D27A02BBF210001A5CB6F /* MeetingNotificationRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/MeetingNotificationRouting.swift; sourceTree = "<group>"; };
+		FD7D27A22BBF210001A5CB6F /* NotificationDeduperFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/NotificationDeduperFactory.swift; sourceTree = "<group>"; };
+		FD7D27A42BBF210001A5CB6F /* RecordingStateGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/RecordingStateGate.swift; sourceTree = "<group>"; };
+		FD7D27A62BBF210001A5CB6F /* RecordingStateProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/RecordingStateProviding.swift; sourceTree = "<group>"; };
 	F1F5B2D11D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMPipeline.swift; sourceTree = "<group>"; };
 	F1F5B2D51D0A4FC3A5E1C0D1 /* MLXPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXPreferences.swift; sourceTree = "<group>"; };
 	F1F5B2D71D0A4FC3A5E1C0D1 /* PromptTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplate.swift; sourceTree = "<group>"; };
@@ -406,6 +414,10 @@
 								FD7D27932BBF20EA00A5CB6F /* CallDetectionService.swift in Sources */,
 								FD7D27952BBF20F500A5CB6F /* MicUsageMonitor.swift in Sources */,
 								FD7D27972BBF20FE00A5CB6F /* RecordingStateIndicator.swift in Sources */,
+								FD7D27A12BBF210001A5CB6F /* MeetingNotificationRouting.swift in Sources */,
+								FD7D27A32BBF210001A5CB6F /* NotificationDeduperFactory.swift in Sources */,
+								FD7D27A52BBF210001A5CB6F /* RecordingStateGate.swift in Sources */,
+								FD7D27A72BBF210001A5CB6F /* RecordingStateProviding.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
