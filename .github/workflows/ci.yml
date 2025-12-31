@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: tenki-macos-latest-mini
+    env:
+      OVERHEAR_INSECURE_NO_KEYCHAIN: "1"
+      CI: "true"
 
     steps:
     - name: Select latest Xcode 16.x

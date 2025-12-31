@@ -66,6 +66,26 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertTrue(Set(["one", "three"]).contains(offsetResults.first!.id))
     }
 
+    func testKeychainBypassUsesSharedEphemeralKey() async throws {
+        setenv("OVERHEAR_INSECURE_NO_KEYCHAIN", "1", 1)
+        setenv("CI", "true", 1)
+        setenv("GITHUB_ACTIONS", "true", 1)
+        defer {
+            unsetenv("OVERHEAR_INSECURE_NO_KEYCHAIN")
+            unsetenv("CI")
+            unsetenv("GITHUB_ACTIONS")
+        }
+
+        let store1 = try TranscriptStore(storageDirectory: tempDir)
+        let transcript = makeTranscript(id: "ephemeral", date: Date(), transcript: "hello")
+        try await store1.save(transcript)
+
+        // Second instance should reuse the same in-process ephemeral key.
+        let store2 = try TranscriptStore(storageDirectory: tempDir)
+        let loaded = try await store2.retrieve(id: "ephemeral")
+        XCTAssertEqual(loaded.transcript, "hello")
+    }
+
     private func makeTranscript(id: String,
                                 date: Date,
                                 transcript: String = "hello",
