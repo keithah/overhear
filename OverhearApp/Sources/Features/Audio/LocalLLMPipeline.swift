@@ -431,6 +431,8 @@ actor LocalLLMPipeline {
     }
 
     deinit {
+        warmupTask?.cancel()
+        downloadWatchTask?.cancel()
         if let observer = modelChangeObserver {
             NotificationCenter.default.removeObserver(observer)
         }

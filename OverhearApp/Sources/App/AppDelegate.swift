@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var context: AppContext?
     var menuBarController: MenuBarController?
     let recordingOverlay = RecordingOverlayController()
-    private var notificationDeduper = NotificationDeduper(maxEntries: 200)
+    private var notificationDeduper: NotificationDeduper!
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -24,7 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let context = AppContext.makeDefault()
         self.context = context
-        Task { await notificationDeduper.startCleanup() }
+        self.notificationDeduper = context.notificationDeduper
+        // Start cleanup eagerly to avoid lazy races; actor isolation makes this atomic.
+        Task { await notificationDeduper.startCleanupIfNeeded() }
 
         // Request calendar permissions with proper app focus; retry once if needed.
         Task { @MainActor in
@@ -93,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         group.enter()
         Task { @MainActor [weak self] in
             if let context = self?.context {
-                await context.callDetectionService.stop(clearState: false)
+                context.callDetectionService.stop(clearState: false)
                 await context.autoRecordingCoordinator.stopRecording()
                 await context.recordingCoordinator.stopRecording()
             }
@@ -182,10 +184,8 @@ actor NotificationDeduper {
     private var timestamps: [String: Date] = [:]
     let maxEntries: Int
     let ttl: TimeInterval
-    #if DEBUG
-    /// Optional override for cleanup cadence to make tests deterministic.
+    /// Cleanup cadence (seconds). Debug builds use a shorter default for deterministic tests.
     let cleanupInterval: TimeInterval
-    #endif
     private let dateProvider: () -> Date
     private var cleanupTask: Task<Void, Never>?
 
@@ -197,11 +197,10 @@ actor NotificationDeduper {
     ) {
         let hardCap = 500
         self.maxEntries = min(max(maxEntries, 1), hardCap)
-        self.ttl = max(1, ttl)
+        let maxTTL: TimeInterval = 24 * 60 * 60 // 24h clamp to avoid unbounded growth
+        self.ttl = min(max(1, ttl), maxTTL)
         self.dateProvider = dateProvider
-        #if DEBUG
         self.cleanupInterval = cleanupInterval
-        #endif
     }
 
     deinit {
@@ -210,6 +209,7 @@ actor NotificationDeduper {
     }
 
     func record(_ id: String) -> Bool {
+        startCleanupIfNeeded()
         pruneExpired()
         if handled.contains(id) { return false }
         handled.insert(id)
@@ -243,20 +243,19 @@ actor NotificationDeduper {
         }
     }
 
-    func startCleanup() {
+    func startCleanupIfNeeded() {
+        // Actor-isolated; the guard is effectively atomic.
         guard cleanupTask == nil else { return }
         cleanupTask = Task { [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled {
-                let interval: TimeInterval
-                #if DEBUG
-                interval = cleanupInterval
-                #else
-                interval = 600 // 10 minutes
-                #endif
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                await self.pruneExpired()
-            }
+            await self?.runCleanupLoop()
+        }
+    }
+
+    private func runCleanupLoop() async {
+        while !Task.isCancelled {
+            let interval = cleanupInterval
+            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            pruneExpired()
         }
     }
 }

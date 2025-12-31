@@ -3,7 +3,7 @@ import Combine
 import os.log
 
 @MainActor
-final class MeetingRecordingCoordinator: ObservableObject {
+final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProviding {
     @Published private(set) var status: MeetingRecordingManager.Status = .idle
     @Published private(set) var activeMeeting: Meeting?
     @Published private(set) var liveTranscript: String = ""
@@ -25,6 +25,7 @@ final class MeetingRecordingCoordinator: ObservableObject {
 
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingCoordinator")
     weak var autoRecordingCoordinator: AutoRecordingCoordinator?
+    var recordingGate: RecordingStateGate?
 
     var isRecording: Bool {
         switch status {
@@ -55,6 +56,8 @@ final class MeetingRecordingCoordinator: ObservableObject {
 
     /// Stops the active recording, if any, and finalizes manual entries as needed.
     func stopRecording() async {
+        // Release the gate up front so auto-recording can resume quickly; cleanup continues below.
+        await recordingGate?.endManual()
         await stopRecordingInternal()
     }
 
@@ -65,6 +68,21 @@ final class MeetingRecordingCoordinator: ObservableObject {
         manualRecordingTemplate = manualMeeting
         manualRecordingEmitted = false
         NotificationHelper.scheduleManualRecordingReminder()
+        if let gate = recordingGate {
+            let acquired = await gate.beginManual(stopAuto: { [weak self] in
+                guard let self else { return }
+                if await self.autoRecordingCoordinator?.isRecording == true {
+                    self.logger.info("Stopping auto-recording to start manual recording")
+                    await self.autoRecordingCoordinator?.stopRecording()
+                }
+            })
+            guard acquired else {
+                logger.error("Recording gate denied manual start; aborting manual recording start")
+                manualRecordingTemplate = nil
+                manualRecordingEmitted = false
+                return
+            }
+        }
         await startRecordingInternal(for: manualMeeting)
     }
 

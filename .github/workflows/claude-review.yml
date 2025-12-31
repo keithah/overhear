@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   claude-review:
-    runs-on: tenki-standard-medium-4c-8g
+    runs-on: tenki-macos-latest-medium
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&

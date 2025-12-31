@@ -6,7 +6,11 @@ struct FileLogger {
         let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Logs/com.overhear.app", isDirectory: true)
         let directory = base ?? URL(fileURLWithPath: "/tmp", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [FileAttributeKey.posixPermissions: NSNumber(value: Int16(0o700))]
+        )
         return directory.appendingPathComponent("overhear.log")
     }()
     private static let maxLogBytes: Int = 5 * 1024 * 1024
@@ -40,9 +44,11 @@ struct FileLogger {
                 do {
                     try data.write(to: logURL, options: .atomic)
                     let attributes = [FileAttributeKey.posixPermissions: NSNumber(value: Int16(0o600))]
-                    try? FileManager.default.setAttributes(attributes, ofItemAtPath: logURL.path)
+                    if let permissionsError = setPermissions(attributes, path: logURL.path) {
+                        NSLog("Overhear file logger: failed to set permissions: \(permissionsError.localizedDescription)")
+                    }
                 } catch {
-                    // Ignore file logging errors in release builds
+                    NSLog("Overhear file logger: failed to write log file: \(error.localizedDescription)")
                 }
             }
         }
@@ -50,6 +56,16 @@ struct FileLogger {
 }
 
 private extension FileLogger {
+    @discardableResult
+    static func setPermissions(_ attributes: [FileAttributeKey: Any], path: String) -> Error? {
+        do {
+            try FileManager.default.setAttributes(attributes, ofItemAtPath: path)
+            return nil
+        } catch {
+            return error
+        }
+    }
+
     static func rotateIfNeeded() {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: logURL.path),
               let fileSize = attributes[.size] as? NSNumber,
@@ -69,6 +85,6 @@ private extension FileLogger {
         try? FileManager.default.moveItem(at: logURL, to: rotated)
         try? Data().write(to: logURL, options: .atomic)
         let attributesReset = [FileAttributeKey.posixPermissions: NSNumber(value: Int16(0o600))]
-        try? FileManager.default.setAttributes(attributesReset, ofItemAtPath: logURL.path)
+        _ = setPermissions(attributesReset, path: logURL.path)
     }
 }

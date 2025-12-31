@@ -34,7 +34,8 @@ final class AutoRecordingCoordinator: ObservableObject {
     var onManagerUpdate: ((RecordingManagerRef?) -> Void)?
     var onCompleted: (() -> Void)?
     var onStatusUpdate: ((String, Bool) -> Void)?
-    weak var manualRecordingCoordinator: MeetingRecordingCoordinator?
+    weak var manualRecordingCoordinator: (any RecordingStateProviding)?
+    var recordingGate: RecordingStateGate?
 
     init(
         stopGracePeriod: TimeInterval = 8.0,
@@ -57,10 +58,6 @@ final class AutoRecordingCoordinator: ObservableObject {
         let manualActiveAtEntry = manualRecordingCoordinator?.isRecording == true
         if manualActiveAtEntry {
             logger.info("Skipping auto-record detection; manual recording active")
-            return
-        }
-        if manualRecordingCoordinator?.isRecording == true {
-            logger.info("Manual recording started during detection; skipping")
             return
         }
 
@@ -114,6 +111,12 @@ final class AutoRecordingCoordinator: ObservableObject {
             // Intentional duplication with entry guard to avoid TOCTOU: manual may start after detection was enqueued.
             return
         }
+        if let gate = recordingGate, await !gate.beginAuto() {
+            logger.info("Auto-record start blocked by gate (manual or auto active)")
+            state = .idle
+            detectionTask = nil
+            return
+        }
         let id = "detected-\(Int(Date().timeIntervalSince1970))"
         let title: String
         if let meetingTitle, !meetingTitle.isEmpty {
@@ -148,6 +151,7 @@ final class AutoRecordingCoordinator: ObservableObject {
             activeTitle = nil
             isRecording = false
             state = .idle
+            await recordingGate?.endAuto()
         }
     }
 
@@ -213,6 +217,7 @@ final class AutoRecordingCoordinator: ObservableObject {
             NotificationHelper.sendRecordingCompleted(title: endedTitle, transcriptReady: transcriptReady)
         }
         onCompleted?()
+        await recordingGate?.endAuto()
     }
 
     func stopRecording() async {

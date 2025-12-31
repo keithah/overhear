@@ -13,6 +13,17 @@ final class CallDetectionService {
     private var pollTimer: Timer?
     private var pollInterval: TimeInterval
     private let axCheck: () -> Bool
+    typealias WindowResolver = (NSRunningApplication, TimeInterval?) async -> (displayTitle: String, urlDescription: String?, redacted: String?)?
+    private let customWindowResolver: WindowResolver?
+    private lazy var windowResolver: WindowResolver = {
+        if let resolver = customWindowResolver {
+            return resolver
+        }
+        return { [weak self] app, timeout in
+            guard let self else { return nil }
+            return await self.activeWindowTitle(for: app, timeout: timeout)
+        }
+    }()
     private var permissionDenied = false
     private var permissionRetryTask: Task<Void, Never>?
     private var lastNotifiedApp: String?
@@ -20,7 +31,9 @@ final class CallDetectionService {
     private var micMonitor: MicUsageMonitor?
     private var isMicActive = false
     private var activePollTask: Task<Void, Never>?
+    private var initialPollTask: Task<Void, Never>?
     private weak var autoCoordinator: AutoRecordingCoordinator?
+    private weak var notifier: MeetingNotificationRouting?
     private weak var preferences: PreferencesService?
     private var lastAXQueryDate: Date?
     private let minAXQueryInterval: TimeInterval = 0.5
@@ -61,10 +74,22 @@ final class CallDetectionService {
     private var telemetryResetDate = Date()
     private var telemetryCount = 0
 
-    init(pollInterval: TimeInterval = 3.0, axCheck: @escaping () -> Bool = { AXIsProcessTrusted() }) {
+    init(
+        pollInterval: TimeInterval = 3.0,
+        axCheck: @escaping () -> Bool = { AXIsProcessTrusted() },
+        notifier: MeetingNotificationRouting? = NotificationHelperAdapter(),
+        windowResolver: WindowResolver? = nil
+    ) {
         self.pollInterval = pollInterval
         self.axCheck = axCheck
-        self.titleLookupTimeout = UserDefaults.standard.value(forKey: "overhear.titleLookupTimeout") as? TimeInterval ?? 1.0
+        self.notifier = notifier
+        self.customWindowResolver = windowResolver
+        let configuredTimeout = UserDefaults.standard.value(forKey: UserDefaultsKeys.titleLookupTimeout) as? TimeInterval
+        // Default to 2s to reduce false negatives on slower machines; allow clamped override for testing.
+        let defaultTimeout: TimeInterval = 2.0
+        let maxTimeout: TimeInterval = 10.0
+        let timeout = configuredTimeout ?? defaultTimeout
+        self.titleLookupTimeout = min(max(0.5, timeout), maxTimeout)
         let configuredTelemetryCap = UserDefaults.standard.integer(forKey: "overhear.telemetryMaxPerSession")
         self.maxTelemetryPerSession = configuredTelemetryCap.nonZeroOrDefault(500)
     }
@@ -74,7 +99,7 @@ final class CallDetectionService {
         guard activationObserver == nil, pollTimer == nil else { return true }
         guard axCheck() else {
             logger.error("Accessibility not granted; call detection will not start.")
-            NotificationHelper.sendAccessibilityPermissionNeededIfNeeded()
+            notifier?.sendAccessibilityNeeded()
             permissionDenied = true
             schedulePermissionRetry(autoCoordinator: autoCoordinator, preferences: preferences)
             return false
@@ -101,7 +126,9 @@ final class CallDetectionService {
                 await self?.pollFrontmostApp()
             }
         }
-        Task { @MainActor in
+        initialPollTask?.cancel()
+        initialPollTask = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
             await self.pollFrontmostApp()
         }
         startTimer()
@@ -121,6 +148,8 @@ final class CallDetectionService {
             lastNotifiedTitle = nil
             telemetryCount = 0
         }
+        initialPollTask?.cancel()
+        initialPollTask = nil
         micMonitor?.stop()
         permissionRetryTask?.cancel()
         permissionRetryTask = nil
@@ -275,7 +304,7 @@ final class CallDetectionService {
         lastNotifiedTitle = cleanTitle
 
         if preferences.meetingNotificationsEnabled {
-            NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
+            notifier?.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
         }
         if preferences.autoRecordingEnabled {
             autoCoordinator?.onDetection(appName: appName, meetingTitle: cleanTitle)
@@ -287,12 +316,29 @@ final class CallDetectionService {
     }
 
     @MainActor
-    private func activeWindowTitle(for app: NSRunningApplication) -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
+    func activeWindowTitle(for app: NSRunningApplication, timeout: TimeInterval? = nil) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         guard AXIsProcessTrusted() else {
             logger.error("Accessibility not granted; cannot inspect windows for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
             return nil
         }
-
+        if let timeout, timeout > 0 {
+            return await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group in
+                defer { group.cancelAll() }
+                group.addTask { [weak self] in
+                    guard let self else { return nil }
+                    return await self.activeWindowTitle(for: app, timeout: nil)
+                }
+                group.addTask { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    if let self {
+                        let bundle = app.bundleIdentifier ?? "unknown"
+                        self.logger.warning("AX query timed out after \(timeout)s for \(bundle, privacy: .public)")
+                    }
+                    return nil
+                }
+                return await group.next() ?? nil
+            }
+        }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         var focusedWindow: AnyObject?
         let status = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
@@ -304,8 +350,8 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement (type=\(CFGetTypeID(window)))")
             return nil
         }
-        // Safe due to CFTypeID guard above.
-        let windowElement = unsafeDowncast(window as AnyObject, to: AXUIElement.self)
+        // Safe after CFTypeID guard; bridging to Swift AXUIElement requires a force cast to avoid CF warnings.
+        let windowElement = window as! AXUIElement
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)
@@ -326,7 +372,7 @@ final class CallDetectionService {
             if now.timeIntervalSince(lastNotice) > 300 {
                 lastMissingURLNotice = now
                 let display = app.localizedName ?? "Browser"
-                NotificationHelper.sendBrowserURLMissingIfNeeded(appName: display)
+                notifier?.sendBrowserUrlMissing(appName: display)
             }
         }
 
@@ -377,10 +423,7 @@ final class CallDetectionService {
             axQueryInFlight = false
             lastAXQueryDate = Date()
         }
-        let result = await Task.detached(priority: .utility) { [weak self] () -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
-            guard let self else { return nil }
-            return await MainActor.run { self.activeWindowTitle(for: app) }
-        }.value
+        let result = await windowResolver(app, titleLookupTimeout)
         if Task.isCancelled {
             return nil
         }
@@ -413,7 +456,7 @@ final class CallDetectionService {
         lastNotifiedTitle = nil
     }
 
-    private func resolveTitleInfo(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
+    func resolveTitleInfo(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
             group.addTask { [weak self] in
                 guard let self else { return nil }
@@ -460,7 +503,7 @@ final class CallDetectionService {
                   isSupportedBrowserHost(host) else {
                 if titleInfo.urlDescription == nil {
                     logger.info("Skipped browser detection: missing URL attribute; ensure Meet tab is active")
-                    NotificationHelper.sendBrowserUrlMissingIfNeeded()
+                    notifier?.sendBrowserUrlMissing(appName: app.localizedName ?? "Browser")
                 }
                 autoCoordinator?.onNoDetection()
                 logTelemetry(result: "browser-unsupported-host", bundleID: bundleID, host: titleInfo.redacted)
@@ -479,7 +522,7 @@ final class CallDetectionService {
 
         let cleanTitle = NotificationHelper.cleanMeetingTitle(from: meetingInfo)
         if shouldNotify {
-            NotificationHelper.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
+            notifier?.sendMeetingPrompt(appName: appName, meetingTitle: cleanTitle)
         }
         if shouldAutoRecord {
             autoCoordinator?.onDetection(appName: appName, meetingTitle: cleanTitle)
