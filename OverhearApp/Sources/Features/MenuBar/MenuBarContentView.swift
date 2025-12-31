@@ -343,10 +343,36 @@ struct LiveNotesView: View {
         coordinator.isRecording ? .green : .secondary
     }
 
+    private var streamingStatusText: String {
+        switch coordinator.streamingHealth.state {
+        case .idle: return "Streaming idle"
+        case .connecting: return "Streaming: connecting"
+        case .active: return "Streaming: active"
+        case .stalled: return "Streaming: stalled"
+        case .failed(let message): return "Streaming failed: \(message)"
+        }
+    }
+
+    private var streamingStatusColor: Color {
+        switch coordinator.streamingHealth.state {
+        case .active: return .green
+        case .connecting: return .blue
+        case .stalled, .failed: return .orange
+        case .idle: return .secondary
+        }
+    }
+
+    private var streamingLastUpdateText: String {
+        guard let ts = coordinator.streamingHealth.lastUpdate else { return "–" }
+        let delta = -ts.timeIntervalSinceNow
+        return String(format: "%.1fs ago", delta)
+    }
+
     var body: some View {
         VStack(spacing: 14) {
             header
             consentNotice
+            streamingHealthRow
             if showTranscript { transcriptSection }
             if showNotes { notesSection }
             if showAI { aiSection }
@@ -464,6 +490,38 @@ struct LiveNotesView: View {
                 .foregroundColor(.secondary)
             Spacer()
         }
+    }
+
+    private var streamingHealthRow: some View {
+        HStack(spacing: 8) {
+            Label(streamingStatusText, systemImage: "waveform.and.magnifyingglass")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(streamingStatusColor)
+            if let latency = coordinator.streamingHealth.firstTokenLatency {
+                Text(String(format: "First token: %.2fs", latency))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            Text("Last update: \(streamingLastUpdateText)")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            Spacer()
+            if case .stalled = coordinator.streamingHealth.state {
+                Button {
+                    Task { await coordinator.restartStreaming() }
+                } label: {
+                    Text("Restart stream")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.orange.opacity(0.15)))
+                }
+                .buttonStyle(.plain)
+                .help("Restart streaming transcription")
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
     }
 
     private var transcriptSection: some View {

@@ -10,6 +10,7 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
     @Published private(set) var liveSegments: [LiveTranscriptSegment] = []
     @Published var liveNotes: String = ""
     @Published private(set) var summary: MeetingSummary?
+    @Published private(set) var streamingHealth: MeetingRecordingManager.StreamingHealth = .init(state: .idle)
 
     private var recordingManager: MeetingRecordingManager?
     private var recordingTask: Task<Void, Never>?
@@ -59,6 +60,10 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
         // Release the gate up front so auto-recording can resume quickly; cleanup continues below.
         await recordingGate?.endManual()
         await stopRecordingInternal()
+    }
+
+    func restartStreaming() async {
+        await recordingManager?.restartStreaming()
     }
 
     private func startManualRecordingInternal() async {
@@ -121,6 +126,10 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
             manager.$summary
                 .receive(on: RunLoop.main)
                 .sink { [weak self] in self?.summary = $0 }
+                .store(in: &cancellables)
+            manager.$streamingHealth
+                .receive(on: RunLoop.main)
+                .sink { [weak self] in self?.streamingHealth = $0 }
                 .store(in: &cancellables)
 
             status = manager.status

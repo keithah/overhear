@@ -537,6 +537,14 @@ private extension MeetingRecordingManager {
         }
     }
 
+    func restartStreaming() async {
+        guard isStreamingEnabled else { return }
+        guard case .capturing = status || case .transcribing = status else { return }
+        await stopLiveStreaming()
+        streamingHealth = .init(state: .connecting, lastUpdate: nil, firstTokenLatency: nil)
+        await startLiveStreaming()
+    }
+
     func stopLiveStreaming() async {
         if let pending = streamingHypothesis, !pending.text.isEmpty {
             let confirmed = LiveTranscriptSegment(
