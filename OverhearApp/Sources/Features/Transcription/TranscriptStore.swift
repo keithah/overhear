@@ -353,6 +353,20 @@ actor TranscriptStore {
         // Prefer explicit bypass; otherwise require both CI and GitHub Actions markers.
         return truthy.contains(bypass) || (truthy.contains(ci) && truthy.contains(gha))
     }
+
+    nonisolated private static var keychainBypassReason: String? {
+        let env = ProcessInfo.processInfo.environment
+        let truthy: Set<String> = ["1", "true", "TRUE", "True"]
+        if let bypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"], truthy.contains(bypass) {
+            return "OVERHEAR_INSECURE_NO_KEYCHAIN"
+        }
+        let ci = env["CI"] ?? ""
+        let gha = env["GITHUB_ACTIONS"] ?? ""
+        if truthy.contains(ci) && truthy.contains(gha) {
+            return "CI && GITHUB_ACTIONS"
+        }
+        return nil
+    }
     
     // MARK: - Encryption
     
@@ -370,9 +384,10 @@ actor TranscriptStore {
             struct EphemeralKeyHolder {
                 static let key = SymmetricKey(size: .bits256)
             }
+            let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
             FileLogger.log(
                 category: "TranscriptStore",
-                message: "Using ephemeral in-memory encryption key (Keychain bypass active)"
+                message: "Using ephemeral in-memory encryption key (Keychain bypass active\(reasonSuffix))"
             )
             return EphemeralKeyHolder.key
         }
