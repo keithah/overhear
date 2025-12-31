@@ -349,7 +349,9 @@ actor TranscriptStore {
         let truthy: Set<String> = ["1", "true", "TRUE", "True"]
         let bypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? ""
         let ci = env["CI"] ?? ""
-        return truthy.contains(bypass) || truthy.contains(ci)
+        let gha = env["GITHUB_ACTIONS"] ?? ""
+        // Prefer explicit bypass; otherwise require both CI and GitHub Actions markers.
+        return truthy.contains(bypass) || (truthy.contains(ci) && truthy.contains(gha))
     }
     
     // MARK: - Encryption
