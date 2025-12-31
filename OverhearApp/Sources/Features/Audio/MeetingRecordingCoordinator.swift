@@ -15,6 +15,7 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
     @Published private(set) var liveSegments: [LiveTranscriptSegment] = []
     @Published var liveNotes: String = ""
     @Published private(set) var notesSaveState: MeetingRecordingManager.NotesSaveState = .idle
+    @Published private(set) var lastNotesSavedAt: Date?
     @Published private(set) var summary: MeetingSummary?
     @Published private(set) var streamingHealth: MeetingRecordingManager.StreamingHealth = .init(state: .idle)
 
@@ -136,6 +137,10 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
             manager.$streamingHealth
                 .receive(on: RunLoop.main)
                 .sink { [weak self] in self?.streamingHealth = $0 }
+                .store(in: &cancellables)
+            manager.$lastNotesSavedAt
+                .receive(on: RunLoop.main)
+                .sink { [weak self] in self?.lastNotesSavedAt = $0 }
                 .store(in: &cancellables)
 
             status = manager.status

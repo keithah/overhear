@@ -362,6 +362,12 @@ struct LiveNotesView: View {
         }
     }
 
+    private let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
+
     private var streamingLastUpdateText: String {
         guard let ts = coordinator.streamingHealth.lastUpdate else { return "–" }
         let delta = -ts.timeIntervalSinceNow
@@ -550,6 +556,27 @@ struct LiveNotesView: View {
             HStack {
                 Text("Notes")
                     .font(.system(size: 12, weight: .semibold))
+                if case .saving = coordinator.notesSaveState {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                        Text("Saving…")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                } else if case .failed = coordinator.notesSaveState {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("Autosave failed")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                } else if let ts = coordinator.lastNotesSavedAt {
+                    Text("Saved \(relativeFormatter.localizedString(for: ts, relativeTo: Date()))")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
                 Spacer()
                 Button {
                     copyNotes()

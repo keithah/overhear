@@ -78,6 +78,7 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     @Published private(set) var summary: MeetingSummary?
     @Published private(set) var notesSaveState: NotesSaveState = .idle
+    @Published private(set) var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
     private var pendingNotes: String?
 
@@ -91,7 +92,6 @@ final class MeetingRecordingManager: ObservableObject {
     private var captureStartTime: Date?
     private var transcriptionTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
-    private var lastNotesSavedAt: Date?
 
 #if canImport(FluidAudio)
     private var streamingManager: StreamingAsrManager?
