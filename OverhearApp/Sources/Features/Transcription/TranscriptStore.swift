@@ -343,18 +343,30 @@ actor TranscriptStore {
             .first
     }
     
+    /// Determine if we should bypass the Keychain (CI / explicit env override).
+    nonisolated private static var isKeychainBypassed: Bool {
+        let env = ProcessInfo.processInfo.environment
+        let truthy: Set<String> = ["1", "true", "TRUE", "True"]
+        let bypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? ""
+        let ci = env["CI"] ?? ""
+        return truthy.contains(bypass) || truthy.contains(ci)
+    }
+    
     // MARK: - Encryption
     
+    /// Return or create the encryption key for transcript persistence.
+    /// In CI/debug bypass scenarios the Keychain is unavailable, so we use a process-scoped
+    /// ephemeral key instead. In production this persists to the Keychain.
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
         // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
-        let env = ProcessInfo.processInfo.environment
-        let isExplicitBypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"] == "1"
-        let isCI = env["CI"] == "true"
-        if isExplicitBypass || isCI {
-            // Shared ephemeral key for the lifetime of the process so multiple stores stay consistent.
+        if isKeychainBypassed {
             struct EphemeralKeyHolder {
                 static let key = SymmetricKey(size: .bits256)
             }
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "Using ephemeral in-memory encryption key (Keychain bypass active)"
+            )
             return EphemeralKeyHolder.key
         }
 
