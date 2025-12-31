@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: tenki-macos-latest-medium
+    runs-on: tenki-macos-latest-mini
 
     steps:
     - name: Select latest Xcode 16.x
