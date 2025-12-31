@@ -346,13 +346,16 @@ actor TranscriptStore {
     // MARK: - Encryption
     
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
-        // In CI/test environments, avoid Keychain dependencies by using a per-instance in-memory key.
+        // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
         let env = ProcessInfo.processInfo.environment
         let isExplicitBypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"] == "1"
-        let isGithubCI = env["CI"] == "true" && env["GITHUB_ACTIONS"] == "true"
-        if isExplicitBypass || isGithubCI {
-            // One-time key scoped to this store instance; OK for tests/CI where persistence is ephemeral.
-            return SymmetricKey(size: .bits256)
+        let isCI = env["CI"] == "true"
+        if isExplicitBypass || isCI {
+            // Shared ephemeral key for the lifetime of the process so multiple stores stay consistent.
+            struct EphemeralKeyHolder {
+                static let key = SymmetricKey(size: .bits256)
+            }
+            return EphemeralKeyHolder.key
         }
 
         let keyTag = "com.overhear.app.transcripts.key"

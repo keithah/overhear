@@ -14,6 +14,7 @@
 	B1F0D0C1F1E2010000000012 /* AVAudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000002 /* AVAudioCaptureService.swift */; };
 	B1F0D0C1F1E2010000000013 /* MeetingRecordingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000003 /* MeetingRecordingManager.swift */; };
 	B1F0D0C1F1E2010000000014 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000004 /* TranscriptionService.swift */; };
+	0BF6B2E92C00F0B700C8F9C7 /* UserDefaultsKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BF6B2E82C00F0B700C8F9C7 /* UserDefaultsKeys.swift */; };
 	B1F0D0C1F1E2010000000022 /* MeetingRecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000011 /* MeetingRecordingCoordinator.swift */; };
 	B1F0D0C1F1E2010000000015 /* HolidayDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000005 /* HolidayDetector.swift */; };
 	B1F0D0C1F1E2010000000016 /* PlatformIconProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0D0C1F1E2010000000006 /* PlatformIconProvider.swift */; };
@@ -71,6 +72,7 @@
 	05C7FE5C6BFB9491A6568F7C /* CalendarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarService.swift; sourceTree = "<group>"; };
 	14628F1AFD8E4DE1871ECE76491BDC42 /* CalendarAccessHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarAccessHelper.swift; sourceTree = "<group>"; };
 	1126CA13260065D9BC095422 /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
+	0BF6B2E82C00F0B700C8F9C7 /* UserDefaultsKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsKeys.swift; sourceTree = "<group>"; };
 	A1F0D0C1F1E2010000000001 /* Types.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Types.swift; sourceTree = "<group>"; };
 	A1F0D0C1F1E2010000000002 /* AVAudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVAudioCaptureService.swift; sourceTree = "<group>"; };
 	93CC832006A740B8BAECB5CE64314F3B /* AudioModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioModels.swift; sourceTree = "<group>"; };
@@ -166,6 +168,7 @@
 			B0753D3EBF878CDDA7278CF7 /* AppContext.swift */,
 			A1F0D0C1F1E201000000000D /* PermissionsService.swift */,
 			A1F0D0C1F1E2010000000001 /* Types.swift */,
+			0BF6B2E82C00F0B700C8F9C7 /* UserDefaultsKeys.swift */,
 		);
 		path = App;
 		sourceTree = "<group>";
@@ -410,6 +413,7 @@
 			EAF99761927E193EB588F6CA /* PreferencesWindowController.swift in Sources */,
 			B1F0D0C1F1E201000000001D /* PermissionsService.swift in Sources */,
 			B1F0D0C1F1E2010000000011 /* Types.swift in Sources */,
+			0BF6B2E92C00F0B700C8F9C7 /* UserDefaultsKeys.swift in Sources */,
 								FD7D27912BBF20D900A5CB6F /* AutoRecordingCoordinator.swift in Sources */,
 								FD7D27932BBF20EA00A5CB6F /* CallDetectionService.swift in Sources */,
 								FD7D27952BBF20F500A5CB6F /* MicUsageMonitor.swift in Sources */,
