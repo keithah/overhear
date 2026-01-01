@@ -1,5 +1,5 @@
 import Foundation
-import CryptoKit
+@preconcurrency import CryptoKit
 import Security
 
 /// Represents a stored transcript with metadata

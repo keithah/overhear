@@ -38,7 +38,7 @@ struct MenuBarContentView: View {
                     },
                     stopRecording: {
                         Task { await recordingCoordinator.stopRecording() }
-                    },
+                    }
                 )
             }
             // Meetings list
