@@ -85,6 +85,8 @@ final class MeetingRecordingManager: ObservableObject {
     private var notesRetryTask: Task<Void, Never>?
     private var notesRetryAttempts = 0
     private let maxNotesRetryAttempts = 3
+    private var notesHealthCheckTask: Task<Void, Never>?
+    private var lastNotesError: String?
 
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline
@@ -240,6 +242,8 @@ final class MeetingRecordingManager: ObservableObject {
             transcriptionTask?.cancel()
         }
         status = .completed
+        notesHealthCheckTask?.cancel()
+        notesHealthCheckTask = nil
     }
 
     var displayTitle: String {
@@ -264,6 +268,8 @@ final class MeetingRecordingManager: ObservableObject {
         pendingNotes = notes
         notesRetryTask?.cancel()
         notesRetryAttempts = 0
+        lastNotesError = nil
+        startNotesHealthCheck()
         await performNotesSave(notes: notes)
     }
 
@@ -293,9 +299,11 @@ final class MeetingRecordingManager: ObservableObject {
             lastNotesSavedAt = Date()
             notesRetryAttempts = 0
             notesRetryTask = nil
+            lastNotesError = nil
             notesSaveState = .idle
         } catch {
             notesRetryAttempts += 1
+            lastNotesError = error.localizedDescription
             if notesRetryAttempts <= maxNotesRetryAttempts {
                 let delaySeconds = pow(2.0, Double(notesRetryAttempts - 1))
                 notesSaveState = .queued(notesRetryAttempts)
@@ -313,6 +321,24 @@ final class MeetingRecordingManager: ObservableObject {
                 FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes after retries: \(error.localizedDescription)")
                 notesRetryTask = nil
                 notesSaveState = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    func startNotesHealthCheck() {
+        notesHealthCheckTask?.cancel()
+        notesHealthCheckTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s poll
+                guard let self else { return }
+                if let pendingNotes = pendingNotes,
+                   notesSaveState == .idle || notesSaveState == .failed(lastNotesError ?? "") {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Notes pending persist while idle; triggering retry"
+                    )
+                    await self.performNotesSave(notes: pendingNotes)
+                }
             }
         }
     }
