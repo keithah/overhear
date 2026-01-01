@@ -12,6 +12,31 @@ actor LocalLLMPipeline {
         case downloading(Double)
         case warming
         case ready(String?) // Model ID if available
+
+        var isReady: Bool {
+            if case .ready = self { return true }
+            return false
+        }
+
+        var displayDescription: String {
+            switch self {
+            case .unavailable(let reason):
+                return "LLM unavailable (\(reason))"
+            case .idle:
+                return "LLM idle"
+            case .downloading(let progress):
+                let pct = Int((progress * 100).rounded())
+                return "LLM downloading… \(pct)%"
+            case .warming:
+                return "LLM warming…"
+            case .ready(let modelID):
+                if let modelID {
+                    return "LLM ready (\(modelID))"
+                } else {
+                    return "LLM ready"
+                }
+            }
+        }
     }
 
     static let shared = LocalLLMPipeline(

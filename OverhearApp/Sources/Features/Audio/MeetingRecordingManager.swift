@@ -353,6 +353,7 @@ final class MeetingRecordingManager: ObservableObject {
         }
     }
 
+    @MainActor
     func startNotesHealthCheck() {
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = Task { [weak self] in
@@ -360,9 +361,7 @@ final class MeetingRecordingManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64((self?.notesHealthIntervalSeconds ?? 5) * 1_000_000_000))
                 guard let self else { return }
                 if Task.isCancelled { return }
-                if transcriptID == nil {
-                    continue
-                }
+                guard transcriptID != nil else { continue }
                 if let pendingNotes = pendingNotes,
                    (notesSaveState == .idle || (lastNotesError != nil && notesSaveState == .failed(lastNotesError ?? ""))) {
                     FileLogger.log(

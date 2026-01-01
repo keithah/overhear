@@ -873,33 +873,8 @@ struct LiveNotesView: View {
     private func refreshLLMState() async {
         let state = await LocalLLMPipeline.shared.currentState()
         await MainActor.run {
-            switch state {
-            case .unavailable(let reason):
-                llmStateDescription = "LLM unavailable (\(reason))"
-                llmIsReady = false
-            case .idle:
-                llmStateDescription = "LLM idle"
-                llmIsReady = false
-            case .downloading(let progress):
-                let pct = Int((progress * 100).rounded())
-                llmStateDescription = "LLM downloading… \(pct)%"
-                llmIsReady = false
-            case .warming:
-                llmStateDescription = "LLM warming…"
-                llmIsReady = false
-            case .ready(let modelID):
-                if let modelID {
-                    llmStateDescription = "LLM ready (\(modelID))"
-                } else {
-                    llmStateDescription = "LLM ready"
-                }
-                llmIsReady = true
-            }
-            if llmIsReady {
-                // Ready is the steady-state; avoid noisy logs.
-                lastLoggedLLMState = llmStateDescription
-                return
-            }
+            llmStateDescription = state.displayDescription
+            llmIsReady = state.isReady
             lastLoggedLLMState = llmStateDescription
         }
     }
@@ -929,13 +904,17 @@ struct LiveNotesView: View {
         llmStatePollTask?.cancel()
         guard !llmIsReady else { return }
         llmStatePollTask = Task { @MainActor in
+            let pollIntervalSeconds = 1.0
+            let maxWarmupSeconds = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
+            let resolvedMaxSeconds = maxWarmupSeconds > 0 ? maxWarmupSeconds : 900
+            let maxAttempts = Int(resolvedMaxSeconds / pollIntervalSeconds)
             var attempts = 0
             defer { llmStatePollTask = nil }
-            while !Task.isCancelled && !llmIsReady && attempts < 120 {
+            while !Task.isCancelled && !llmIsReady && attempts < maxAttempts {
                 attempts += 1
                 await refreshLLMState()
                 if llmIsReady { break }
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? await Task.sleep(nanoseconds: UInt64(pollIntervalSeconds * 1_000_000_000))
             }
         }
     }
@@ -1421,22 +1400,7 @@ struct LiveNotesManagerView: View {
     private func refreshLLMState() async {
         let state = await LocalLLMPipeline.shared.currentState()
         await MainActor.run {
-            switch state {
-            case .unavailable(let reason):
-                llmStateDescription = "LLM unavailable (\(reason))"
-            case .idle:
-                llmStateDescription = "LLM idle"
-            case .downloading:
-                llmStateDescription = "LLM downloading model…"
-            case .warming:
-                llmStateDescription = "LLM warming…"
-            case .ready(let modelID):
-                if let modelID {
-                    llmStateDescription = "LLM ready (\(modelID))"
-                } else {
-                    llmStateDescription = "LLM ready"
-                }
-            }
+            llmStateDescription = state.displayDescription
         }
     }
 
