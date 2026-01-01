@@ -53,7 +53,7 @@ actor LocalLLMPipeline {
         let resolved = value > 0 ? value : 2
         return min(max(resolved, 1.0), 60.0) // clamp to sensible bounds
     }()
-    private let failureCooldown: TimeInterval = 300
+    private let failureCooldown: TimeInterval
     private(set) var state: State
     private var downloadWatchTask: Task<Void, Never>?
     private var warmupGeneration: Int = 0
@@ -79,7 +79,14 @@ actor LocalLLMPipeline {
     init(client: MLXClient?) {
         self.client = client
         let overrideTimeout = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
-        self.warmupTimeout = overrideTimeout > 0 ? overrideTimeout : 900
+        let rawTimeout = overrideTimeout > 0 ? overrideTimeout : 900
+        // Prevent misconfiguration from disabling warmup or hanging forever.
+        self.warmupTimeout = min(max(rawTimeout, 60.0), 3600.0)
+
+        let overrideCooldown = UserDefaults.standard.double(forKey: "overhear.mlxFailureCooldown")
+        let rawCooldown = overrideCooldown > 0 ? overrideCooldown : 300
+        self.failureCooldown = min(max(rawCooldown, 5.0), 900.0)
+
         if client == nil {
             state = .unavailable("MLX client not available")
         } else {

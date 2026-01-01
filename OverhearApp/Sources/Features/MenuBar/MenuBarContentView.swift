@@ -858,6 +858,33 @@ struct LiveNotesView: View {
         isRegenerating = false
     }
 
+    private var llmStatusChip: some View {
+        let (title, color, icon): (String, Color, String) = {
+            switch llmState {
+            case .ready:
+                return (llmState.displayDescription, .green, "checkmark.circle.fill")
+            case .downloading:
+                return (llmState.displayDescription, .orange, "arrow.down.circle.fill")
+            case .warming:
+                return (llmState.displayDescription, .orange, "clock")
+            case .unavailable:
+                return (llmState.displayDescription, .red, "exclamationmark.triangle.fill")
+            case .idle:
+                return (llmState.displayDescription, .secondary, "bolt.horizontal.circle")
+            }
+        }()
+        return HStack(spacing: 4) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+            Text(title)
+                .font(.system(size: 10))
+                .foregroundColor(color)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(color.opacity(0.12)))
+    }
+
     private func prefillNotesIfNeeded() async {
         let shouldPrefill = await MainActor.run { () -> Bool in
             guard !notesPrefilled else { return false }
@@ -992,6 +1019,7 @@ struct LiveNotesManagerView: View {
     @State private var isRegenerating = false
     @State private var liveNotes: String = ""
     @State private var llmStateDescription: String = "Checking…"
+    @State private var llmState: LocalLLMPipeline.State = .idle
     @State private var isWarmingLLM = false
     @State private var warmupTask: Task<Void, Never>?
     var onHide: () -> Void
@@ -1221,9 +1249,7 @@ struct LiveNotesManagerView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
-                Text(llmStateDescription)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                llmStatusChipManager
                 Menu {
                     Button("Regenerate (default prompt)") {
                         Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
@@ -1348,6 +1374,33 @@ struct LiveNotesManagerView: View {
         isRegenerating = false
     }
 
+    private var llmStatusChipManager: some View {
+        let (title, color, icon): (String, Color, String) = {
+            switch llmState {
+            case .ready:
+                return (llmState.displayDescription, .green, "checkmark.circle.fill")
+            case .downloading:
+                return (llmState.displayDescription, .orange, "arrow.down.circle.fill")
+            case .warming:
+                return (llmState.displayDescription, .orange, "clock")
+            case .unavailable:
+                return (llmState.displayDescription, .red, "exclamationmark.triangle.fill")
+            case .idle:
+                return (llmState.displayDescription, .secondary, "bolt.horizontal.circle")
+            }
+        }()
+        return HStack(spacing: 4) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+            Text(title)
+                .font(.system(size: 10))
+                .foregroundColor(color)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(color.opacity(0.12)))
+    }
+
     private func prefillNotesIfNeeded() async {
         guard liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         guard let transcriptID = manager.transcriptID else { return }
@@ -1421,6 +1474,7 @@ struct LiveNotesManagerView: View {
         let state = await LocalLLMPipeline.shared.currentState()
         await MainActor.run {
             llmStateDescription = state.displayDescription
+            llmState = state
         }
     }
 

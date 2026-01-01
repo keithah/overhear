@@ -450,12 +450,17 @@ actor TranscriptStore {
                 return newKey
             }
 
-            // CI runners often have an inaccessible Keychain; fall back to ephemeral if access is denied.
-            FileLogger.log(
-                category: "TranscriptStore",
-                message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key"
-            )
-            return KeyStorage.ephemeralKey
+            // CI runners often have an inaccessible Keychain; fall back to ephemeral only for expected access-denied cases.
+            if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || isRunningTests {
+                let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
+                FileLogger.log(
+                    category: "TranscriptStore",
+                    message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix)"
+                )
+                return KeyStorage.ephemeralKey
+            }
+
+            throw Error.keyManagementFailed("Failed to store encryption key in Keychain: status \(addStatus)")
         }
         
         throw Error.keyManagementFailed("Unexpected Keychain error: \(status)")
