@@ -302,7 +302,9 @@ actor LocalLLMPipeline {
                 let backoffSeconds = pow(2.0, Double(attempts - 2))
                 try? await Task.sleep(nanoseconds: UInt64(backoffSeconds * 1_000_000_000))
                 if Task.isCancelled { return }
+                if generation != warmupGeneration { return }
             }
+            if generation != warmupGeneration { return }
 
             // Allow recovery from unavailable; only skip if we're already working or ready.
             switch state {

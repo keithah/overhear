@@ -576,7 +576,7 @@ extension MeetingRecordingManager {
             streamingManager = manager
 
             let updates = await manager.transcriptionUpdates
-            streamingTask = Task { [weak self] in
+            streamingTask = Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 logger.info("Streaming task launched; awaiting updates")
                 FileLogger.log(category: "MeetingRecordingManager", message: "Streaming updates subscriber started")
