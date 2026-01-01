@@ -137,6 +137,7 @@ actor LocalLLMPipeline {
 
         // Watchdog: if we reach 100% download but never transition to ready, auto-promote after a short delay.
         if progress >= 0.999 {
+            guard downloadWatchGeneration != generation || downloadWatchTask == nil else { return }
             downloadWatchTask?.cancel()
             downloadWatchTask = nil
             downloadWatchGeneration = generation

@@ -94,6 +94,20 @@ final class MeetingRecordingManager: ObservableObject {
         let value = UserDefaults.standard.double(forKey: "overhear.notesHealthIntervalSeconds")
         return value > 0 ? value : 5
     }()
+    nonisolated static func shouldRetryNotes(
+        pendingNotes: String?,
+        state: NotesSaveState,
+        hasRetryTask: Bool
+    ) -> Bool {
+        guard pendingNotes != nil else { return false }
+        guard !hasRetryTask else { return false }
+        switch state {
+        case .idle, .failed:
+            return true
+        default:
+            return false
+        }
+    }
 
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline
@@ -367,18 +381,13 @@ final class MeetingRecordingManager: ObservableObject {
                 guard let self else { return }
                 if Task.isCancelled { return }
                 guard transcriptID != nil else { continue }
-                if let pendingNotes = pendingNotes {
-                    switch notesSaveState {
-                    case .idle,
-                         .failed:
-                        FileLogger.log(
-                            category: "MeetingRecordingManager",
-                            message: "Notes pending persist while idle/failed; triggering retry"
-                        )
-                        await self.performNotesSave(notes: pendingNotes)
-                    default:
-                        break
-                    }
+                if Self.shouldRetryNotes(pendingNotes: pendingNotes, state: notesSaveState, hasRetryTask: notesRetryTask != nil),
+                   let pendingNotes {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Notes pending persist while idle/failed; triggering retry"
+                    )
+                    await self.performNotesSave(notes: pendingNotes)
                 }
             }
         }

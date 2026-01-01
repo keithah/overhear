@@ -371,7 +371,7 @@ struct LiveNotesView: View {
 
     private var streamingLastUpdateText: String {
         guard let ts = coordinator.streamingHealth.lastUpdate else { return "–" }
-        let delta = -ts.timeIntervalSinceNow
+        let delta = max(0, -ts.timeIntervalSinceNow)
         return String(format: "%.1fs ago", delta)
     }
 
@@ -950,7 +950,7 @@ struct LiveNotesView: View {
         llmStatePollTask?.cancel()
         guard !llmIsReady else { return }
         llmStatePollTask = Task { @MainActor in
-            let pollIntervalSeconds = 1.0
+            let pollIntervalSeconds = 5.0
             let maxWarmupSeconds = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
             let resolvedMaxSeconds = maxWarmupSeconds > 0 ? maxWarmupSeconds : 900
             let maxAttempts = Int(resolvedMaxSeconds / pollIntervalSeconds)
