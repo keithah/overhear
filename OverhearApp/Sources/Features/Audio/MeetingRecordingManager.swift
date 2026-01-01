@@ -331,7 +331,8 @@ final class MeetingRecordingManager: ObservableObject {
                     try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
                     guard let self else { return }
                     if Task.isCancelled { return }
-                    await self.performNotesSave(notes: notes)
+                    let latestNotes = pendingNotes ?? notes
+                    await self.performNotesSave(notes: latestNotes)
                 }
             } else {
                 FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes after retries: \(error.localizedDescription)")
