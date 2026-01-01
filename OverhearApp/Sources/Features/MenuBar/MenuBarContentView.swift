@@ -556,7 +556,15 @@ struct LiveNotesView: View {
     }
 
     private var streamingHealthRow: some View {
-        HStack(spacing: 8) {
+        let canRestart: Bool = {
+            switch coordinator.status {
+            case .capturing, .transcribing:
+                return true
+            default:
+                return false
+            }
+        }()
+        return HStack(spacing: 8) {
             Label(streamingStatusText, systemImage: "waveform.and.magnifyingglass")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(streamingStatusColor)
@@ -569,7 +577,7 @@ struct LiveNotesView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
             Spacer()
-            if case .stalled = coordinator.streamingHealth.state {
+            if case .stalled = coordinator.streamingHealth.state, canRestart {
                 Button {
                     Task { await coordinator.restartStreaming() }
                 } label: {

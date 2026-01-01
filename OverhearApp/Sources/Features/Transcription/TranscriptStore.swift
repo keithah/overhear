@@ -379,9 +379,9 @@ actor TranscriptStore {
     /// ephemeral key instead. In production this persists to the Keychain.
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
         // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
-        if isKeychainBypassed {
+        if isKeychainBypassed || isRunningTests {
             let isRelease = !_isDebugAssertConfiguration()
-            if isRelease {
+            if isRelease, isKeychainBypassed {
                 FileLogger.log(
                     category: "TranscriptStore",
                     message: "CRITICAL: Keychain bypass attempted in release build"
@@ -448,7 +448,7 @@ actor TranscriptStore {
             }
 
             // CI runners often have an inaccessible Keychain; fall back to ephemeral if access is denied.
-            if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable {
+            if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || isRunningTests {
                 FileLogger.log(
                     category: "TranscriptStore",
                     message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key"

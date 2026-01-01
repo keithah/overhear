@@ -348,6 +348,7 @@ final class MeetingRecordingManager: ObservableObject {
             } else {
                 FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes after retries: \(error.localizedDescription)")
                 notesRetryTask = nil
+                pendingNotes = nil
                 notesSaveState = .failed(error.localizedDescription)
             }
         }
@@ -646,6 +647,10 @@ extension MeetingRecordingManager {
         case .capturing, .transcribing:
             break
         default:
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Restart streaming request ignored; status=\(status)"
+            )
             return
         }
         FileLogger.log(category: "MeetingRecordingManager", message: "Restarting streaming transcription after stall/manual request")
