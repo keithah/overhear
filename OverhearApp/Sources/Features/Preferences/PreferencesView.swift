@@ -244,6 +244,18 @@ struct PreferencesView: View {
                         }
                         .controlSize(.small)
                     }
+                    if case .downloading(let progress) = llmState {
+                        ProgressView(value: progress)
+                            .progressViewStyle(.linear)
+                    } else if case .warming = llmState {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                            Text("Warming up…")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                     TextField("Model ID (e.g. mlx-community/Llama-3.2-1B-Instruct-4bit)", text: $mlxModelID)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 420)

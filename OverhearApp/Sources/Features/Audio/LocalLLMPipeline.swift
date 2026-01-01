@@ -35,6 +35,7 @@ actor LocalLLMPipeline {
     private var lastLoggedState: State?
     private var lastNotifiedState: State?
     private var downloadWatchGeneration: Int = 0
+    private var hasLoggedDownloadStart = false
     private var modelID: String {
         MLXPreferences.modelID()
     }
@@ -78,6 +79,10 @@ actor LocalLLMPipeline {
     private func setDownloading(_ progress: Double, generation: Int) {
         guard generation == warmupGeneration else { return }
         state = .downloading(progress)
+        if !hasLoggedDownloadStart {
+            hasLoggedDownloadStart = true
+            FileLogger.log(category: logCategory, message: "MLX download started (model=\(modelID))")
+        }
         notifyStateChanged()
         let bucket = Int((progress * 100).rounded(.towardZero) / 10)
         if bucket != lastProgressLogBucket {
@@ -294,6 +299,7 @@ actor LocalLLMPipeline {
                 return
             case .idle, .unavailable:
                 consecutiveFailures = 0
+                hasLoggedDownloadStart = false
                 state = .downloading(0)
                 notifyStateChanged()
             }
