@@ -328,6 +328,7 @@ struct LiveNotesView: View {
     @State private var isRegenerating = false
     @State private var notesPrefilled = false
     @State private var llmStateDescription: String = "Checking…"
+    @State private var llmState: LocalLLMPipeline.State = .idle
     @State private var isWarmingLLM = false
     @State private var warmupTask: Task<Void, Never>?
     @State private var llmStatePollTask: Task<Void, Never>?
@@ -524,24 +525,26 @@ struct LiveNotesView: View {
     private var llmChip: some View {
         let title: String
         let color: Color
-        let stateDesc = llmStateDescription
-        if stateDesc.lowercased().contains("ready") {
-            title = stateDesc
+        let icon: String
+        switch llmState {
+        case .ready:
+            title = llmState.displayDescription
             color = .green
-        } else if stateDesc.lowercased().contains("download") || stateDesc.lowercased().contains("warm") {
-            title = stateDesc
+            icon = "checkmark.circle.fill"
+        case .downloading, .warming:
+            title = llmState.displayDescription
             color = .orange
-        } else if stateDesc.lowercased().contains("unavailable") {
-            title = stateDesc
+            icon = "clock.arrow.2.circlepath"
+        case .unavailable:
+            title = llmState.displayDescription
             color = .red
-        } else if stateDesc.lowercased().contains("checking") {
-            title = "LLM checking…"
+            icon = "exclamationmark.triangle.fill"
+        case .idle:
+            title = llmState.displayDescription
             color = .secondary
-        } else {
-            title = stateDesc
-            color = .secondary
+            icon = "bolt.horizontal.circle"
         }
-        return statusChip(title: title, color: color, icon: "bolt.horizontal.circle")
+        return statusChip(title: title, color: color, icon: icon)
     }
 
     private var consentNotice: some View {
@@ -884,6 +887,7 @@ struct LiveNotesView: View {
             llmStateDescription = state.displayDescription
             llmIsReady = state.isReady
             lastLoggedLLMState = llmStateDescription
+            llmState = state
         }
     }
 
@@ -927,6 +931,7 @@ struct LiveNotesView: View {
         }
     }
 
+    @MainActor
     private func exportSummary() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "NewNote.md"

@@ -380,14 +380,15 @@ actor TranscriptStore {
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
         // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
         if isKeychainBypassed || isRunningTests {
-            let isRelease = !_isDebugAssertConfiguration()
-            if isRelease, isKeychainBypassed {
+#if !DEBUG
+            if isKeychainBypassed {
                 FileLogger.log(
                     category: "TranscriptStore",
                     message: "CRITICAL: Keychain bypass attempted in release build"
                 )
                 fatalError("OVERHEAR_INSECURE_NO_KEYCHAIN should never be set in production")
             }
+#endif
             struct EphemeralKeyHolder {
                 static let key = SymmetricKey(size: .bits256)
             }
