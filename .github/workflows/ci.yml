@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: tenki-macos-latest-mini
+    runs-on: self-hosted
     env:
       OVERHEAR_INSECURE_NO_KEYCHAIN: "1"
 
