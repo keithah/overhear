@@ -9,6 +9,8 @@ struct PreferencesView: View {
     @ObservedObject var calendarService: CalendarService
     @State private var accessibilityTrusted: Bool = AccessibilityHelper.isTrusted()
     @State private var llmState: LocalLLMPipeline.State = .idle
+    @State private var llmLastReady: Date?
+    @State private var llmLastWarmupDuration: TimeInterval?
 
     @State private var calendarsBySource: [(source: EKSource, calendars: [EKCalendar])] = []
     @State private var isLoadingCalendars = false
@@ -30,12 +32,13 @@ struct PreferencesView: View {
         .padding()
         .frame(width: 520, height: 420)
         .onAppear {
-            Task { await refreshLLMState() }
+            Task { await refreshLLMSnapshot() }
         }
         .onReceive(NotificationCenter.default.publisher(for: LocalLLMPipeline.stateChangedNotification)) { notification in
             if let state = notification.userInfo?["state"] as? LocalLLMPipeline.State {
                 llmState = state
             }
+            Task { await refreshLLMSnapshot() }
         }
         .task {
             // Wait a moment for main app to initialize permissions
@@ -255,6 +258,16 @@ struct PreferencesView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
+                    }
+                    if let last = llmLastReady {
+                        Text("Last ready: \(llmRelativeFormatter.localizedString(for: last, relativeTo: Date()))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    if let warm = llmLastWarmupDuration {
+                        Text(String(format: "Last warmup: %.1fs", warm))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                     TextField("Model ID (e.g. mlx-community/Llama-3.2-1B-Instruct-4bit)", text: $mlxModelID)
                         .textFieldStyle(.roundedBorder)
@@ -505,6 +518,12 @@ struct PreferencesView: View {
         case .unavailable: return .red
         }
     }
+
+    private let llmRelativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
     
     private func refreshNotificationStatus() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -515,10 +534,12 @@ struct PreferencesView: View {
         }
     }
 
-    private func refreshLLMState() async {
-        let state = await LocalLLMPipeline.shared.currentState()
+    private func refreshLLMSnapshot() async {
+        let snapshot = await LocalLLMPipeline.shared.snapshot()
         await MainActor.run {
-            llmState = state
+            llmState = snapshot.state
+            llmLastReady = snapshot.lastReadyAt
+            llmLastWarmupDuration = snapshot.lastWarmupDuration
         }
     }
 

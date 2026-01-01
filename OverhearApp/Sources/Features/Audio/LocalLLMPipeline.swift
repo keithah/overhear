@@ -36,6 +36,9 @@ actor LocalLLMPipeline {
     private var lastNotifiedState: State?
     private var downloadWatchGeneration: Int = 0
     private var hasLoggedDownloadStart = false
+    private var downloadStartAt: Date?
+    private var lastReadyAt: Date?
+    private var lastWarmupDuration: TimeInterval?
     private var modelID: String {
         MLXPreferences.modelID()
     }
@@ -83,6 +86,9 @@ actor LocalLLMPipeline {
             hasLoggedDownloadStart = true
             FileLogger.log(category: logCategory, message: "MLX download started (model=\(modelID))")
         }
+        if downloadStartAt == nil {
+            downloadStartAt = Date()
+        }
         notifyStateChanged()
         let bucket = Int((progress * 100).rounded(.towardZero) / 10)
         if bucket != lastProgressLogBucket {
@@ -117,6 +123,7 @@ actor LocalLLMPipeline {
             FileLogger.log(category: logCategory, message: "Download reached 100% but warmup not completed; promoting to ready")
             state = .ready(modelID)
             notifyStateChanged()
+            lastReadyAt = Date()
         default:
             break
         }
@@ -213,6 +220,10 @@ actor LocalLLMPipeline {
         return state
     }
 
+    nonisolated func snapshot() async -> (state: State, lastReadyAt: Date?, lastWarmupDuration: TimeInterval?) {
+        await (state, lastReadyAt, lastWarmupDuration)
+    }
+
     private func chunkedTranscript(_ transcript: String, chunkSize: Int, maxChunks: Int) -> String {
         guard transcript.count > chunkSize else { return transcript }
         var chunks: [String] = []
@@ -300,6 +311,7 @@ actor LocalLLMPipeline {
             case .idle, .unavailable:
                 consecutiveFailures = 0
                 hasLoggedDownloadStart = false
+                downloadStartAt = nil
                 state = .downloading(0)
                 notifyStateChanged()
             }
@@ -320,6 +332,16 @@ actor LocalLLMPipeline {
                 FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse)) in \(durationString)s")
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
+                if let downloadStartAt {
+                    let downloadDuration = Date().timeIntervalSince(downloadStartAt)
+                    FileLogger.log(
+                        category: logCategory,
+                        message: String(format: "MLX download duration: %.2fs", downloadDuration)
+                    )
+                }
+                downloadStartAt = nil
+                lastReadyAt = Date()
+                lastWarmupDuration = duration
                 consecutiveFailures = 0
                 cooldownUntil = nil
                 return
