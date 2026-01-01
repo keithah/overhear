@@ -110,8 +110,14 @@ final class MeetingRecordingManager: ObservableObject {
     private var streamingStartDate: Date?
     private var loggedFirstStreamingToken = false
     private var isRegeneratingSummary = false
-    private let stallThresholdSeconds: TimeInterval = 8
-    private let monitorIntervalSeconds: TimeInterval = 2
+    private let stallThresholdSeconds: TimeInterval = {
+        let value = UserDefaults.standard.double(forKey: "overhear.streamingStallThreshold")
+        return value > 0 ? value : 8
+    }()
+    private let monitorIntervalSeconds: TimeInterval = {
+        let value = UserDefaults.standard.double(forKey: "overhear.streamingMonitorInterval")
+        return value > 0 ? value : 2
+    }()
 
     private var isStreamingEnabled: Bool {
         FluidAudioAdapter.isEnabled

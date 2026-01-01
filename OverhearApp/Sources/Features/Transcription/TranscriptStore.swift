@@ -354,6 +354,10 @@ actor TranscriptStore {
         return truthy.contains(bypass) || (truthy.contains(ci) && truthy.contains(gha))
     }
 
+    nonisolated private static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     nonisolated private static var keychainBypassReason: String? {
         let env = ProcessInfo.processInfo.environment
         let truthy: Set<String> = ["1", "true", "TRUE", "True"]
@@ -393,6 +397,9 @@ actor TranscriptStore {
                 message: "Using ephemeral in-memory encryption key (Keychain bypass active\(reasonSuffix))"
             )
             return EphemeralKeyHolder.key
+        }
+        struct EphemeralKeyHolder {
+            static let key = SymmetricKey(size: .bits256)
         }
 
         let keyTag = "com.overhear.app.transcripts.key"
@@ -439,11 +446,19 @@ actor TranscriptStore {
             ]
             
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
-            guard addStatus == errSecSuccess else {
-                throw Error.keyManagementFailed("Failed to store encryption key in Keychain: status \(addStatus)")
+            if addStatus == errSecSuccess {
+                return newKey
             }
-            
-            return newKey
+
+            if addStatus == errSecInteractionNotAllowed && isRunningTests {
+                FileLogger.log(
+                    category: "TranscriptStore",
+                    message: "Keychain unavailable in tests; falling back to ephemeral key"
+                )
+                return EphemeralKeyHolder.key
+            }
+
+            throw Error.keyManagementFailed("Failed to store encryption key in Keychain: status \(addStatus)")
         }
         
         throw Error.keyManagementFailed("Unexpected Keychain error: \(status)")
