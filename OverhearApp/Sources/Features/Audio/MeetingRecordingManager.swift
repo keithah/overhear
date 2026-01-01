@@ -344,6 +344,7 @@ final class MeetingRecordingManager: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64((self?.notesHealthIntervalSeconds ?? 5) * 1_000_000_000))
                 guard let self else { return }
+                if Task.isCancelled { return }
                 if let pendingNotes = pendingNotes,
                    (notesSaveState == .idle || (lastNotesError != nil && notesSaveState == .failed(lastNotesError ?? ""))) {
                     FileLogger.log(
@@ -668,7 +669,7 @@ extension MeetingRecordingManager {
 
     func startStreamingMonitor() {
         streamingMonitorTask?.cancel()
-        streamingMonitorTask = Task { [weak self] in
+        streamingMonitorTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))

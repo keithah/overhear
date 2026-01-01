@@ -4,11 +4,6 @@ import os.log
 
 @MainActor
 final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProviding {
-    enum NotesSaveState {
-        case idle
-        case saving
-        case failed(String)
-    }
     @Published private(set) var status: MeetingRecordingManager.Status = .idle
     @Published private(set) var activeMeeting: Meeting?
     @Published private(set) var liveTranscript: String = ""
