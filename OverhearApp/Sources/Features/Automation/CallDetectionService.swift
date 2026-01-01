@@ -320,24 +320,6 @@ final class CallDetectionService {
             logger.error("Accessibility not granted; cannot inspect windows for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
             return nil
         }
-        if let timeout, timeout > 0 {
-            return await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group in
-                defer { group.cancelAll() }
-                group.addTask { [weak self] in
-                    guard let self else { return nil }
-                    return await self.activeWindowTitle(for: app, timeout: nil)
-                }
-                group.addTask { [weak self] in
-                    try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                    if let self {
-                        let bundle = app.bundleIdentifier ?? "unknown"
-                        self.logger.warning("AX query timed out after \(timeout)s for \(bundle, privacy: .public)")
-                    }
-                    return nil
-                }
-                return await group.next() ?? nil
-            }
-        }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         var focusedWindow: AnyObject?
         let status = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
@@ -407,6 +389,7 @@ final class CallDetectionService {
         return nil
     }
 
+    @MainActor
     private func titleInfoOffMain(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         let now = Date()
         if axQueryInFlight {
@@ -423,10 +406,7 @@ final class CallDetectionService {
             lastAXQueryDate = Date()
         }
         let result = await windowResolver(app, titleLookupTimeout)
-        if Task.isCancelled {
-            return nil
-        }
-        return result
+        return Task.isCancelled ? nil : result
     }
 
     nonisolated func isSupportedBrowserHost(_ host: String) -> Bool {
@@ -456,18 +436,13 @@ final class CallDetectionService {
     }
 
     func resolveTitleInfo(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
-        await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
-            group.addTask { [weak self] in
-                guard let self else { return nil }
-                return await self.titleInfoOffMain(for: app)
-            }
-            group.addTask { [weak self] in
-                guard let self else { return nil }
-                try? await Task.sleep(nanoseconds: UInt64(self.titleLookupTimeout * 1_000_000_000))
-                return nil
-            }
-            return await group.next() ?? nil
+        let timeout = titleLookupTimeout
+        async let info = titleInfoOffMain(for: app)
+        if timeout > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            return nil
         }
+        return await info
     }
 
     private func processDetection(
