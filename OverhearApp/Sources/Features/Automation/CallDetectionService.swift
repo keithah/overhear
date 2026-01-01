@@ -275,9 +275,8 @@ final class CallDetectionService {
         guard isMicActive else { return false }
         guard let preferences else { return false }
 
-        let runningApps = await Task.detached(priority: .utility) {
-            NSWorkspace.shared.runningApplications
-        }.value
+        // NSRunningApplication is not Sendable; keep the lookup on the main actor.
+        let runningApps = NSWorkspace.shared.runningApplications
         if Task.isCancelled { return false }
 
         let candidate = runningApps.first { app in
