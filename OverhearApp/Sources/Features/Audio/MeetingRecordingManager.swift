@@ -182,6 +182,7 @@ final class MeetingRecordingManager: ObservableObject {
         captureStartTime = Date()
         liveTranscript = ""
         liveSegments = []
+        startNotesHealthCheck()
 #if canImport(FluidAudio)
         streamingConfirmedSegments = []
         streamingHypothesis = nil
@@ -332,7 +333,7 @@ final class MeetingRecordingManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s poll
                 guard let self else { return }
                 if let pendingNotes = pendingNotes,
-                   notesSaveState == .idle || notesSaveState == .failed(lastNotesError ?? "") {
+                   (notesSaveState == .idle || (lastNotesError != nil && notesSaveState == .failed(lastNotesError ?? ""))) {
                     FileLogger.log(
                         category: "MeetingRecordingManager",
                         message: "Notes pending persist while idle; triggering retry"

@@ -142,6 +142,10 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
                 .receive(on: RunLoop.main)
                 .sink { [weak self] in self?.lastNotesSavedAt = $0 }
                 .store(in: &cancellables)
+            manager.$notesSaveState
+                .receive(on: RunLoop.main)
+                .sink { [weak self] in self?.notesSaveState = $0 }
+                .store(in: &cancellables)
 
             status = manager.status
 
@@ -208,9 +212,7 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
 
     func saveNotes(_ notes: String) async {
         guard let manager = recordingManager else { return }
-        notesSaveState = .saving
         await manager.saveNotes(notes)
-        notesSaveState = .idle
     }
 
     private func cleanupAfterRecordingIfNeeded() {
