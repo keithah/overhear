@@ -8,7 +8,9 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on:
+      - self-hosted
+      - macos
     env:
       OVERHEAR_INSECURE_NO_KEYCHAIN: "1"
 
