@@ -343,15 +343,12 @@ actor TranscriptStore {
             .first
     }
     
-    /// Determine if we should bypass the Keychain (CI / explicit env override).
+    /// Determine if we should bypass the Keychain (explicit env override only).
     nonisolated private static var isKeychainBypassed: Bool {
         let env = ProcessInfo.processInfo.environment
         let truthy: Set<String> = ["1", "true", "TRUE", "True"]
         let bypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? ""
-        let ci = env["CI"] ?? ""
-        let gha = env["GITHUB_ACTIONS"] ?? ""
-        // Prefer explicit bypass; otherwise require both CI and GitHub Actions markers.
-        return truthy.contains(bypass) || (truthy.contains(ci) && truthy.contains(gha))
+        return truthy.contains(bypass)
     }
 
     nonisolated private static var isRunningTests: Bool {
@@ -363,11 +360,6 @@ actor TranscriptStore {
         let truthy: Set<String> = ["1", "true", "TRUE", "True"]
         if let bypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"], truthy.contains(bypass) {
             return "OVERHEAR_INSECURE_NO_KEYCHAIN"
-        }
-        let ci = env["CI"] ?? ""
-        let gha = env["GITHUB_ACTIONS"] ?? ""
-        if truthy.contains(ci) && truthy.contains(gha) {
-            return "CI && GITHUB_ACTIONS"
         }
         return nil
     }

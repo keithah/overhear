@@ -89,6 +89,7 @@ final class MeetingRecordingManager: ObservableObject {
         return value > 0 ? value : 3
     }()
     private var notesHealthCheckTask: Task<Void, Never>?
+    private var notesSaveTask: Task<Void, Never>?
     private var notesSaveInProgress = false
     private var lastNotesError: String?
     private let notesHealthIntervalSeconds: TimeInterval = {
@@ -316,9 +317,28 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     private func performNotesSave(notes: String) async {
-        guard !notesSaveInProgress else { return }
-        notesSaveInProgress = true
-        defer { notesSaveInProgress = false }
+        if let task = notesSaveTask, !task.isCancelled {
+            await task.value
+            return
+        }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            notesSaveTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                notesSaveInProgress = true
+                defer {
+                    notesSaveInProgress = false
+                    notesSaveTask = nil
+                }
+                await self.performNotesSaveInternal(notes: notes)
+            }
+            await notesSaveTask?.value
+        }
+        await task.value
+    }
+
+    @MainActor
+    private func performNotesSaveInternal(notes: String) async {
         guard let transcriptID = transcriptID else {
             FileLogger.log(category: "MeetingRecordingManager", message: "Deferring notes persist until transcriptID is available")
             return
@@ -380,13 +400,7 @@ final class MeetingRecordingManager: ObservableObject {
         let intervalSeconds = notesHealthIntervalSeconds
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = Task { [weak self] in
-            if let self,
-               Self.shouldRetryNotes(pendingNotes: self.pendingNotes, state: self.notesSaveState, hasRetryTask: self.notesRetryTask != nil),
-               let pendingNotes = self.pendingNotes {
-                await self.performNotesSave(notes: pendingNotes)
-            }
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
                 guard let self else { return }
                 if Task.isCancelled { return }
                 guard transcriptID != nil else { continue }
@@ -398,6 +412,7 @@ final class MeetingRecordingManager: ObservableObject {
                     )
                     await self.performNotesSave(notes: pendingNotes)
                 }
+                try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
             }
         }
     }

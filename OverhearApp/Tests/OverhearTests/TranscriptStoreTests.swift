@@ -68,12 +68,8 @@ final class TranscriptStoreTests: XCTestCase {
 
     func testKeychainBypassUsesSharedEphemeralKey() async throws {
         setenv("OVERHEAR_INSECURE_NO_KEYCHAIN", "1", 1)
-        setenv("CI", "true", 1)
-        setenv("GITHUB_ACTIONS", "true", 1)
         defer {
             unsetenv("OVERHEAR_INSECURE_NO_KEYCHAIN")
-            unsetenv("CI")
-            unsetenv("GITHUB_ACTIONS")
         }
 
         let store1 = try TranscriptStore(storageDirectory: tempDir)
@@ -86,14 +82,14 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertEqual(loaded.transcript, "hello")
     }
 
-    func testKeychainBypassRequiresBothCIFlagsOrExplicitOverride() async throws {
+    func testKeychainBypassRequiresExplicitOverride() async throws {
         setenv("CI", "true", 1)
         setenv("GITHUB_ACTIONS", "false", 1)
         defer {
             unsetenv("CI")
             unsetenv("GITHUB_ACTIONS")
         }
-        // With only CI=true and no GH Actions flag, bypass should be false => initialization should try Keychain.
+        // With no explicit override, bypass should be false => initialization should try Keychain.
         // We can't assert the Keychain path directly, but we can assert the bypass flag logic indirectly by
         // ensuring no crash; this test documents the expectation.
         _ = try TranscriptStore(storageDirectory: tempDir)
