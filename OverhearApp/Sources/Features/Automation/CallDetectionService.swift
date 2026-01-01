@@ -437,12 +437,13 @@ final class CallDetectionService {
 
     func resolveTitleInfo(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         let timeout = titleLookupTimeout
-        async let info = titleInfoOffMain(for: app)
-        if timeout > 0 {
-            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+        let start = Date()
+        let result = await titleInfoOffMain(for: app)
+        if timeout > 0 && Date().timeIntervalSince(start) > timeout {
+            logger.warning("Title lookup exceeded timeout \(timeout)s; returning nil")
             return nil
         }
-        return await info
+        return result
     }
 
     private func processDetection(
