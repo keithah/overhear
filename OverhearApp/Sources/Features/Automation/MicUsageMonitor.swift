@@ -233,6 +233,10 @@ final class MicUsageMonitor {
         let newCount = min(pendingRebinds + 1, Constants.maxPendingRebinds)
         if newCount == Constants.maxPendingRebinds, pendingRebinds < Constants.maxPendingRebinds {
             logger.warning("Mic rebind queue saturated; coalescing rapid device changes")
+            FileLogger.log(
+                category: "MicUsageMonitor",
+                message: "Mic rebind queue saturated; coalescing rapid device changes"
+            )
         }
         pendingRebinds = newCount
         guard rebindTask == nil else { return }
