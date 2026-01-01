@@ -87,6 +87,7 @@ final class MeetingRecordingManager: ObservableObject {
     private let maxNotesRetryAttempts = 3
     private var notesHealthCheckTask: Task<Void, Never>?
     private var lastNotesError: String?
+    private let notesHealthIntervalSeconds: TimeInterval = 5
 
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline
@@ -247,6 +248,14 @@ final class MeetingRecordingManager: ObservableObject {
         notesHealthCheckTask = nil
     }
 
+    deinit {
+        notesRetryTask?.cancel()
+        notesHealthCheckTask?.cancel()
+#if canImport(FluidAudio)
+        streamingMonitorTask?.cancel()
+#endif
+    }
+
     var displayTitle: String {
         meetingTitle
     }
@@ -327,10 +336,13 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     func startNotesHealthCheck() {
+        if let existing = notesHealthCheckTask, !existing.isCancelled {
+            return
+        }
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s poll
+                try? await Task.sleep(nanoseconds: UInt64((self?.notesHealthIntervalSeconds ?? 5) * 1_000_000_000))
                 guard let self else { return }
                 if let pendingNotes = pendingNotes,
                    (notesSaveState == .idle || (lastNotesError != nil && notesSaveState == .failed(lastNotesError ?? ""))) {
@@ -662,6 +674,10 @@ extension MeetingRecordingManager {
                 try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
                 guard let start = streamingStartDate else { return }
                 guard streamingManager != nil else { return }
+                // Grace period to allow first token before we declare a stall.
+                if Date().timeIntervalSince(start) < stallThresholdSeconds {
+                    continue
+                }
                 let last = streamingLastUpdate ?? start
                 let delta = Date().timeIntervalSince(last)
                 if delta > stallThresholdSeconds {

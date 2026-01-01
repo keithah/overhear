@@ -87,7 +87,7 @@ All processing is **local-first** and privacy-conscious.
 - `OVERHEAR_FLUIDAUDIO_ASR_VERSION={v2|v3}` — choose the Parakeet v2 (English-only) or v3 (multilingual) bundle when FluidAudio is enabled.
 - `OVERHEAR_FLUIDAUDIO_ASR_MODELS=/path/to/models` — override FluidAudio’s ASR cache if you pre-stage downloaded bundles.
 - `OVERHEAR_FLUIDAUDIO_DIARIZER_MODELS=/path/to/models` — override FluidAudio’s diarization cache if you host the models in a custom location.
-- `OVERHEAR_INSECURE_NO_KEYCHAIN=1` — CI-only escape hatch that skips the Keychain and uses an in-memory encryption key for transcripts. Also requires `CI=true` and `GITHUB_ACTIONS=true`; never set this in production.
+- `OVERHEAR_INSECURE_NO_KEYCHAIN=1` — CI-only escape hatch that skips the Keychain and uses an in-memory encryption key for transcripts. Also requires `CI=true` and `GITHUB_ACTIONS=true`; never set this in production (release builds abort if this is present).
 
 ### Live recording & manual capture
 
