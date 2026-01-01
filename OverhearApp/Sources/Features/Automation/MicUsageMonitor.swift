@@ -228,28 +228,26 @@ final class MicUsageMonitor {
     private var observedDevice: AudioObjectID?
     private var rebindTask: Task<Void, Never>?
 
+    @MainActor
     private func enqueueRebind() {
-        Task { @MainActor [weak self] in
+        // Avoid unbounded growth if the system flaps devices rapidly; coalesce to the latest device.
+        let newCount = min(pendingRebinds + 1, Constants.maxPendingRebinds)
+        if newCount == Constants.maxPendingRebinds, pendingRebinds < Constants.maxPendingRebinds {
+            logger.warning("Mic rebind queue saturated; coalescing rapid device changes")
+            FileLogger.log(
+                category: "MicUsageMonitor",
+                message: "Mic rebind queue saturated; coalescing rapid device changes"
+            )
+        }
+        pendingRebinds = newCount
+        guard rebindTask == nil else { return }
+        rebindTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            // Avoid unbounded growth if the system flaps devices rapidly; coalesce to the latest device.
-            let newCount = min(pendingRebinds + 1, Constants.maxPendingRebinds)
-            if newCount == Constants.maxPendingRebinds, pendingRebinds < Constants.maxPendingRebinds {
-                logger.warning("Mic rebind queue saturated; coalescing rapid device changes")
-                FileLogger.log(
-                    category: "MicUsageMonitor",
-                    message: "Mic rebind queue saturated; coalescing rapid device changes"
-                )
+            while !Task.isCancelled, self.pendingRebinds > 0 {
+                self.pendingRebinds -= 1
+                await self.performRebind()
             }
-            pendingRebinds = newCount
-            guard rebindTask == nil else { return }
-            rebindTask = Task { @MainActor [weak self] in
-                guard let self else { return }
-                while !Task.isCancelled, self.pendingRebinds > 0 {
-                    self.pendingRebinds -= 1
-                    await self.performRebind()
-                }
-                self.rebindTask = nil
-            }
+            self.rebindTask = nil
         }
     }
 

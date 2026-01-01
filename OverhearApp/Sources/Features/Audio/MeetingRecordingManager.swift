@@ -84,10 +84,16 @@ final class MeetingRecordingManager: ObservableObject {
     private var pendingNotes: String?
     private var notesRetryTask: Task<Void, Never>?
     private var notesRetryAttempts = 0
-    private let maxNotesRetryAttempts = 3
+    private let maxNotesRetryAttempts: Int = {
+        let value = UserDefaults.standard.integer(forKey: "overhear.notesMaxRetryAttempts")
+        return value > 0 ? value : 3
+    }()
     private var notesHealthCheckTask: Task<Void, Never>?
     private var lastNotesError: String?
-    private let notesHealthIntervalSeconds: TimeInterval = 5
+    private let notesHealthIntervalSeconds: TimeInterval = {
+        let value = UserDefaults.standard.double(forKey: "overhear.notesHealthIntervalSeconds")
+        return value > 0 ? value : 5
+    }()
 
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline
@@ -113,6 +119,10 @@ final class MeetingRecordingManager: ObservableObject {
     private let stallThresholdSeconds: TimeInterval = {
         let value = UserDefaults.standard.double(forKey: "overhear.streamingStallThreshold")
         return value > 0 ? value : 8
+    }()
+    private let firstTokenGracePeriod: TimeInterval = {
+        let value = UserDefaults.standard.double(forKey: "overhear.streamingFirstTokenGrace")
+        return value > 0 ? value : 30
     }()
     private let monitorIntervalSeconds: TimeInterval = {
         let value = UserDefaults.standard.double(forKey: "overhear.streamingMonitorInterval")
@@ -260,6 +270,7 @@ final class MeetingRecordingManager: ObservableObject {
 #if canImport(FluidAudio)
         streamingMonitorTask?.cancel()
 #endif
+        transcriptionTask?.cancel()
     }
 
     var displayTitle: String {
@@ -343,15 +354,15 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     func startNotesHealthCheck() {
-        if let existing = notesHealthCheckTask, !existing.isCancelled {
-            return
-        }
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64((self?.notesHealthIntervalSeconds ?? 5) * 1_000_000_000))
                 guard let self else { return }
                 if Task.isCancelled { return }
+                if transcriptID == nil {
+                    continue
+                }
                 if let pendingNotes = pendingNotes,
                    (notesSaveState == .idle || (lastNotesError != nil && notesSaveState == .failed(lastNotesError ?? ""))) {
                     FileLogger.log(
@@ -683,7 +694,7 @@ extension MeetingRecordingManager {
                 guard let start = streamingStartDate else { return }
                 guard streamingManager != nil else { return }
                 // Grace period to allow first token before we declare a stall.
-                if Date().timeIntervalSince(start) < stallThresholdSeconds {
+                if Date().timeIntervalSince(start) < firstTokenGracePeriod {
                     continue
                 }
                 let last = streamingLastUpdate ?? start

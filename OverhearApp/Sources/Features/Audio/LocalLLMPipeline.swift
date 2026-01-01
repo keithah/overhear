@@ -23,7 +23,10 @@ actor LocalLLMPipeline {
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
     private let logCategory = "LocalLLMPipeline"
     private let warmupTimeout: TimeInterval
-    private let downloadWatchdogDelay: TimeInterval = 2
+    private let downloadWatchdogDelay: TimeInterval = {
+        let value = UserDefaults.standard.double(forKey: "overhear.mlxDownloadWatchdogDelay")
+        return value > 0 ? value : 2
+    }()
     private let failureCooldown: TimeInterval = 300
     private(set) var state: State
     private var downloadWatchTask: Task<Void, Never>?
@@ -67,6 +70,9 @@ actor LocalLLMPipeline {
 
         warmupGeneration &+= 1
         let generation = warmupGeneration
+        if downloadStartAt == nil {
+            downloadStartAt = Date()
+        }
 
         let task = Task { [weak self] in
             guard let self else { return }

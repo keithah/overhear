@@ -398,9 +398,6 @@ actor TranscriptStore {
             )
             return EphemeralKeyHolder.key
         }
-        struct EphemeralKeyHolder {
-            static let key = SymmetricKey(size: .bits256)
-        }
 
         let keyTag = "com.overhear.app.transcripts.key"
         
@@ -450,11 +447,14 @@ actor TranscriptStore {
                 return newKey
             }
 
-            if addStatus == errSecInteractionNotAllowed && isRunningTests {
+            if isRunningTests {
                 FileLogger.log(
                     category: "TranscriptStore",
-                    message: "Keychain unavailable in tests; falling back to ephemeral key"
+                    message: "Keychain unavailable in tests (status \(addStatus)); falling back to ephemeral key"
                 )
+                struct EphemeralKeyHolder {
+                    static let key = SymmetricKey(size: .bits256)
+                }
                 return EphemeralKeyHolder.key
             }
 
