@@ -8,6 +8,7 @@ struct PreferencesView: View {
     @State private var mlxModelID: String = MLXPreferences.modelID()
     @ObservedObject var calendarService: CalendarService
     @State private var accessibilityTrusted: Bool = AccessibilityHelper.isTrusted()
+    @State private var llmState: LocalLLMPipeline.State = .idle
 
     @State private var calendarsBySource: [(source: EKSource, calendars: [EKCalendar])] = []
     @State private var isLoadingCalendars = false
@@ -28,11 +29,19 @@ struct PreferencesView: View {
         }
         .padding()
         .frame(width: 520, height: 420)
-.task {
-              // Wait a moment for main app to initialize permissions
-              do {
-                  try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-              } catch {
+        .onAppear {
+            Task { await refreshLLMState() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: LocalLLMPipeline.stateChangedNotification)) { notification in
+            if let state = notification.userInfo?["state"] as? LocalLLMPipeline.State {
+                llmState = state
+            }
+        }
+        .task {
+            // Wait a moment for main app to initialize permissions
+            do {
+                try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            } catch {
                   // Cancelled or error
                   return
               }
@@ -226,6 +235,15 @@ struct PreferencesView: View {
 
             Section(header: Text("On-device LLM (MLX)")) {
                 VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label(llmStatusDescription, systemImage: llmStatusIcon)
+                            .foregroundColor(llmStatusColor)
+                        Spacer()
+                        Button("Warm up model") {
+                            Task { await LocalLLMPipeline.shared.warmup() }
+                        }
+                        .controlSize(.small)
+                    }
                     TextField("Model ID (e.g. mlx-community/Llama-3.2-1B-Instruct-4bit)", text: $mlxModelID)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 420)
@@ -439,6 +457,42 @@ struct PreferencesView: View {
         @unknown default: return "Unknown"
         }
     }
+
+    private var llmStatusDescription: String {
+        switch llmState {
+        case .idle:
+            return "Idle"
+        case .downloading(let progress):
+            let pct = Int(progress * 100)
+            return "Downloading… \(pct)%"
+        case .warming:
+            return "Warming up…"
+        case .ready(let model):
+            if let model { return "Ready (\(model))" }
+            return "Ready"
+        case .unavailable(let reason):
+            return "Unavailable: \(reason)"
+        }
+    }
+
+    private var llmStatusIcon: String {
+        switch llmState {
+        case .idle: return "bolt.horizontal.circle"
+        case .downloading: return "arrow.down.circle"
+        case .warming: return "flame.circle"
+        case .ready: return "checkmark.seal"
+        case .unavailable: return "exclamationmark.triangle"
+        }
+    }
+
+    private var llmStatusColor: Color {
+        switch llmState {
+        case .ready: return .green
+        case .downloading, .warming: return .orange
+        case .idle: return .secondary
+        case .unavailable: return .red
+        }
+    }
     
     private func refreshNotificationStatus() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -446,6 +500,13 @@ struct PreferencesView: View {
             Task { @MainActor in
                 self.notificationStatus = status
             }
+        }
+    }
+
+    private func refreshLLMState() async {
+        let state = await LocalLLMPipeline.shared.currentState()
+        await MainActor.run {
+            llmState = state
         }
     }
 

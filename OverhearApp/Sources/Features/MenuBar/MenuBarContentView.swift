@@ -557,10 +557,18 @@ struct LiveNotesView: View {
                 Text("Notes")
                     .font(.system(size: 12, weight: .semibold))
                 if case .saving = coordinator.notesSaveState {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                        Text("Saving…")
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                    Text("Saving…")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                } else if case .queued(let attempt) = coordinator.notesSaveState {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.arrow.2.circlepath")
+                            .foregroundColor(.orange)
+                        Text("Retrying save (attempt \(attempt))")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }

@@ -64,6 +64,7 @@ final class MeetingRecordingManager: ObservableObject {
     enum NotesSaveState: Equatable {
         case idle
         case saving
+        case queued(Int) // retry attempt count
         case failed(String)
     }
 
@@ -81,6 +82,9 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
     private var pendingNotes: String?
+    private var notesRetryTask: Task<Void, Never>?
+    private var notesRetryAttempts = 0
+    private let maxNotesRetryAttempts = 3
 
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline
@@ -258,6 +262,12 @@ final class MeetingRecordingManager: ObservableObject {
     func saveNotes(_ notes: String) async {
         // Always remember the latest notes in case the transcript ID is not yet assigned.
         pendingNotes = notes
+        notesRetryTask?.cancel()
+        notesRetryAttempts = 0
+        await performNotesSave(notes: notes)
+    }
+
+    private func performNotesSave(notes: String) async {
         guard let transcriptID = transcriptID else {
             FileLogger.log(category: "MeetingRecordingManager", message: "Deferring notes persist until transcriptID is available")
             return
@@ -281,10 +291,29 @@ final class MeetingRecordingManager: ObservableObject {
             FileLogger.log(category: "MeetingRecordingManager", message: "Persisted notes for \(transcriptID)")
             pendingNotes = nil
             lastNotesSavedAt = Date()
+            notesRetryAttempts = 0
+            notesRetryTask = nil
             notesSaveState = .idle
         } catch {
-            FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes: \(error.localizedDescription)")
-            notesSaveState = .failed(error.localizedDescription)
+            notesRetryAttempts += 1
+            if notesRetryAttempts <= maxNotesRetryAttempts {
+                let delaySeconds = pow(2.0, Double(notesRetryAttempts - 1))
+                notesSaveState = .queued(notesRetryAttempts)
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Notes persist failed (attempt \(notesRetryAttempts)/\(maxNotesRetryAttempts)); retrying in \(Int(delaySeconds))s: \(error.localizedDescription)"
+                )
+                notesRetryTask = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                    guard let self else { return }
+                    if Task.isCancelled { return }
+                    await self.performNotesSave(notes: notes)
+                }
+            } else {
+                FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes after retries: \(error.localizedDescription)")
+                notesRetryTask = nil
+                notesSaveState = .failed(error.localizedDescription)
+            }
         }
     }
     
@@ -557,6 +586,7 @@ extension MeetingRecordingManager {
         default:
             return
         }
+        FileLogger.log(category: "MeetingRecordingManager", message: "Restarting streaming transcription after stall/manual request")
         await stopLiveStreaming()
         streamingHealth = .init(state: .connecting, lastUpdate: nil, firstTokenLatency: nil)
         await startLiveStreaming()
