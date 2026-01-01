@@ -447,10 +447,12 @@ actor TranscriptStore {
                 return newKey
             }
 
-            if isRunningTests {
+            // CI runners often have an inaccessible Keychain; if bypass is allowed use the ephemeral key.
+            if isRunningTests || isKeychainBypassed,
+               addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable {
                 FileLogger.log(
                     category: "TranscriptStore",
-                    message: "Keychain unavailable in tests (status \(addStatus)); falling back to ephemeral key"
+                    message: "Keychain unavailable in tests/CI (status \(addStatus)); falling back to ephemeral key"
                 )
                 struct EphemeralKeyHolder {
                     static let key = SymmetricKey(size: .bits256)

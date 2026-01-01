@@ -362,13 +362,18 @@ final class MeetingRecordingManager: ObservableObject {
                 guard let self else { return }
                 if Task.isCancelled { return }
                 guard transcriptID != nil else { continue }
-                if let pendingNotes = pendingNotes,
-                   (notesSaveState == .idle || (lastNotesError != nil && notesSaveState == .failed(lastNotesError ?? ""))) {
-                    FileLogger.log(
-                        category: "MeetingRecordingManager",
-                        message: "Notes pending persist while idle; triggering retry"
-                    )
-                    await self.performNotesSave(notes: pendingNotes)
+                if let pendingNotes = pendingNotes {
+                    switch notesSaveState {
+                    case .idle,
+                         .failed:
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: "Notes pending persist while idle/failed; triggering retry"
+                        )
+                        await self.performNotesSave(notes: pendingNotes)
+                    default:
+                        break
+                    }
                 }
             }
         }
