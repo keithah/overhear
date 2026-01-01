@@ -425,12 +425,11 @@ struct LiveNotesView: View {
                     .lineLimit(1)
             }
             Spacer()
-            Text(statusText)
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(statusColor.opacity(0.15)))
-                .foregroundColor(statusColor)
+            HStack(spacing: 6) {
+                statusChip(title: statusText, color: statusColor, icon: "record.circle")
+                streamingChip
+                llmChip
+            }
             Button {
                 Task { await coordinator.stopRecording() }
             } label: {
@@ -485,6 +484,64 @@ struct LiveNotesView: View {
             }
             .menuStyle(.borderlessButton)
         }
+    }
+
+    private func statusChip(title: String, color: Color, icon: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+            Text(title)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(color.opacity(0.15)))
+        .foregroundColor(color)
+    }
+
+    private var streamingChip: some View {
+        let title: String
+        let color: Color
+        switch coordinator.streamingHealth.state {
+        case .active:
+            title = "Streaming"
+            color = .green
+        case .connecting:
+            title = "Connecting"
+            color = .orange
+        case .stalled:
+            title = "Stalled"
+            color = .orange
+        case .failed:
+            title = "Streaming failed"
+            color = .red
+        case .idle:
+            title = "Streaming idle"
+            color = .secondary
+        }
+        return statusChip(title: title, color: color, icon: "waveform.and.magnifyingglass")
+    }
+
+    private var llmChip: some View {
+        let title: String
+        let color: Color
+        let stateDesc = llmStateDescription
+        if stateDesc.lowercased().contains("ready") {
+            title = stateDesc
+            color = .green
+        } else if stateDesc.lowercased().contains("download") || stateDesc.lowercased().contains("warm") {
+            title = stateDesc
+            color = .orange
+        } else if stateDesc.lowercased().contains("unavailable") {
+            title = stateDesc
+            color = .red
+        } else if stateDesc.lowercased().contains("checking") {
+            title = "LLM checking…"
+            color = .secondary
+        } else {
+            title = stateDesc
+            color = .secondary
+        }
+        return statusChip(title: title, color: color, icon: "bolt.horizontal.circle")
     }
 
     private var consentNotice: some View {
