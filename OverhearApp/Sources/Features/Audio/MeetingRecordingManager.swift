@@ -341,7 +341,10 @@ final class MeetingRecordingManager: ObservableObject {
                 notesRetryTask = Task { [weak self] in
                     try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
                     guard let self else { return }
-                    if Task.isCancelled { return }
+                    if Task.isCancelled {
+                        FileLogger.log(category: "MeetingRecordingManager", message: "Notes retry cancelled")
+                        return
+                    }
                     let latestNotes = pendingNotes ?? notes
                     await self.performNotesSave(notes: latestNotes)
                 }
@@ -356,10 +359,11 @@ final class MeetingRecordingManager: ObservableObject {
 
     @MainActor
     func startNotesHealthCheck() {
+        let intervalSeconds = notesHealthIntervalSeconds
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64((self?.notesHealthIntervalSeconds ?? 5) * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
                 guard let self else { return }
                 if Task.isCancelled { return }
                 guard transcriptID != nil else { continue }
@@ -701,7 +705,7 @@ extension MeetingRecordingManager {
                 guard let self else { return }
                 try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
                 guard let start = streamingStartDate else { return }
-                guard streamingManager != nil else { return }
+                guard streamingManager != nil, streamingTask != nil else { return }
                 // Grace period to allow first token before we declare a stall.
                 if Date().timeIntervalSince(start) < firstTokenGracePeriod {
                     continue

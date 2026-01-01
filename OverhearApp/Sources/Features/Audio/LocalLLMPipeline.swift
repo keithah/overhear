@@ -50,7 +50,8 @@ actor LocalLLMPipeline {
     private let warmupTimeout: TimeInterval
     private let downloadWatchdogDelay: TimeInterval = {
         let value = UserDefaults.standard.double(forKey: "overhear.mlxDownloadWatchdogDelay")
-        return value > 0 ? value : 2
+        let resolved = value > 0 ? value : 2
+        return min(max(resolved, 1.0), 60.0) // clamp to sensible bounds
     }()
     private let failureCooldown: TimeInterval = 300
     private(set) var state: State

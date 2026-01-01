@@ -373,6 +373,10 @@ actor TranscriptStore {
     }
     
     // MARK: - Encryption
+
+    private enum KeyStorage {
+        static let ephemeralKey = SymmetricKey(size: .bits256)
+    }
     
     /// Return or create the encryption key for transcript persistence.
     /// In CI/debug bypass scenarios the Keychain is unavailable, so we use a process-scoped
@@ -389,15 +393,13 @@ actor TranscriptStore {
                 fatalError("OVERHEAR_INSECURE_NO_KEYCHAIN should never be set in production")
             }
 #endif
-            struct EphemeralKeyHolder {
-                static let key = SymmetricKey(size: .bits256)
-            }
+            let ephemeralKey = KeyStorage.ephemeralKey
             let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
             FileLogger.log(
                 category: "TranscriptStore",
                 message: "Using ephemeral in-memory encryption key (Keychain bypass active\(reasonSuffix))"
             )
-            return EphemeralKeyHolder.key
+            return ephemeralKey
         }
 
         let keyTag = "com.overhear.app.transcripts.key"
@@ -449,18 +451,11 @@ actor TranscriptStore {
             }
 
             // CI runners often have an inaccessible Keychain; fall back to ephemeral if access is denied.
-            if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || isRunningTests {
-                FileLogger.log(
-                    category: "TranscriptStore",
-                    message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key"
-                )
-                struct EphemeralKeyHolder {
-                    static let key = SymmetricKey(size: .bits256)
-                }
-                return EphemeralKeyHolder.key
-            }
-
-            throw Error.keyManagementFailed("Failed to store encryption key in Keychain: status \(addStatus)")
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key"
+            )
+            return KeyStorage.ephemeralKey
         }
         
         throw Error.keyManagementFailed("Unexpected Keychain error: \(status)")

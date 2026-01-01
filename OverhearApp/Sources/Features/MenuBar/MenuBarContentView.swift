@@ -576,9 +576,16 @@ struct LiveNotesView: View {
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
-            Text("Last update: \(streamingLastUpdateText)")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+            switch coordinator.streamingHealth.state {
+            case .idle:
+                Text("No recent updates")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            default:
+                Text("Last update: \(streamingLastUpdateText)")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
             Spacer()
             if case .stalled = coordinator.streamingHealth.state, canRestart {
                 Button {
