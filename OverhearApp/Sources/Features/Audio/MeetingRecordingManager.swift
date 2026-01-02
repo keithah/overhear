@@ -420,7 +420,12 @@ final class MeetingRecordingManager: ObservableObject {
             }
             while !Task.isCancelled {
                 guard let self else { return }
-                guard status == .capturing || status == .transcribing else { return }
+                switch status {
+                case .capturing, .transcribing:
+                    break
+                default:
+                    return
+                }
                 if Task.isCancelled { return }
                 guard transcriptID != nil else {
                     transcriptWaits += 1

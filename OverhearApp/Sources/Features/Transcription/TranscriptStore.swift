@@ -369,8 +369,12 @@ actor TranscriptStore {
     
     // MARK: - Encryption
 
+    private struct EphemeralKeyBox: @unchecked Sendable {
+        let key: SymmetricKey
+    }
+
     private enum KeyStorage {
-        static let ephemeralKey = SymmetricKey(size: .bits256)
+        static let ephemeralKeyBox = EphemeralKeyBox(key: SymmetricKey(size: .bits256))
         private static var didLogBypass = false
         private static let logLock = NSLock()
 
@@ -398,7 +402,7 @@ actor TranscriptStore {
                 fatalError("OVERHEAR_INSECURE_NO_KEYCHAIN should never be set in production")
             }
 #endif
-            let ephemeralKey = KeyStorage.ephemeralKey
+            let ephemeralKey = KeyStorage.ephemeralKeyBox.key
             let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
             if KeyStorage.shouldLogBypass() {
                 FileLogger.log(
@@ -464,7 +468,7 @@ actor TranscriptStore {
                     category: "TranscriptStore",
                     message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix)"
                 )
-                return KeyStorage.ephemeralKey
+                return KeyStorage.ephemeralKeyBox.key
             }
 
             throw Error.keyManagementFailed("Failed to store encryption key in Keychain: status \(addStatus)")
