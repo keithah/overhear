@@ -90,7 +90,6 @@ final class MeetingRecordingManager: ObservableObject {
     }()
     private var notesHealthCheckTask: Task<Void, Never>?
     private var notesSaveTask: Task<Void, Never>?
-    private var notesSaveInProgress = false
     private var lastNotesError: String?
     private let notesHealthIntervalSeconds: TimeInterval = {
         let value = UserDefaults.standard.double(forKey: "overhear.notesHealthIntervalSeconds")
@@ -317,23 +316,17 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     private func performNotesSave(notes: String) async {
+        // Serialize saves: if a save is in flight, wait for it instead of starting another.
         if let task = notesSaveTask, !task.isCancelled {
             await task.value
             return
         }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            notesSaveTask = Task { @MainActor [weak self] in
-                guard let self else { return }
-                notesSaveInProgress = true
-                defer {
-                    notesSaveInProgress = false
-                    notesSaveTask = nil
-                }
-                await self.performNotesSaveInternal(notes: notes)
-            }
-            await notesSaveTask?.value
+            defer { notesSaveTask = nil }
+            await self.performNotesSaveInternal(notes: notes)
         }
+        notesSaveTask = task
         await task.value
     }
 
@@ -400,10 +393,22 @@ final class MeetingRecordingManager: ObservableObject {
         let intervalSeconds = notesHealthIntervalSeconds
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = Task { [weak self] in
+            var transcriptWaits = 0
             while !Task.isCancelled {
                 guard let self else { return }
                 if Task.isCancelled { return }
-                guard transcriptID != nil else { continue }
+                guard transcriptID != nil else {
+                    transcriptWaits += 1
+                    if transcriptWaits.isMultiple(of: 12) {
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: "Notes health check still waiting for transcriptID; skipping retries"
+                        )
+                        return
+                    }
+                    try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                    continue
+                }
                 if Self.shouldRetryNotes(pendingNotes: pendingNotes, state: notesSaveState, hasRetryTask: notesRetryTask != nil),
                    let pendingNotes {
                     FileLogger.log(
@@ -770,6 +775,7 @@ extension MeetingRecordingManager {
 
     @MainActor
     func handleStreamingUpdate(_ update: StreamingTranscriptionUpdate) async {
+        if Task.isCancelled { return }
         let segmentID = streamingHypothesis?.id ?? UUID()
         let timingSnapshots = update.tokenTimings.map { timing in
             TokenTimingSnapshot(start: timing.startTime, end: timing.endTime)

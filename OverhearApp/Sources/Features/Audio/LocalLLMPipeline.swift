@@ -362,6 +362,7 @@ actor LocalLLMPipeline {
 
             do {
                 FileLogger.log(category: logCategory, message: "Warming MLX model \(modelInUse)")
+                if Task.isCancelled { return }
                 try await runWarmupWithTimeout()
                 guard generation == warmupGeneration else { return }
                 state = .warming
