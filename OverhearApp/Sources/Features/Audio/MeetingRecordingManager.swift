@@ -33,7 +33,6 @@ struct LiveTranscriptSegment: Identifiable, Sendable {
 
 /// Manages recording and transcription for a specific meeting
 @MainActor
-@MainActor
 final class MeetingRecordingManager: ObservableObject {
     enum Status {
         case idle
@@ -421,6 +420,7 @@ final class MeetingRecordingManager: ObservableObject {
             }
             while !Task.isCancelled {
                 guard let self else { return }
+                guard status == .capturing || status == .transcribing else { return }
                 if Task.isCancelled { return }
                 guard transcriptID != nil else {
                     transcriptWaits += 1
