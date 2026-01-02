@@ -375,7 +375,7 @@ actor TranscriptStore {
 
     private enum KeyStorage {
         static let ephemeralKeyBox = EphemeralKeyBox(key: SymmetricKey(size: .bits256))
-        private static var didLogBypass = false
+        nonisolated(unsafe) private static var didLogBypass = false
         private static let logLock = NSLock()
 
         static func shouldLogBypass() -> Bool {
