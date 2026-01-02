@@ -43,6 +43,7 @@ actor AVAudioCaptureService {
     private var durationTask: Task<Void, Never>?
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
     private var bufferNotificationsLogged = 0
+    private var buffersSinceLastLog = 0
     private var captureStartDate: Date?
     private var requestedDuration: TimeInterval = 0
    
@@ -107,7 +108,10 @@ actor AVAudioCaptureService {
     func registerBufferObserver(_ observer: @escaping AudioBufferObserver) -> UUID {
         let id = UUID()
         bufferObservers[id] = observer
-        FileLogger.log(category: "AVAudioCaptureService", message: "Registered buffer observer (total \(bufferObservers.count))")
+        FileLogger.log(
+            category: "AVAudioCaptureService",
+            message: "Registered buffer observer id=\(id) (total \(bufferObservers.count))"
+        )
         return id
     }
 
@@ -162,8 +166,13 @@ actor AVAudioCaptureService {
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
         guard !bufferObservers.isEmpty else { return }
         bufferNotificationsLogged += 1
-        if bufferNotificationsLogged <= 5 {
-            FileLogger.log(category: "AVAudioCaptureService", message: "notifyBufferObservers count=\(bufferNotificationsLogged), frameLength=\(buffer.frameLength)")
+        buffersSinceLastLog += 1
+        if bufferNotificationsLogged <= 5 || buffersSinceLastLog >= 50 {
+            FileLogger.log(
+                category: "AVAudioCaptureService",
+                message: "notifyBufferObservers total=\(bufferNotificationsLogged) recent=\(buffersSinceLastLog) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
+            )
+            buffersSinceLastLog = 0
         }
         for observer in bufferObservers.values {
             guard let copy = buffer.cloned() else { continue }

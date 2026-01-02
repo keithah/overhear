@@ -217,6 +217,10 @@ final class MeetingRecordingManager: ObservableObject {
             category: "MeetingRecordingManager",
             message: "startRecording requested (meetingID=\(meetingID) title=\(meetingTitle) duration=\(duration)s)"
         )
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "Audio capture mode: mic-only (system/output capture not yet wired)"
+        )
         // Allow retrying if failed or starting new if completed/idle
         switch status {
         case .capturing, .transcribing:
@@ -790,6 +794,10 @@ extension MeetingRecordingManager {
 
         streamingManager = nil
         streamingHealth = .init(state: .idle, lastUpdate: nil, firstTokenLatency: streamingHealth.firstTokenLatency)
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "stopLiveStreaming completed; final liveTranscript length=\(liveTranscript.count)"
+        )
     }
 
     func startStreamingMonitor() {
