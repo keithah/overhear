@@ -5,6 +5,7 @@ import os.log
 import FluidAudio
 #endif
 
+@MainActor
 struct TokenTimingSnapshot: Codable, Hashable, Sendable {
     let start: TimeInterval
     let end: TimeInterval
@@ -31,6 +32,7 @@ struct LiveTranscriptSegment: Identifiable, Sendable {
 }
 
 /// Manages recording and transcription for a specific meeting
+@MainActor
 @MainActor
 final class MeetingRecordingManager: ObservableObject {
     enum Status {
@@ -93,7 +95,13 @@ final class MeetingRecordingManager: ObservableObject {
     private var lastNotesError: String?
     private let notesHealthIntervalSeconds: TimeInterval = {
         let value = UserDefaults.standard.double(forKey: "overhear.notesHealthIntervalSeconds")
-        return value > 0 ? value : 5
+        let clamped = min(max(value, 1), 60) // 1-60s
+        return clamped > 1 ? clamped : 5
+    }()
+    private let maxHealthRetries: Int = {
+        let value = UserDefaults.standard.integer(forKey: "overhear.notesHealthMaxRetries")
+        let clamped = min(max(value, 1), 200)
+        return clamped > 0 ? clamped : 50
     }()
     nonisolated static func shouldRetryNotes(
         pendingNotes: String?,
@@ -133,15 +141,18 @@ final class MeetingRecordingManager: ObservableObject {
     private var isRegeneratingSummary = false
     private let stallThresholdSeconds: TimeInterval = {
         let value = UserDefaults.standard.double(forKey: "overhear.streamingStallThreshold")
-        return value > 0 ? value : 8
+        let clamped = min(max(value, 2), 120) // 2-120s
+        return clamped > 0 ? clamped : 8
     }()
     private let firstTokenGracePeriod: TimeInterval = {
         let value = UserDefaults.standard.double(forKey: "overhear.streamingFirstTokenGrace")
-        return value > 0 ? value : 30
+        let clamped = min(max(value, 5), 120) // 5-120s
+        return clamped > 0 ? clamped : 30
     }()
     private let monitorIntervalSeconds: TimeInterval = {
         let value = UserDefaults.standard.double(forKey: "overhear.streamingMonitorInterval")
-        return value > 0 ? value : 2
+        let clamped = min(max(value, 1), 30) // 1-30s
+        return clamped > 0 ? clamped : 2
     }()
 
     private var isStreamingEnabled: Bool {
@@ -316,7 +327,7 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     private func performNotesSave(notes: String) async {
-        // Serialize saves: if a save is in flight, wait for it instead of starting another.
+        // Serialize saves on the main actor.
         if let task = notesSaveTask, !task.isCancelled {
             await task.value
             return
@@ -330,7 +341,6 @@ final class MeetingRecordingManager: ObservableObject {
         await task.value
     }
 
-    @MainActor
     private func performNotesSaveInternal(notes: String) async {
         guard let transcriptID = transcriptID else {
             FileLogger.log(category: "MeetingRecordingManager", message: "Deferring notes persist until transcriptID is available")
@@ -394,6 +404,21 @@ final class MeetingRecordingManager: ObservableObject {
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = Task { [weak self] in
             var transcriptWaits = 0
+            var healthRetries = 0
+            // Immediate check before the first sleep to avoid waiting when notes are already pending.
+            if let self,
+               let pendingNotes,
+               Self.shouldRetryNotes(pendingNotes: pendingNotes, state: notesSaveState, hasRetryTask: notesRetryTask != nil) {
+                healthRetries += 1
+                if healthRetries > maxHealthRetries {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Notes health check hit max retries; giving up to avoid infinite loop"
+                    )
+                    return
+                }
+                await self.performNotesSave(notes: pendingNotes)
+            }
             while !Task.isCancelled {
                 guard let self else { return }
                 if Task.isCancelled { return }
@@ -411,6 +436,14 @@ final class MeetingRecordingManager: ObservableObject {
                 }
                 if Self.shouldRetryNotes(pendingNotes: pendingNotes, state: notesSaveState, hasRetryTask: notesRetryTask != nil),
                    let pendingNotes {
+                    healthRetries += 1
+                    if healthRetries > maxHealthRetries {
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: "Notes health check hit max retries; giving up to avoid infinite loop"
+                        )
+                        return
+                    }
                     FileLogger.log(
                         category: "MeetingRecordingManager",
                         message: "Notes pending persist while idle/failed; triggering retry"
@@ -744,9 +777,16 @@ extension MeetingRecordingManager {
                 guard let start = streamingStartDate else { return }
                 guard streamingManager != nil, streamingTask != nil else { return }
                 // Grace period to allow first token before we declare a stall.
-                if Date().timeIntervalSince(start) < firstTokenGracePeriod {
+                if !loggedFirstStreamingToken && Date().timeIntervalSince(start) < firstTokenGracePeriod {
                     try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
                     continue
+                } else if !loggedFirstStreamingToken && Date().timeIntervalSince(start) >= firstTokenGracePeriod {
+                    streamingHealth.state = .stalled
+                    streamingHealth.lastUpdate = start
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Streaming stalled before first token after \(firstTokenGracePeriod)s"
+                    )
                 }
                 let last = streamingLastUpdate ?? start
                 let delta = Date().timeIntervalSince(last)

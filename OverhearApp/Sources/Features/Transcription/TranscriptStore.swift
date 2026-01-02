@@ -179,7 +179,10 @@ actor TranscriptStore {
                 let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
                 transcripts.append(transcript)
             } catch {
-                // Skip files that can't be decoded
+                FileLogger.log(
+                    category: "TranscriptStore",
+                    message: "Skipped corrupt or unreadable transcript at \(fileURL.lastPathComponent): \(error.localizedDescription)"
+                )
                 continue
             }
         }
