@@ -371,7 +371,7 @@ actor TranscriptStore {
 
     private enum KeyStorage {
         static let ephemeralKey = SymmetricKey(size: .bits256)
-        static var didLogBypass = false
+        @MainActor static var didLogBypass = false
     }
     
     /// Return or create the encryption key for transcript persistence.
@@ -391,12 +391,16 @@ actor TranscriptStore {
 #endif
             let ephemeralKey = KeyStorage.ephemeralKey
             let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
-            if !KeyStorage.didLogBypass {
+            let shouldLog = await MainActor.run { () -> Bool in
+                if KeyStorage.didLogBypass { return false }
+                KeyStorage.didLogBypass = true
+                return true
+            }
+            if shouldLog {
                 FileLogger.log(
                     category: "TranscriptStore",
                     message: "Using ephemeral in-memory encryption key (Keychain bypass active\(reasonSuffix))"
                 )
-                KeyStorage.didLogBypass = true
             }
             return ephemeralKey
         }
