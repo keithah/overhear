@@ -391,17 +391,19 @@ actor TranscriptStore {
     /// In CI/debug bypass scenarios the Keychain is unavailable, so we use a process-scoped
     /// ephemeral key instead. In production this persists to the Keychain.
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
+#if !DEBUG
+        // Never allow bypass in release builds, even if tests/env are spoofed.
+        if isKeychainBypassed || isRunningTests {
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "CRITICAL: Keychain bypass attempted in release build"
+            )
+            fatalError("Keychain bypass is only allowed in debug builds")
+        }
+#endif
+
         // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
         if isKeychainBypassed || isRunningTests {
-#if !DEBUG
-            if isKeychainBypassed {
-                FileLogger.log(
-                    category: "TranscriptStore",
-                    message: "CRITICAL: Keychain bypass attempted in release build"
-                )
-                fatalError("OVERHEAR_INSECURE_NO_KEYCHAIN should never be set in production")
-            }
-#endif
             let ephemeralKey = KeyStorage.ephemeralKeyBox.key
             let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
             if KeyStorage.shouldLogBypass() {
@@ -459,19 +461,19 @@ actor TranscriptStore {
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
             if addStatus == errSecSuccess {
                 return newKey
-            }
+            } else {
+                // CI runners often have an inaccessible Keychain; fall back to ephemeral only for expected access-denied cases.
+                if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || isRunningTests {
+                    let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
+                    FileLogger.log(
+                        category: "TranscriptStore",
+                        message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix)"
+                    )
+                    return KeyStorage.ephemeralKeyBox.key
+                }
 
-            // CI runners often have an inaccessible Keychain; fall back to ephemeral only for expected access-denied cases.
-            if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || isRunningTests {
-                let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
-                FileLogger.log(
-                    category: "TranscriptStore",
-                    message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix)"
-                )
-                return KeyStorage.ephemeralKeyBox.key
+                throw Error.keyManagementFailed("Failed to store encryption key in Keychain: status \(addStatus)")
             }
-
-            throw Error.keyManagementFailed("Failed to store encryption key in Keychain: status \(addStatus)")
         }
         
         throw Error.keyManagementFailed("Unexpected Keychain error: \(status)")
