@@ -211,6 +211,12 @@ final class MeetingRecordingManager: ObservableObject {
     /// Start recording the meeting
     /// - Parameter duration: Maximum recording duration in seconds (default 3600 = 1 hour)
     func startRecording(duration: TimeInterval = 3600) async {
+        // Force-enable file logging during captures so real-session diagnostics are always written.
+        UserDefaults.standard.set(true, forKey: "overhear.enableFileLogs")
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "startRecording requested (meetingID=\(meetingID) title=\(meetingTitle) duration=\(duration)s)"
+        )
         // Allow retrying if failed or starting new if completed/idle
         switch status {
         case .capturing, .transcribing:
@@ -272,11 +278,19 @@ final class MeetingRecordingManager: ObservableObject {
         } catch {
             await stopLiveStreaming()
             status = .failed(RecordingError.captureService(error))
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "startRecording failed: \(error.localizedDescription)"
+            )
         }
     }
     
     /// Stop the current recording
     func stopRecording() async {
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "stopRecording requested (status=\(status))"
+        )
         await captureService.stopCapture()
         await stopLiveStreaming()
         
@@ -287,6 +301,10 @@ final class MeetingRecordingManager: ObservableObject {
         status = .completed
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = nil
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "stopRecording completed; status=\(status)"
+        )
     }
 
     deinit {
