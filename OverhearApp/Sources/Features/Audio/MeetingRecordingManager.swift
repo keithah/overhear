@@ -118,6 +118,7 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     private let captureService: AVAudioCaptureService
+    private let systemAudioCaptureService = SystemAudioCaptureService()
     private let pipeline: MeetingRecordingPipeline
     private let recordingDirectory: URL
     let meetingTitle: String
@@ -174,6 +175,12 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var streamingHealth: StreamingHealth = .init(state: .idle)
     private var streamingMonitorTask: Task<Void, Never>?
     private var streamingLastUpdate: Date?
+    private var systemAudioObserverToken: UUID?
+    private var isSystemAudioCaptureEnabled: Bool {
+        // Allow disabling via UserDefaults for debugging.
+        let value = UserDefaults.standard.object(forKey: "overhear.enableSystemAudioCapture") as? Bool
+        return value ?? true
+    }
 #endif
     
     init(
@@ -245,6 +252,8 @@ final class MeetingRecordingManager: ObservableObject {
             await startLiveStreaming()
         }
 #endif
+        // Attempt to start system/output audio capture (best-effort).
+        await startSystemAudioCaptureIfNeeded()
         
         let outputURL = recordingDirectory
             .appendingPathComponent("\(fileSafeMeetingID)-\(ISO8601DateFormatter().string(from: Date()))")
@@ -297,6 +306,9 @@ final class MeetingRecordingManager: ObservableObject {
         )
         await captureService.stopCapture()
         await stopLiveStreaming()
+#if canImport(FluidAudio)
+        stopSystemAudioCapture()
+#endif
         
         // If we are already transcribing, cancel it so status resets cleanly
         if case .transcribing = status {
@@ -797,6 +809,48 @@ extension MeetingRecordingManager {
         FileLogger.log(
             category: "MeetingRecordingManager",
             message: "stopLiveStreaming completed; final liveTranscript length=\(liveTranscript.count)"
+        )
+    }
+
+    private func startSystemAudioCaptureIfNeeded() async {
+        guard isSystemAudioCaptureEnabled else {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "System audio capture disabled via preference"
+            )
+            return
+        }
+        do {
+            if systemAudioObserverToken == nil {
+                systemAudioObserverToken = systemAudioCaptureService.registerBufferObserver { [weak self] buffer in
+                    Task.detached(priority: .userInitiated) { [weak self] in
+                        guard let self, let manager = self.streamingManager else { return }
+                        await manager.streamAudio(buffer)
+                    }
+                }
+            }
+            try systemAudioCaptureService.start()
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "System audio capture started (Screen Recording permission required)"
+            )
+        } catch {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "System audio capture failed: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func stopSystemAudioCapture() {
+        systemAudioCaptureService.stop()
+        if let token = systemAudioObserverToken {
+            systemAudioCaptureService.unregisterBufferObserver(token)
+            systemAudioObserverToken = nil
+        }
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "System audio capture stopped"
         )
     }
 
