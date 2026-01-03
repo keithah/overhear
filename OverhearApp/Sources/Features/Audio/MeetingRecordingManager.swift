@@ -83,6 +83,7 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
     private var pendingNotes: String?
+    private var notesSaveInProgress = false
     private var originalFileLogSetting: Bool?
     private var fileLogTemporarilyEnabled = false
     private var notesRetryTask: Task<Void, Never>?
@@ -376,14 +377,15 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     private func performNotesSave(notes: String) async {
-        // Serialize saves on the main actor.
-        if let task = notesSaveTask {
-            await task.value
-            if notesSaveTask != nil { return }
+        // Serialize saves on the main actor with a simple re-entrancy guard.
+        guard !notesSaveInProgress else {
+            FileLogger.log(category: "MeetingRecordingManager", message: "Notes save already in progress; skipping new request")
+            return
         }
+        notesSaveInProgress = true
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { notesSaveTask = nil }
+            defer { notesSaveTask = nil; notesSaveInProgress = false }
             if Task.isCancelled { return }
             await self.performNotesSaveInternal(notes: notes)
         }
@@ -460,7 +462,7 @@ final class MeetingRecordingManager: ObservableObject {
             @MainActor
             func attemptRetry() async -> Bool {
                 guard let self else { return false }
-                guard let pendingNotes else { return false }
+                guard pendingNotes != nil else { return false }
                 let state = notesSaveState
                 let hasRetry = notesRetryTask != nil
                 let hasSave = notesSaveTask != nil
@@ -484,7 +486,8 @@ final class MeetingRecordingManager: ObservableObject {
                     category: "MeetingRecordingManager",
                     message: "Notes pending persist while idle/failed; triggering retry (healthRetries=\(healthRetries))"
                 )
-                await self.performNotesSave(notes: pendingNotes)
+                guard let latest = pendingNotes else { return false }
+                await self.performNotesSave(notes: latest)
                 healthRetries = 0
                 return true
             }

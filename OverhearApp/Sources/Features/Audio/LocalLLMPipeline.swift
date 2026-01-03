@@ -74,10 +74,6 @@ actor LocalLLMPipeline {
 
     init(client: MLXClient?) {
         self.client = client
-        let watchdogOverride = UserDefaults.standard.double(forKey: "overhear.mlxDownloadWatchdogDelay")
-        let resolvedWatchdog = watchdogOverride > 0 ? watchdogOverride : 2
-        self.downloadWatchdogDelay = min(max(resolvedWatchdog, 1.0), 60.0) // clamp to sensible bounds
-
         let overrideTimeout = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
         let rawTimeout = overrideTimeout > 0 ? overrideTimeout : 900
         // Prevent misconfiguration from disabling warmup or hanging forever.
@@ -90,6 +86,10 @@ actor LocalLLMPipeline {
         let overrideCooldown = UserDefaults.standard.double(forKey: "overhear.mlxFailureCooldown")
         let rawCooldown = overrideCooldown > 0 ? overrideCooldown : 300
         self.failureCooldown = min(max(rawCooldown, 5.0), 900.0)
+
+        let watchdogOverride = UserDefaults.standard.double(forKey: "overhear.mlxDownloadWatchdogDelay")
+        let resolvedWatchdog = watchdogOverride > 0 ? watchdogOverride : 2
+        self.downloadWatchdogDelay = min(max(resolvedWatchdog, 1.0), 60.0) // clamp to sensible bounds
 
         if client == nil {
             state = .unavailable("MLX client not available")
