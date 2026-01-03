@@ -100,6 +100,11 @@ final class MeetingRecordingManager: ObservableObject {
         let clamped = min(max(value, 1), 60) // 1-60s
         return clamped > 1 ? clamped : 5
     }()
+    private let maxHealthIterations: Int = {
+        let value = UserDefaults.standard.integer(forKey: "overhear.notesHealthMaxIterations")
+        let clamped = min(max(value, 50), 2000)
+        return clamped > 0 ? clamped : 1000
+    }()
     private let maxTranscriptWaits: Int = {
         let value = UserDefaults.standard.integer(forKey: "overhear.notesMaxTranscriptWaits")
         let clamped = min(max(value, 1), 600) // cap at 600 intervals
@@ -117,7 +122,7 @@ final class MeetingRecordingManager: ObservableObject {
         hasRetryTask: Bool,
         hasSaveTask: Bool
     ) -> Bool {
-        guard pendingNotes != nil else { return false }
+        guard let pendingNotes, !pendingNotes.isEmpty else { return false }
         guard !hasRetryTask else { return false }
         guard !hasSaveTask else { return false }
         switch state {
@@ -466,6 +471,7 @@ final class MeetingRecordingManager: ObservableObject {
         notesHealthCheckTask = Task { @MainActor [weak self] in
             var transcriptWaits = 0
             var healthRetries = 0
+            var iterations = 0
             @MainActor
             func attemptRetry() async -> Bool {
                 guard let self else { return false }
@@ -502,6 +508,14 @@ final class MeetingRecordingManager: ObservableObject {
             _ = await attemptRetry()
             while !Task.isCancelled {
                 guard let self else { return }
+                iterations += 1
+                if iterations > maxHealthIterations {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Notes health check exceeded max iterations (\(maxHealthIterations)); exiting to avoid infinite loop"
+                    )
+                    return
+                }
                 switch status {
                 case .capturing, .transcribing:
                     break
