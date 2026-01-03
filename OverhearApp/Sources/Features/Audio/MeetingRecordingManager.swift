@@ -105,10 +105,12 @@ final class MeetingRecordingManager: ObservableObject {
     nonisolated static func shouldRetryNotes(
         pendingNotes: String?,
         state: NotesSaveState,
-        hasRetryTask: Bool
+        hasRetryTask: Bool,
+        hasSaveTask: Bool
     ) -> Bool {
         guard pendingNotes != nil else { return false }
         guard !hasRetryTask else { return false }
+        guard !hasSaveTask else { return false }
         switch state {
         case .idle, .failed:
             return true
@@ -303,6 +305,7 @@ final class MeetingRecordingManager: ObservableObject {
         if case .transcribing = status {
             transcriptionTask?.cancel()
         }
+        streamingMonitorTask?.cancel()
         status = .completed
         notesRetryTask?.cancel()
         await notesRetryTask?.value
@@ -365,6 +368,7 @@ final class MeetingRecordingManager: ObservableObject {
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { notesSaveTask = nil }
+            if Task.isCancelled { return }
             await self.performNotesSaveInternal(notes: notes)
         }
         notesSaveTask = task
@@ -439,7 +443,15 @@ final class MeetingRecordingManager: ObservableObject {
             func attemptRetry() async -> Bool {
                 guard let self else { return false }
                 guard let pendingNotes else { return false }
-                guard Self.shouldRetryNotes(pendingNotes: pendingNotes, state: notesSaveState, hasRetryTask: notesRetryTask != nil) else {
+                let state = notesSaveState
+                let hasRetry = notesRetryTask != nil
+                let hasSave = notesSaveTask != nil
+                guard Self.shouldRetryNotes(
+                    pendingNotes: pendingNotes,
+                    state: state,
+                    hasRetryTask: hasRetry,
+                    hasSaveTask: hasSave
+                ) else {
                     return false
                 }
                 healthRetries += 1
@@ -455,9 +467,7 @@ final class MeetingRecordingManager: ObservableObject {
                     message: "Notes pending persist while idle/failed; triggering retry (healthRetries=\(healthRetries))"
                 )
                 await self.performNotesSave(notes: pendingNotes)
-                if pendingNotes == nil {
-                    healthRetries = 0
-                }
+                healthRetries = 0
                 return true
             }
             // Immediate check before the first sleep to avoid waiting when notes are already pending.
@@ -485,6 +495,9 @@ final class MeetingRecordingManager: ObservableObject {
                 }
                 _ = await attemptRetry()
                 try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                if healthRetries > maxHealthRetries {
+                    return
+                }
             }
         }
     }
