@@ -152,11 +152,10 @@ actor AVAudioCaptureService {
         guard isRecording else { return }
         isRecording = false
         engine.inputNode.removeTap(onBus: 0)
+        bufferObservers.removeAll()
         engine.stop()
         durationTask?.cancel()
         durationTask = nil
-
-        bufferObservers.removeAll()
 
         switch result {
         case .success(let captureResult):
