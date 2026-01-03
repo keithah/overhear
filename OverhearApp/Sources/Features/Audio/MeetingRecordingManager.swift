@@ -83,6 +83,8 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
     private var pendingNotes: String?
+    private var originalFileLogSetting: Bool?
+    private var hadFileLogPreference = false
     private var notesRetryTask: Task<Void, Never>?
     private var notesRetryAttempts = 0
     private let maxNotesRetryAttempts: Int = {
@@ -215,6 +217,8 @@ final class MeetingRecordingManager: ObservableObject {
     /// - Parameter duration: Maximum recording duration in seconds (default 3600 = 1 hour)
     func startRecording(duration: TimeInterval = 3600) async {
         // Force-enable file logging during captures so real-session diagnostics are always written.
+        hadFileLogPreference = UserDefaults.standard.object(forKey: "overhear.enableFileLogs") != nil
+        originalFileLogSetting = UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
         UserDefaults.standard.set(true, forKey: "overhear.enableFileLogs")
         FileLogger.log(
             category: "MeetingRecordingManager",
@@ -315,6 +319,11 @@ final class MeetingRecordingManager: ObservableObject {
         notesSaveState = .idle
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = nil
+        if hadFileLogPreference {
+            UserDefaults.standard.set(originalFileLogSetting ?? false, forKey: "overhear.enableFileLogs")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "overhear.enableFileLogs")
+        }
         FileLogger.log(
             category: "MeetingRecordingManager",
             message: "stopRecording completed; status=\(status)"
@@ -362,8 +371,8 @@ final class MeetingRecordingManager: ObservableObject {
     private func performNotesSave(notes: String) async {
         // Serialize saves on the main actor.
         if let task = notesSaveTask {
-            task.cancel()
             await task.value
+            if notesSaveTask != nil { return }
         }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -436,10 +445,12 @@ final class MeetingRecordingManager: ObservableObject {
     @MainActor
     func startNotesHealthCheck() {
         let intervalSeconds = notesHealthIntervalSeconds
+        let transcriptWaitLogInterval = 12
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = Task { @MainActor [weak self] in
             var transcriptWaits = 0
             var healthRetries = 0
+            @MainActor
             func attemptRetry() async -> Bool {
                 guard let self else { return false }
                 guard let pendingNotes else { return false }
@@ -483,7 +494,7 @@ final class MeetingRecordingManager: ObservableObject {
                 if Task.isCancelled { return }
                 guard transcriptID != nil else {
                     transcriptWaits += 1
-                    if transcriptWaits.isMultiple(of: 12) {
+                    if transcriptWaits.isMultiple(of: transcriptWaitLogInterval) {
                         FileLogger.log(
                             category: "MeetingRecordingManager",
                             message: "Notes health check still waiting for transcriptID; skipping retries"
@@ -493,10 +504,13 @@ final class MeetingRecordingManager: ObservableObject {
                     try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
                     continue
                 }
-                _ = await attemptRetry()
+                let retried = await attemptRetry()
+                if !retried && healthRetries > maxHealthRetries {
+                    break
+                }
                 try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
                 if healthRetries > maxHealthRetries {
-                    return
+                    break
                 }
             }
         }

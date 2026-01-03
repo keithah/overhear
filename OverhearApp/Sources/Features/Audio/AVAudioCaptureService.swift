@@ -44,6 +44,10 @@ actor AVAudioCaptureService {
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
     private var bufferNotificationsLogged = 0
     private var buffersSinceLastLog = 0
+    private enum LogConstants {
+        static let initialBufferLogs = 5
+        static let buffersPerLog = 50
+    }
     private var captureStartDate: Date?
     private var requestedDuration: TimeInterval = 0
    
@@ -167,7 +171,7 @@ actor AVAudioCaptureService {
         guard !bufferObservers.isEmpty else { return }
         bufferNotificationsLogged += 1
         buffersSinceLastLog += 1
-        if bufferNotificationsLogged <= 5 || buffersSinceLastLog >= 50 {
+        if bufferNotificationsLogged <= LogConstants.initialBufferLogs || buffersSinceLastLog >= LogConstants.buffersPerLog {
             FileLogger.log(
                 category: "AVAudioCaptureService",
                 message: "notifyBufferObservers total=\(bufferNotificationsLogged) recent=\(buffersSinceLastLog) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
