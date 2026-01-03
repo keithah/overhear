@@ -464,7 +464,7 @@ actor TranscriptStore {
                     let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
                     FileLogger.log(
                         category: "TranscriptStore",
-                        message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix)"
+                        message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix). Transcripts may be unreadable after restart"
                     )
                     return KeyStorage.ephemeralKeyBox.key
                 }

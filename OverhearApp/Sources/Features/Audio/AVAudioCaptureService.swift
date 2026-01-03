@@ -45,8 +45,16 @@ actor AVAudioCaptureService {
     private var bufferNotificationsLogged = 0
     private var buffersSinceLastLog = 0
     private enum LogConstants {
-        static let initialBufferLogs = 5
-        static let buffersPerLog = 50
+        static let initialBufferLogs: Int = {
+            let raw = UserDefaults.standard.integer(forKey: "overhear.capture.initialBufferLogs")
+            let clamped = min(max(raw, 1), 100)
+            return clamped > 0 ? clamped : 5
+        }()
+        static let buffersPerLog: Int = {
+            let raw = UserDefaults.standard.integer(forKey: "overhear.capture.buffersPerLog")
+            let clamped = min(max(raw, 10), 500)
+            return clamped > 0 ? clamped : 50
+        }()
     }
     private var captureStartDate: Date?
     private var requestedDuration: TimeInterval = 0

@@ -545,11 +545,13 @@ final class MeetingRecordingManager: ObservableObject {
                 }
                 let retried = await attemptRetry()
                 if !retried && healthRetries > maxHealthRetries {
-                    break
+                    notesSaveState = .failed("Health check retry limit exceeded")
+                    return
                 }
                 try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
                 if healthRetries > maxHealthRetries {
-                    break
+                    notesSaveState = .failed("Health check retry limit exceeded")
+                    return
                 }
             }
         }
