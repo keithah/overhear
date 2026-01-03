@@ -119,7 +119,7 @@ final class MeetingRecordingManager: ObservableObject {
     private let maxHealthElapsedSeconds: TimeInterval = {
         let value = UserDefaults.standard.double(forKey: "overhear.notesHealthMaxElapsedSeconds")
         let clamped = min(max(value, 300), 7200) // 5 minutes to 2 hours
-        return clamped > 0 ? clamped : 1800 // default 30 minutes
+        return clamped > 0 ? clamped : 300 // default 5 minutes
     }()
     nonisolated static func shouldRetryNotes(
         pendingNotes: String?,
@@ -482,7 +482,6 @@ final class MeetingRecordingManager: ObservableObject {
             } else {
                 FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes after retries: \(error.localizedDescription)")
                 notesRetryTask = nil
-                pendingNotes = nil
                 notesSaveState = .failed(error.localizedDescription)
             }
         }

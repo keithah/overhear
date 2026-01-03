@@ -843,7 +843,10 @@ struct LiveNotesView: View {
         guard let summary = coordinator.summary else { return }
         let bullets = (summary.summary.isEmpty ? [] : [summary.summary])
             + summary.highlights
-            + summary.actionItems.map { "Action: \($0.description)\( ($0.owner?.isEmpty == false) ? " [\($0.owner!)]" : "")" }
+            + summary.actionItems.map { action in
+                let ownerSuffix = action.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
+                return "Action: \(action.description)\(String(ownerSuffix))"
+            }
         let text = bullets.joined(separator: "\n")
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -990,8 +993,8 @@ struct LiveNotesView: View {
                     if !summary.actionItems.isEmpty {
                         lines.append("\n## Action Items")
                         summary.actionItems.forEach { item in
-                            let owner = (item.owner?.isEmpty == false) ? " [\(item.owner!)]" : ""
-                            lines.append("- \(item.description)\(owner)")
+                            let owner = item.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
+                            lines.append("- \(item.description)\(String(owner))")
                         }
                     }
                 }
@@ -1359,7 +1362,10 @@ struct LiveNotesManagerView: View {
         guard let summary = manager.summary else { return }
         let bullets = (summary.summary.isEmpty ? [] : [summary.summary])
             + summary.highlights
-            + summary.actionItems.map { "Action: \($0.description)\( ($0.owner?.isEmpty == false) ? " [\($0.owner!)]" : "")" }
+            + summary.actionItems.map { action in
+                let ownerSuffix = action.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
+                return "Action: \(action.description)\(String(ownerSuffix))"
+            }
         let text = bullets.joined(separator: "\n")
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
