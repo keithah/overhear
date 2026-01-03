@@ -125,7 +125,9 @@ actor LocalLLMPipeline {
 
     private func setDownloading(_ progress: Double, generation: Int) {
         guard generation == warmupGeneration else { return }
-        state = .downloading(progress)
+        if state != .downloading(progress) {
+            state = .downloading(progress)
+        }
         if !hasLoggedDownloadStart {
             hasLoggedDownloadStart = true
             FileLogger.log(category: logCategory, message: "MLX download started (model=\(modelID))")

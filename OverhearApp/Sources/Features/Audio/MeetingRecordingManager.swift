@@ -5,7 +5,6 @@ import os.log
 import FluidAudio
 #endif
 
-@MainActor
 struct TokenTimingSnapshot: Codable, Hashable, Sendable {
     let start: TimeInterval
     let end: TimeInterval
@@ -166,12 +165,14 @@ final class MeetingRecordingManager: ObservableObject {
         let clamped = min(max(value, minimum), maximum)
         return clamped > 0 ? clamped : defaultValue
     }
+    // Default stall threshold tuned for FluidAudio streaming; 8s balances latency vs spurious stalls.
     private let stallThresholdSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
         forKey: ConfigKeys.stallThreshold,
         min: 2,
         max: 120,
         defaultValue: 8
     )
+    // Allow first token up to 30s to account for model warmup on slower machines.
     private let firstTokenGracePeriod: TimeInterval = MeetingRecordingManager.clampedInterval(
         forKey: ConfigKeys.firstTokenGrace,
         min: 5,
@@ -414,7 +415,6 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     private func restoreFileLoggingPreference() {
-        // Runs on @MainActor; keep actor isolation to access stored properties safely.
         if fileLogTemporarilyEnabled {
             UserDefaults.standard.removeObject(forKey: "overhear.enableFileLogs")
         } else if let original = originalFileLogSetting {
@@ -431,7 +431,7 @@ final class MeetingRecordingManager: ObservableObject {
         streamingTask?.cancel()
 #endif
         transcriptionTask?.cancel()
-        // Do not call async work from deinit; startRecording/stopRecording invoke restoration.
+        // Do not call async work from deinit; startRecording/stopRecording perform cleanup.
     }
 
     var displayTitle: String {

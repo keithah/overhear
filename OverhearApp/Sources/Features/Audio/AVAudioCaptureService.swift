@@ -177,7 +177,7 @@ actor AVAudioCaptureService {
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
         guard isRecording else { return }
         guard !bufferObservers.isEmpty else { return }
-        bufferNotificationsLogged &+= 1
+        bufferNotificationsLogged += 1
         buffersSinceLastLog += 1
         if bufferNotificationsLogged > 10_000_000 {
             bufferNotificationsLogged = 0
