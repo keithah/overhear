@@ -48,11 +48,7 @@ actor LocalLLMPipeline {
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
     private let logCategory = "LocalLLMPipeline"
     private let warmupTimeout: TimeInterval
-    private let downloadWatchdogDelay: TimeInterval = {
-        let value = UserDefaults.standard.double(forKey: "overhear.mlxDownloadWatchdogDelay")
-        let resolved = value > 0 ? value : 2
-        return min(max(resolved, 1.0), 60.0) // clamp to sensible bounds
-    }()
+    private let downloadWatchdogDelay: TimeInterval
     private let failureCooldown: TimeInterval
     private(set) var state: State
     private var downloadWatchTask: Task<Void, Never>?
@@ -78,10 +74,18 @@ actor LocalLLMPipeline {
 
     init(client: MLXClient?) {
         self.client = client
+        let watchdogOverride = UserDefaults.standard.double(forKey: "overhear.mlxDownloadWatchdogDelay")
+        let resolvedWatchdog = watchdogOverride > 0 ? watchdogOverride : 2
+        self.downloadWatchdogDelay = min(max(resolvedWatchdog, 1.0), 60.0) // clamp to sensible bounds
+
         let overrideTimeout = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
         let rawTimeout = overrideTimeout > 0 ? overrideTimeout : 900
         // Prevent misconfiguration from disabling warmup or hanging forever.
-        self.warmupTimeout = min(max(rawTimeout, 60.0), 3600.0)
+        let clampedWarmupTimeout = min(max(rawTimeout, 60.0), 3600.0)
+        if clampedWarmupTimeout != rawTimeout {
+            logger.warning("Warmup timeout override \(rawTimeout, privacy: .public)s clamped to \(clampedWarmupTimeout, privacy: .public)s")
+        }
+        self.warmupTimeout = clampedWarmupTimeout
 
         let overrideCooldown = UserDefaults.standard.double(forKey: "overhear.mlxFailureCooldown")
         let rawCooldown = overrideCooldown > 0 ? overrideCooldown : 300

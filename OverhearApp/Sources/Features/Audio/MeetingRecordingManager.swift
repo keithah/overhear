@@ -84,7 +84,7 @@ final class MeetingRecordingManager: ObservableObject {
     private(set) var transcriptID: String?
     private var pendingNotes: String?
     private var originalFileLogSetting: Bool?
-    private var hadFileLogPreference = false
+    private var fileLogTemporarilyEnabled = false
     private var notesRetryTask: Task<Void, Never>?
     private var notesRetryAttempts = 0
     private let maxNotesRetryAttempts: Int = {
@@ -216,10 +216,17 @@ final class MeetingRecordingManager: ObservableObject {
     /// Start recording the meeting
     /// - Parameter duration: Maximum recording duration in seconds (default 3600 = 1 hour)
     func startRecording(duration: TimeInterval = 3600) async {
-        // Force-enable file logging during captures so real-session diagnostics are always written.
-        hadFileLogPreference = UserDefaults.standard.object(forKey: "overhear.enableFileLogs") != nil
-        originalFileLogSetting = UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
-        UserDefaults.standard.set(true, forKey: "overhear.enableFileLogs")
+        // Enable file logging for this session only if no preference is set.
+        let defaults = UserDefaults.standard
+        let fileLogsKey = "overhear.enableFileLogs"
+        if defaults.object(forKey: fileLogsKey) == nil {
+            originalFileLogSetting = nil
+            fileLogTemporarilyEnabled = true
+            defaults.set(true, forKey: fileLogsKey)
+            FileLogger.log(category: "MeetingRecordingManager", message: "File logging enabled for this session (no prior preference set)")
+        } else {
+            originalFileLogSetting = defaults.bool(forKey: fileLogsKey)
+        }
         FileLogger.log(
             category: "MeetingRecordingManager",
             message: "startRecording requested (meetingID=\(meetingID) title=\(meetingTitle) duration=\(duration)s)"
@@ -319,10 +326,10 @@ final class MeetingRecordingManager: ObservableObject {
         notesSaveState = .idle
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = nil
-        if hadFileLogPreference {
-            UserDefaults.standard.set(originalFileLogSetting ?? false, forKey: "overhear.enableFileLogs")
-        } else {
+        if fileLogTemporarilyEnabled {
             UserDefaults.standard.removeObject(forKey: "overhear.enableFileLogs")
+        } else if let original = originalFileLogSetting {
+            UserDefaults.standard.set(original, forKey: "overhear.enableFileLogs")
         }
         FileLogger.log(
             category: "MeetingRecordingManager",
@@ -499,6 +506,14 @@ final class MeetingRecordingManager: ObservableObject {
                             category: "MeetingRecordingManager",
                             message: "Notes health check still waiting for transcriptID; skipping retries"
                         )
+                        // Keep waiting but log progress; exit if we've waited too long overall.
+                    }
+                    if transcriptWaits >= maxTranscriptWaits {
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: "Notes health check giving up waiting for transcriptID after \(transcriptWaits) intervals"
+                        )
+                        notesSaveState = .failed("Transcript ID unavailable")
                         return
                     }
                     try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
@@ -837,12 +852,13 @@ extension MeetingRecordingManager {
     }
 
     func startStreamingMonitor() {
-        streamingMonitorTask?.cancel()
-        streamingMonitorTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                guard let start = streamingStartDate else { return }
-                guard streamingManager != nil, streamingTask != nil else { return }
+            streamingMonitorTask?.cancel()
+            await streamingMonitorTask?.value
+            streamingMonitorTask = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    guard let self else { return }
+                    guard let start = streamingStartDate else { return }
+                    guard streamingManager != nil, streamingTask != nil else { return }
                 // Grace period to allow first token before we declare a stall.
                 if !loggedFirstStreamingToken && Date().timeIntervalSince(start) < firstTokenGracePeriod {
                     try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
@@ -856,6 +872,7 @@ extension MeetingRecordingManager {
                             message: "Streaming stalled before first token after \(firstTokenGracePeriod)s"
                         )
                         preTokenStallLogged = true
+                        continue
                     }
                 }
                 let last = streamingLastUpdate ?? start

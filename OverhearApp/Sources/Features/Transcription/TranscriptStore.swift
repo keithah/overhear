@@ -414,11 +414,6 @@ actor TranscriptStore {
                     category: "TranscriptStore",
                     message: "Using ephemeral in-memory encryption key (Keychain bypass active\(reasonSuffix))"
                 )
-            } else if keychainBypassReason == nil {
-                FileLogger.log(
-                    category: "TranscriptStore",
-                    message: "Keychain bypass active (tests/CI); ephemeral key in use"
-                )
             }
             return ephemeralKey
         }
