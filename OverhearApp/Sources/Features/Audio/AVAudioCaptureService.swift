@@ -136,9 +136,9 @@ actor AVAudioCaptureService {
         guard isRecording else { return }
         guard let targetURL = outputURL else {
             await log("stopCapture failed - missing output URL")
-        await finalizeRecording(result: .failure(Error.captureFailed("Missing output file")))
-        return
-    }
+            await finalizeRecording(result: .failure(Error.captureFailed("Missing output file")))
+            return
+        }
         let shouldMarkStoppedEarly: Bool
         if let startedAt = captureStartDate {
             shouldMarkStoppedEarly = Date().timeIntervalSince(startedAt) < requestedDuration

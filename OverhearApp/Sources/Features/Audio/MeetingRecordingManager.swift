@@ -407,6 +407,9 @@ final class MeetingRecordingManager: ObservableObject {
         notesHealthCheckTask?.cancel()
         await notesHealthCheckTask?.value
         notesHealthCheckTask = nil
+        streamingMonitorTask?.cancel()
+        await streamingMonitorTask?.value
+        streamingMonitorTask = nil
         restoreFileLoggingPreference()
         FileLogger.log(
             category: "MeetingRecordingManager",
