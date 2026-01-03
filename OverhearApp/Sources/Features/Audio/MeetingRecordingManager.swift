@@ -163,6 +163,10 @@ final class MeetingRecordingManager: ObservableObject {
     private static func clampedInterval(forKey key: String, min minimum: TimeInterval, max maximum: TimeInterval, defaultValue: TimeInterval) -> TimeInterval {
         let value = UserDefaults.standard.double(forKey: key)
         let clamped = min(max(value, minimum), maximum)
+        if value != 0, clamped != value {
+            Logger(subsystem: "com.overhear.app", category: "MeetingRecordingManager.Config")
+                .warning("\(key, privacy: .public) override \(value, privacy: .public)s clamped to \(clamped, privacy: .public)s")
+        }
         return clamped > 0 ? clamped : defaultValue
     }
     // Default stall threshold tuned for FluidAudio streaming; 8s balances latency vs spurious stalls.
@@ -305,6 +309,7 @@ final class MeetingRecordingManager: ObservableObject {
         // Enable file logging for this session only if no preference is set.
         let defaults = UserDefaults.standard
         let fileLogsKey = "overhear.enableFileLogs"
+        var restoreLogsOnExit = false
         if defaults.object(forKey: fileLogsKey) == nil {
             originalFileLogSetting = nil
             fileLogTemporarilyEnabled = true
@@ -313,6 +318,7 @@ final class MeetingRecordingManager: ObservableObject {
         } else {
             originalFileLogSetting = defaults.bool(forKey: fileLogsKey)
         }
+        restoreLogsOnExit = true
         FileLogger.log(
             category: "MeetingRecordingManager",
             message: "startRecording requested (meetingID=\(meetingID) title=\(meetingTitle) duration=\(duration)s)"
@@ -321,6 +327,18 @@ final class MeetingRecordingManager: ObservableObject {
             category: "MeetingRecordingManager",
             message: "Audio capture mode: mic-only (system/output capture not yet wired)"
         )
+
+        defer {
+            // If we exited early (e.g., error before stopRecording), restore any temp logging change.
+            if restoreLogsOnExit {
+                switch status {
+                case .capturing, .transcribing, .completed:
+                    break
+                default:
+                    restoreFileLoggingPreference()
+                }
+            }
+        }
 
         status = .capturing
         captureStartTime = Date()
@@ -397,7 +415,6 @@ final class MeetingRecordingManager: ObservableObject {
         }
         streamingMonitorTask?.cancel()
         await streamingMonitorTask?.value
-        status = .completed
         notesRetryTask?.cancel()
         await notesRetryTask?.value
         notesSaveTask?.cancel()
@@ -411,6 +428,7 @@ final class MeetingRecordingManager: ObservableObject {
         await streamingMonitorTask?.value
         streamingMonitorTask = nil
         restoreFileLoggingPreference()
+        status = .completed
         FileLogger.log(
             category: "MeetingRecordingManager",
             message: "stopRecording completed; status=\(status)"
