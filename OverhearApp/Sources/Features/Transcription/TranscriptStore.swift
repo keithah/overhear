@@ -466,7 +466,7 @@ actor TranscriptStore {
                 return newKey
             } else {
                 // CI runners often have an inaccessible Keychain; fall back to ephemeral only for expected access-denied cases.
-                if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || isRunningTests {
+                if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable {
                     let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
                     FileLogger.log(
                         category: "TranscriptStore",

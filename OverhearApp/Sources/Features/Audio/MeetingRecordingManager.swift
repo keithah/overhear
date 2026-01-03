@@ -105,6 +105,7 @@ final class MeetingRecordingManager: ObservableObject {
         let clamped = min(max(value, 1), 600) // cap at 600 intervals
         return clamped > 0 ? clamped : 120
     }()
+    private let transcriptWaitLogIntervalCount = 12
     private let maxHealthRetries: Int = {
         let value = UserDefaults.standard.integer(forKey: "overhear.notesHealthMaxRetries")
         let clamped = min(max(value, 1), 200)
@@ -459,7 +460,6 @@ final class MeetingRecordingManager: ObservableObject {
     @MainActor
     func startNotesHealthCheck() {
         let intervalSeconds = notesHealthIntervalSeconds
-        let transcriptWaitLogInterval = 12
         notesHealthCheckTask?.cancel()
         notesHealthCheckTask = Task { @MainActor [weak self] in
             var transcriptWaits = 0
@@ -509,7 +509,7 @@ final class MeetingRecordingManager: ObservableObject {
                 if Task.isCancelled { return }
                 guard transcriptID != nil else {
                     transcriptWaits += 1
-                    if transcriptWaits.isMultiple(of: transcriptWaitLogInterval) {
+                    if transcriptWaits.isMultiple(of: transcriptWaitLogIntervalCount) {
                         FileLogger.log(
                             category: "MeetingRecordingManager",
                             message: "Notes health check still waiting for transcriptID; skipping retries"
