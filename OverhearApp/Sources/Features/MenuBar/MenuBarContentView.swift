@@ -325,6 +325,7 @@ struct LiveNotesView: View {
     @State private var showTranscript = true
     @State private var showNotes = true
     @State private var showAI = true
+    @State private var notesDebounceTask: Task<Void, Never>?
     @State private var isRegenerating = false
     @State private var notesPrefilled = false
     @State private var llmStateDescription: String = "Checking…"
@@ -692,8 +693,12 @@ struct LiveNotesView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
                     .onChange(of: coordinator.liveNotes) { _, newValue in
-                        // Manual notes persistence best-effort
-                        Task { await coordinator.saveNotes(newValue) }
+                        notesDebounceTask?.cancel()
+                        notesDebounceTask = Task { @MainActor [weak coordinator] in
+                            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms debounce
+                            guard let coordinator else { return }
+                            await coordinator.saveNotes(newValue)
+                        }
                     }
             }
         }
