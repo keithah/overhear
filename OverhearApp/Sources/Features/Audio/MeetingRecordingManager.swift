@@ -160,21 +160,35 @@ final class MeetingRecordingManager: ObservableObject {
     private var streamingUpdateCount = 0
     private var loggedFirstStreamingToken = false
     private var isRegeneratingSummary = false
-    private let stallThresholdSeconds: TimeInterval = {
-        let value = UserDefaults.standard.double(forKey: "overhear.streamingStallThreshold")
-        let clamped = min(max(value, 2), 120) // 2-120s
-        return clamped > 0 ? clamped : 8
-    }()
-    private let firstTokenGracePeriod: TimeInterval = {
-        let value = UserDefaults.standard.double(forKey: "overhear.streamingFirstTokenGrace")
-        let clamped = min(max(value, 5), 120) // 5-120s
-        return clamped > 0 ? clamped : 30
-    }()
-    private let monitorIntervalSeconds: TimeInterval = {
-        let value = UserDefaults.standard.double(forKey: "overhear.streamingMonitorInterval")
-        let clamped = min(max(value, 1), 30) // 1-30s
-        return clamped > 0 ? clamped : 2
-    }()
+    private static func clampedInterval(forKey key: String, min minimum: TimeInterval, max maximum: TimeInterval, defaultValue: TimeInterval) -> TimeInterval {
+        let value = UserDefaults.standard.double(forKey: key)
+        let clamped = min(max(value, minimum), maximum)
+        return clamped > 0 ? clamped : defaultValue
+    }
+    private let stallThresholdSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
+        forKey: "overhear.streamingStallThreshold",
+        min: 2,
+        max: 120,
+        defaultValue: 8
+    )
+    private let firstTokenGracePeriod: TimeInterval = MeetingRecordingManager.clampedInterval(
+        forKey: "overhear.streamingFirstTokenGrace",
+        min: 5,
+        max: 120,
+        defaultValue: 30
+    )
+    private let monitorIntervalSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
+        forKey: "overhear.streamingMonitorInterval",
+        min: 1,
+        max: 30,
+        defaultValue: 2
+    )
+    private let maxStreamingMonitorElapsed: TimeInterval = MeetingRecordingManager.clampedInterval(
+        forKey: "overhear.streamingMonitorMaxSeconds",
+        min: 60,
+        max: 4 * 3600,
+        defaultValue: 3600
+    )
 
     private var isStreamingEnabled: Bool {
         FluidAudioAdapter.isEnabled
@@ -883,6 +897,7 @@ extension MeetingRecordingManager {
         streamingTask?.cancel()
         streamingTask = nil
         streamingMonitorTask?.cancel()
+        await streamingMonitorTask?.value
         streamingMonitorTask = nil
 
         if let token = streamingObserverToken {
@@ -904,10 +919,18 @@ extension MeetingRecordingManager {
         let previous = streamingMonitorTask
         streamingMonitorTask = Task { @MainActor [weak self] in
             await previous?.value
+            let monitorStart = Date()
             while !Task.isCancelled {
                 guard let self else { return }
                 guard let start = streamingStartDate else { return }
                 guard streamingManager != nil, streamingTask != nil else { return }
+                if Date().timeIntervalSince(monitorStart) > maxStreamingMonitorElapsed {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Streaming monitor exceeded max elapsed time (\(Int(maxStreamingMonitorElapsed))s); exiting"
+                    )
+                    return
+                }
                 // Grace period to allow first token before we declare a stall.
                 if !loggedFirstStreamingToken && Date().timeIntervalSince(start) < firstTokenGracePeriod {
                     try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
@@ -1021,11 +1044,15 @@ extension MeetingRecordingManager {
         streamingUpdateCount &+= 1
         if streamingUpdateCount % 10 == 0 {
             let status = update.isConfirmed ? "confirmed" : "hypothesis"
-            FileLogger.log(
-                category: "MeetingRecordingManager",
-                message: "Streaming update (\(status)): \(update.text) [chars=\(update.text.count) tokens=\(update.tokenIds.count)]"
-            )
-            logger.debug("Streaming update (\(status)): \(update.text)")
+        let charCount = update.text.count
+        let tokenCount = update.tokenIds.count
+#if DEBUG
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "Streaming update (\(status)): [chars=\(charCount) tokens=\(tokenCount)]"
+        )
+#endif
+        logger.debug("Streaming update (\(status)): [chars=\(charCount) tokens=\(tokenCount)]")
         }
         applySpeakerLabelsIfPossible()
     }

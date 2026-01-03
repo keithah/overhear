@@ -182,12 +182,10 @@ actor AVAudioCaptureService {
         if bufferNotificationsLogged <= LogConstants.initialBufferLogs || buffersSinceLastLog >= LogConstants.buffersPerLog {
             let total = bufferNotificationsLogged
             let recent = buffersSinceLastLog
-            Task.detached(priority: .utility) {
-                FileLogger.log(
-                    category: "AVAudioCaptureService",
-                    message: "notifyBufferObservers total=\(total) recent=\(recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
-                )
-            }
+            FileLogger.log(
+                category: "AVAudioCaptureService",
+                message: "notifyBufferObservers total=\(total) recent=\(recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
+            )
             buffersSinceLastLog = 0
         }
         for observer in bufferObservers.values {
