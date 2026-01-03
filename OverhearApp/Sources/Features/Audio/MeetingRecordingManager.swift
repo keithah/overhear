@@ -229,6 +229,11 @@ final class MeetingRecordingManager: ObservableObject {
     /// - Parameter duration: Maximum recording duration in seconds (default 3600 = 1 hour)
     func startRecording(duration: TimeInterval = 3600) async {
         // Enable file logging for this session only if no preference is set.
+        defer {
+            if fileLogTemporarilyEnabled {
+                UserDefaults.standard.removeObject(forKey: "overhear.enableFileLogs")
+            }
+        }
         let defaults = UserDefaults.standard
         let fileLogsKey = "overhear.enableFileLogs"
         if defaults.object(forKey: fileLogsKey) == nil {
@@ -392,6 +397,9 @@ final class MeetingRecordingManager: ObservableObject {
     @MainActor
     private func performNotesSave(notes: String) async {
         // Serialize saves on the main actor with a simple re-entrancy guard.
+        if notesSaveTask == nil {
+            notesSaveInProgress = false // recover if task vanished unexpectedly
+        }
         guard !notesSaveInProgress else {
             FileLogger.log(category: "MeetingRecordingManager", message: "Notes save already in progress; skipping new request")
             return
@@ -450,6 +458,7 @@ final class MeetingRecordingManager: ObservableObject {
                     guard let self else { return }
                     if Task.isCancelled {
                         FileLogger.log(category: "MeetingRecordingManager", message: "Notes retry cancelled")
+                        notesSaveState = .idle
                         return
                     }
                     let latestNotes = pendingNotes ?? notes
@@ -467,8 +476,10 @@ final class MeetingRecordingManager: ObservableObject {
     @MainActor
     func startNotesHealthCheck() {
         let intervalSeconds = notesHealthIntervalSeconds
-        notesHealthCheckTask?.cancel()
+        let previous = notesHealthCheckTask
         notesHealthCheckTask = Task { @MainActor [weak self] in
+            // Ensure any prior task finishes before starting a new loop.
+            await previous?.value
             var transcriptWaits = 0
             var healthRetries = 0
             var iterations = 0
@@ -878,8 +889,9 @@ extension MeetingRecordingManager {
     }
 
     func startStreamingMonitor() {
-        streamingMonitorTask?.cancel()
+        let previous = streamingMonitorTask
         streamingMonitorTask = Task { @MainActor [weak self] in
+            await previous?.value
             while !Task.isCancelled {
                 guard let self else { return }
                 guard let start = streamingStartDate else { return }

@@ -395,7 +395,7 @@ actor TranscriptStore {
                 category: "TranscriptStore",
                 message: "CRITICAL: Keychain bypass attempted in release build"
             )
-            fatalError("Keychain bypass is only allowed in debug builds")
+            throw Error.keyManagementFailed("Keychain bypass is not allowed in production builds")
         }
 #endif
 
