@@ -700,6 +700,10 @@ struct LiveNotesView: View {
                             await coordinator.saveNotes(newValue)
                         }
                     }
+                    .onDisappear {
+                        notesDebounceTask?.cancel()
+                        notesDebounceTask = nil
+                    }
             }
         }
     }
@@ -849,8 +853,8 @@ struct LiveNotesView: View {
         let bullets = (summary.summary.isEmpty ? [] : [summary.summary])
             + summary.highlights
             + summary.actionItems.map { action in
-                let ownerSuffix = action.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
-                return "Action: \(action.description)\(String(ownerSuffix))"
+                let ownerSuffix: String = action.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
+                return "Action: \(action.description)\(ownerSuffix)"
             }
         let text = bullets.joined(separator: "\n")
         let pasteboard = NSPasteboard.general
@@ -998,8 +1002,8 @@ struct LiveNotesView: View {
                     if !summary.actionItems.isEmpty {
                         lines.append("\n## Action Items")
                         summary.actionItems.forEach { item in
-                            let owner = item.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
-                            lines.append("- \(item.description)\(String(owner))")
+                            let owner: String = item.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
+                            lines.append("- \(item.description)\(owner)")
                         }
                     }
                 }
@@ -1368,8 +1372,8 @@ struct LiveNotesManagerView: View {
         let bullets = (summary.summary.isEmpty ? [] : [summary.summary])
             + summary.highlights
             + summary.actionItems.map { action in
-                let ownerSuffix = action.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
-                return "Action: \(action.description)\(String(ownerSuffix))"
+                let ownerSuffix: String = action.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
+                return "Action: \(action.description)\(ownerSuffix)"
             }
         let text = bullets.joined(separator: "\n")
         let pasteboard = NSPasteboard.general

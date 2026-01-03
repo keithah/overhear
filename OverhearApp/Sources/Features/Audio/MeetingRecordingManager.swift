@@ -159,6 +159,7 @@ final class MeetingRecordingManager: ObservableObject {
     private var streamingStartDate: Date?
     private var streamingUpdateCount = 0
     private var loggedFirstStreamingToken = false
+    private var lastLabeledConfirmedCount = 0
     private var isRegeneratingSummary = false
     private enum ConfigKeys {
         static let stallThreshold = "overhear.streamingStallThreshold"
@@ -417,9 +418,9 @@ final class MeetingRecordingManager: ObservableObject {
 
     @MainActor
     private func performNotesSave(notes: String) async {
-        // Serialize saves on the main actor with a simple re-entrancy guard.
-        if notesSaveTask == nil {
-            notesSaveInProgress = false // recover if task vanished unexpectedly
+        // Serialize saves: if a save is in-flight, wait for it to finish before starting a new one.
+        if let existing = notesSaveTask {
+            await existing.value
         }
         guard !notesSaveInProgress else {
             FileLogger.log(category: "MeetingRecordingManager", message: "Notes save already in progress; skipping new request")
@@ -591,10 +592,6 @@ final class MeetingRecordingManager: ObservableObject {
                     return
                 }
                 try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
-                if healthRetries > maxHealthRetries {
-                    notesSaveState = .failed("Health check retry limit exceeded")
-                    return
-                }
             }
         }
     }
@@ -950,7 +947,6 @@ extension MeetingRecordingManager {
                             message: "Streaming stalled before first token after \(firstTokenGracePeriod)s"
                         )
                         preTokenStallLogged = true
-                        continue
                     }
                 }
                 let last = streamingLastUpdate ?? start
@@ -1086,10 +1082,17 @@ extension MeetingRecordingManager {
             return overlapBySpeaker.max(by: { $0.value < $1.value })?.key
         }
 
-        streamingConfirmedSegments = streamingConfirmedSegments.map { segment in
-            guard let speaker = label(for: segment) else { return segment }
-            return segment.assigningSpeaker(speaker)
+        if lastLabeledConfirmedCount > streamingConfirmedSegments.count {
+            lastLabeledConfirmedCount = 0
         }
+
+        for index in streamingConfirmedSegments.indices {
+            guard index >= lastLabeledConfirmedCount else { continue }
+            let segment = streamingConfirmedSegments[index]
+            guard let speaker = label(for: segment) else { continue }
+            streamingConfirmedSegments[index] = segment.assigningSpeaker(speaker)
+        }
+        lastLabeledConfirmedCount = streamingConfirmedSegments.count
 
         var combined = streamingConfirmedSegments
         if let hyp = streamingHypothesis {

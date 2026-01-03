@@ -350,18 +350,15 @@ actor TranscriptStore {
     nonisolated private static var isKeychainBypassed: Bool {
         let env = ProcessInfo.processInfo.environment
         let truthy: Set<String> = ["1", "true", "TRUE", "True"]
-        let bypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? ""
-        return truthy.contains(bypass)
-    }
-
-    nonisolated private static var isRunningTests: Bool {
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        guard truthy.contains(env["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? "") else { return false }
+        let isCI = (env["CI"] == "true") && (env["GITHUB_ACTIONS"] == "true")
+        let isRunningTests = env["XCTestConfigurationFilePath"] != nil
+        return isCI || isRunningTests
     }
 
     nonisolated private static var keychainBypassReason: String? {
-        guard isKeychainBypassed || isRunningTests else { return nil }
-        if isKeychainBypassed { return "OVERHEAR_INSECURE_NO_KEYCHAIN" }
-        return isRunningTests ? "XCTestConfigurationFilePath" : nil
+        guard isKeychainBypassed else { return nil }
+        return "OVERHEAR_INSECURE_NO_KEYCHAIN"
     }
     
     // MARK: - Encryption
@@ -389,8 +386,8 @@ actor TranscriptStore {
     /// ephemeral key instead. In production this persists to the Keychain.
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
 #if !DEBUG
-        // Never allow bypass in release builds, even if tests/env are spoofed.
-        if isKeychainBypassed || isRunningTests {
+        // Never allow bypass in release builds, even if env is spoofed.
+        if isKeychainBypassed {
             FileLogger.log(
                 category: "TranscriptStore",
                 message: "CRITICAL: Keychain bypass attempted in release build"
@@ -400,7 +397,7 @@ actor TranscriptStore {
 #endif
 
         // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
-        if isKeychainBypassed || isRunningTests {
+        if isKeychainBypassed {
             let ephemeralKey = KeyStorage.ephemeralKeyBox.key
             let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
             if KeyStorage.shouldLogBypass() {
@@ -461,6 +458,9 @@ actor TranscriptStore {
             } else {
                 if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable {
 #if DEBUG
+                    guard isKeychainBypassed else {
+                        throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)); explicit bypass + CI/test required even in debug")
+                    }
                     let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
                     FileLogger.log(
                         category: "TranscriptStore",
