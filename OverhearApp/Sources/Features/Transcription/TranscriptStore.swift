@@ -459,14 +459,17 @@ actor TranscriptStore {
             if addStatus == errSecSuccess {
                 return newKey
             } else {
-                // CI runners often have an inaccessible Keychain; fall back to ephemeral only for expected access-denied cases.
                 if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable {
+#if DEBUG
                     let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
                     FileLogger.log(
                         category: "TranscriptStore",
                         message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix). Transcripts may be unreadable after restart"
                     )
                     return KeyStorage.ephemeralKeyBox.key
+#else
+                    throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)) and bypass is not permitted in production")
+#endif
                 }
 
                 throw Error.keyManagementFailed("Failed to store encryption key in Keychain: status \(addStatus)")

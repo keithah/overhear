@@ -481,6 +481,7 @@ final class MeetingRecordingManager: ObservableObject {
         notesHealthCheckTask = Task { @MainActor [weak self] in
             // Ensure any prior task finishes before starting a new loop.
             await previous?.value
+            let healthStart = Date()
             var transcriptWaits = 0
             var healthRetries = 0
             var iterations = 0
@@ -513,7 +514,9 @@ final class MeetingRecordingManager: ObservableObject {
                 )
                 guard let latest = pendingNotes else { return false }
                 await self.performNotesSave(notes: latest)
-                healthRetries = 0
+                if pendingNotes == nil && self.notesSaveState == .idle {
+                    healthRetries = 0
+                }
                 return true
             }
             // Immediate check before the first sleep to avoid waiting when notes are already pending.
@@ -526,6 +529,14 @@ final class MeetingRecordingManager: ObservableObject {
                         category: "MeetingRecordingManager",
                         message: "Notes health check exceeded max iterations (\(maxHealthIterations)); exiting to avoid infinite loop"
                     )
+                    return
+                }
+                if Date().timeIntervalSince(healthStart) > maxHealthElapsedSeconds {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Notes health check exceeded max elapsed time (\(Int(maxHealthElapsedSeconds))s); exiting"
+                    )
+                    notesSaveState = .failed("Health check timed out")
                     return
                 }
                 switch status {
