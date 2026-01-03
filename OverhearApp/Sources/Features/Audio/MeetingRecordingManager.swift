@@ -116,6 +116,11 @@ final class MeetingRecordingManager: ObservableObject {
         let clamped = min(max(value, 1), 200)
         return clamped > 0 ? clamped : 50
     }()
+    private let maxHealthElapsedSeconds: TimeInterval = {
+        let value = UserDefaults.standard.double(forKey: "overhear.notesHealthMaxElapsedSeconds")
+        let clamped = min(max(value, 300), 7200) // 5 minutes to 2 hours
+        return clamped > 0 ? clamped : 1800 // default 30 minutes
+    }()
     nonisolated static func shouldRetryNotes(
         pendingNotes: String?,
         state: NotesSaveState,
@@ -230,11 +235,6 @@ final class MeetingRecordingManager: ObservableObject {
     /// - Parameter duration: Maximum recording duration in seconds (default 3600 = 1 hour)
     func startRecording(duration: TimeInterval = 3600) async {
         // Enable file logging for this session only if no preference is set.
-        defer {
-            if fileLogTemporarilyEnabled {
-                UserDefaults.standard.removeObject(forKey: "overhear.enableFileLogs")
-            }
-        }
         let defaults = UserDefaults.standard
         let fileLogsKey = "overhear.enableFileLogs"
         if defaults.object(forKey: fileLogsKey) == nil {
