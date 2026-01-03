@@ -103,6 +103,7 @@ actor LocalLLMPipeline {
         if let task = warmupTask {
             task.cancel()
             await task.value
+            warmupTask = nil
         }
 
         warmupGeneration &+= 1

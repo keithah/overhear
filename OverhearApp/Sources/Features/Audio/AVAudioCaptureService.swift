@@ -78,7 +78,7 @@ actor AVAudioCaptureService {
 
             do {
                 try file.write(from: buffer)
-                Task { @MainActor [weak self] in
+                Task { [weak self] in
                     guard let self else { return }
                     await self.notifyBufferObservers(buffer: bufferCopy)
                 }
@@ -177,8 +177,14 @@ actor AVAudioCaptureService {
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
         guard isRecording else { return }
         guard !bufferObservers.isEmpty else { return }
-        bufferNotificationsLogged += 1
+        bufferNotificationsLogged &+= 1
         buffersSinceLastLog += 1
+        if bufferNotificationsLogged > 10_000_000 {
+            bufferNotificationsLogged = 0
+        }
+        if buffersSinceLastLog > 10_000_000 {
+            buffersSinceLastLog = 0
+        }
         if bufferNotificationsLogged <= LogConstants.initialBufferLogs || buffersSinceLastLog >= LogConstants.buffersPerLog {
             let total = bufferNotificationsLogged
             let recent = buffersSinceLastLog
@@ -188,7 +194,8 @@ actor AVAudioCaptureService {
             )
             buffersSinceLastLog = 0
         }
-        for observer in bufferObservers.values {
+        let observers = bufferObservers.values
+        for observer in observers {
             guard let copy = buffer.cloned() else { continue }
             observer(copy)
         }

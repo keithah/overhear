@@ -358,7 +358,10 @@ actor TranscriptStore {
 
     nonisolated private static var keychainBypassReason: String? {
         guard isKeychainBypassed else { return nil }
-        return "OVERHEAR_INSECURE_NO_KEYCHAIN"
+        let env = ProcessInfo.processInfo.environment
+        if env["OVERHEAR_INSECURE_NO_KEYCHAIN"] != nil { return "OVERHEAR_INSECURE_NO_KEYCHAIN" }
+        if env["XCTestConfigurationFilePath"] != nil { return "XCTestConfigurationFilePath" }
+        return "CI/GitHubActions"
     }
     
     // MARK: - Encryption

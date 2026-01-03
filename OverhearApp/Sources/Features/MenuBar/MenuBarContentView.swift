@@ -1408,8 +1408,8 @@ struct LiveNotesManagerView: View {
                 if !summary.actionItems.isEmpty {
                     lines.append("\n## Action Items")
                     summary.actionItems.forEach { item in
-                        let owner = (item.owner?.isEmpty == false) ? " [\(item.owner!)]" : ""
-                        lines.append("- \(item.description)\(owner)")
+                        let ownerSuffix: String = item.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
+                        lines.append("- \(item.description)\(ownerSuffix)")
                     }
                 }
             }
