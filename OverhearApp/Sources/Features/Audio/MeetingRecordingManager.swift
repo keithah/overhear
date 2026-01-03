@@ -152,6 +152,7 @@ final class MeetingRecordingManager: ObservableObject {
     private var streamingHypothesis: LiveTranscriptSegment?
     private var consecutiveEmptyStreamingUpdates = 0
     private var streamingStartDate: Date?
+    private var streamingUpdateCount = 0
     private var loggedFirstStreamingToken = false
     private var isRegeneratingSummary = false
     private let stallThresholdSeconds: TimeInterval = {
@@ -1006,12 +1007,15 @@ extension MeetingRecordingManager {
             .joined(separator: "\n")
 
         liveTranscript = transcript
-        let status = update.isConfirmed ? "confirmed" : "hypothesis"
-        FileLogger.log(
-            category: "MeetingRecordingManager",
-            message: "Streaming update (\(status)): \(update.text) [chars=\(update.text.count) tokens=\(update.tokenIds.count)]"
-        )
-        logger.debug("Streaming update (\(status)): \(update.text)")
+        streamingUpdateCount &+= 1
+        if streamingUpdateCount % 10 == 0 {
+            let status = update.isConfirmed ? "confirmed" : "hypothesis"
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Streaming update (\(status)): \(update.text) [chars=\(update.text.count) tokens=\(update.tokenIds.count)]"
+            )
+            logger.debug("Streaming update (\(status)): \(update.text)")
+        }
         applySpeakerLabelsIfPossible()
     }
 
