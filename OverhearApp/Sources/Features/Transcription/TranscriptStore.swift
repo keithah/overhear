@@ -377,6 +377,7 @@ actor TranscriptStore {
 
     private enum KeyStorage {
         static let ephemeralKeyBox = EphemeralKeyBox(key: SymmetricKey(size: .bits256))
+        private static let insecureKeyDefaultsKey = "overhear.insecureTranscriptKey"
         nonisolated(unsafe) private static var didLogBypass = false
         private static let logLock = NSLock()
 
@@ -386,6 +387,19 @@ actor TranscriptStore {
             if didLogBypass { return false }
             didLogBypass = true
             return true
+        }
+
+        /// Persists an insecure key outside the Keychain so transcripts remain readable across restarts
+        /// when bypassing secure storage. This is intentionally insecure and only used when bypassing.
+        static func insecurePersistedKey() -> SymmetricKey {
+            let defaults = UserDefaults.standard
+            if let data = defaults.data(forKey: insecureKeyDefaultsKey), data.count == 32 {
+                return SymmetricKey(data: data)
+            }
+            let key = SymmetricKey(size: .bits256)
+            let keyData = key.withUnsafeBytes { Data($0) }
+            defaults.set(keyData, forKey: insecureKeyDefaultsKey)
+            return key
         }
     }
     
@@ -406,15 +420,15 @@ actor TranscriptStore {
 
         // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
         if isKeychainBypassed {
-            let ephemeralKey = KeyStorage.ephemeralKeyBox.key
+            let insecureKey = KeyStorage.insecurePersistedKey()
             let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
             if KeyStorage.shouldLogBypass() {
                 FileLogger.log(
                     category: "TranscriptStore",
-                    message: "Using ephemeral in-memory encryption key (Keychain bypass active\(reasonSuffix))"
+                    message: "Using insecure persisted encryption key (Keychain bypass active\(reasonSuffix)); transcripts are NOT encrypted at rest"
                 )
             }
-            return ephemeralKey
+            return insecureKey
         }
 
         let keyTag = "com.overhear.app.transcripts.key"

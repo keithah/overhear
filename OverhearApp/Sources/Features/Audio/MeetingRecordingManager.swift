@@ -1117,7 +1117,12 @@ extension MeetingRecordingManager {
         if let hyp = streamingHypothesis {
             segments.append(hyp)
         }
-        liveSegments = segments
+        // Trim live segments to avoid unbounded growth during very long sessions.
+        if segments.count > 1000 {
+            liveSegments = Array(segments.suffix(1000))
+        } else {
+            liveSegments = segments
+        }
 
         let transcript = segments
             .map(\.text)
@@ -1126,7 +1131,7 @@ extension MeetingRecordingManager {
 
         liveTranscript = transcript
         streamingUpdateCount &+= 1
-        if streamingUpdateCount % 10 == 0 {
+        if streamingUpdateCount % 100 == 0 {
             let status = update.isConfirmed ? "confirmed" : "hypothesis"
             let charCount = update.text.count
             let tokenCount = update.tokenIds.count
