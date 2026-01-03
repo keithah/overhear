@@ -101,10 +101,13 @@ actor LocalLLMPipeline {
     /// Warms the local model (best-effort). Safe to call multiple times.
     func warmup() async {
         if let task = warmupTask {
+            warmupTask = nil
             task.cancel()
             await task.value
-            warmupTask = nil
         }
+        downloadWatchTask?.cancel()
+        await downloadWatchTask?.value
+        downloadWatchTask = nil
 
         warmupGeneration &+= 1
         let generation = warmupGeneration
@@ -325,7 +328,7 @@ actor LocalLLMPipeline {
                 // Run warmup and a timeout sentinel in parallel; whichever finishes first cancels the other.
                 group.addTask {
                     try await client.warmup(progress: { [weak self] progress in
-                        Task { [weak self] in
+                        Task { @MainActor [weak self] in
                             guard let self else { return }
                             await self.runIfCurrentGeneration(generation) {
                                 await self.setDownloading(progress, generation: generation)

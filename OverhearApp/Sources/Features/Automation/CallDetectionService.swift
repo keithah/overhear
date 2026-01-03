@@ -271,6 +271,7 @@ final class CallDetectionService {
     /// Fall back to detecting native meeting apps when they are running in the background
     /// (non-frontmost) but the microphone is active. This helps catch minimized/behind other
     /// windows sessions without relying on browser URL heuristics.
+    @MainActor
     private func handleBackgroundDetection(excluding bundleID: String?) async -> Bool {
         guard isMicActive else { return false }
         guard let preferences else { return false }

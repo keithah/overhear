@@ -424,8 +424,6 @@ final class MeetingRecordingManager: ObservableObject {
         notesHealthCheckTask?.cancel()
         await notesHealthCheckTask?.value
         notesHealthCheckTask = nil
-        streamingMonitorTask?.cancel()
-        await streamingMonitorTask?.value
         streamingMonitorTask = nil
         restoreFileLoggingPreference()
         status = .completed
@@ -609,6 +607,7 @@ final class MeetingRecordingManager: ObservableObject {
             _ = await attemptRetry()
             while !Task.isCancelled {
                 guard let self else { return }
+                if Task.isCancelled { return }
                 if Date().timeIntervalSince(healthStart) > maxHealthElapsedSeconds {
                     FileLogger.log(
                         category: "MeetingRecordingManager",
@@ -629,6 +628,11 @@ final class MeetingRecordingManager: ObservableObject {
                 case .capturing, .transcribing:
                     break
                 default:
+                    // If notes are still pending, keep the loop alive to allow final persistence.
+                    if pendingNotes != nil {
+                        try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                        continue
+                    }
                     return
                 }
                 if Task.isCancelled { return }
@@ -639,7 +643,7 @@ final class MeetingRecordingManager: ObservableObject {
                     category: "MeetingRecordingManager",
                     message: "Notes health check still waiting for transcriptID; skipping retries"
                 )
-                        // Keep waiting but log progress; exit if we've waited too long overall.
+                        // Keep waiting and periodically log progress; subsequent check exits if we've waited too long overall.
                     }
                     if transcriptWaits >= maxTranscriptWaits {
                         FileLogger.log(
@@ -652,14 +656,16 @@ final class MeetingRecordingManager: ObservableObject {
                     try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
                     continue
                 }
-            let retried = await attemptRetry()
-            if !retried && healthRetries > maxHealthRetries {
-                notesSaveState = .failed("Health check retry limit exceeded")
-                return
+                if Task.isCancelled { return }
+                let retried = await attemptRetry()
+                if !retried && healthRetries > maxHealthRetries {
+                    notesSaveState = .failed("Health check retry limit exceeded")
+                    return
+                }
+                try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                if Task.isCancelled { return }
             }
-            try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
         }
-    }
     }
     
     // MARK: - Private

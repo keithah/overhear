@@ -252,6 +252,10 @@ actor TranscriptStore {
         
         // Fallback to plaintext legacy JSON
         if let transcript = try? decoder.decode(StoredTranscript.self, from: data) {
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "Loaded plaintext transcript fallback (legacy/unencrypted data)"
+            )
             return transcript
         }
         
@@ -351,7 +355,7 @@ actor TranscriptStore {
         let env = ProcessInfo.processInfo.environment
         let truthy: Set<String> = ["1", "true", "TRUE", "True"]
         guard truthy.contains(env["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? "") else { return false }
-        let isCI = (env["CI"] == "true") && (env["GITHUB_ACTIONS"] == "true")
+        let isCI = (env["CI"] == "true") && (env["GITHUB_ACTIONS"] == "true") && env["GITHUB_RUNNER_NAME"] != nil
         let isRunningTests = env["XCTestConfigurationFilePath"] != nil
         return isCI || isRunningTests
     }
@@ -361,7 +365,8 @@ actor TranscriptStore {
         let env = ProcessInfo.processInfo.environment
         if env["OVERHEAR_INSECURE_NO_KEYCHAIN"] != nil { return "OVERHEAR_INSECURE_NO_KEYCHAIN" }
         if env["XCTestConfigurationFilePath"] != nil { return "XCTestConfigurationFilePath" }
-        return "CI/GitHubActions"
+        if env["GITHUB_RUNNER_NAME"] != nil { return "CI/GitHubActions" }
+        return nil
     }
     
     // MARK: - Encryption
@@ -499,6 +504,10 @@ actor TranscriptStore {
             let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
             return try AES.GCM.open(sealedBox, using: key)
         } catch {
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "Decryption failed; attempting plaintext decode as fallback"
+            )
             throw Error.decryptionFailed(error.localizedDescription)
         }
     }
