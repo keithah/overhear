@@ -324,6 +324,7 @@ final class MeetingRecordingManager: ObservableObject {
             transcriptionTask?.cancel()
         }
         streamingMonitorTask?.cancel()
+        await streamingMonitorTask?.value
         status = .completed
         notesRetryTask?.cancel()
         await notesRetryTask?.value
@@ -332,6 +333,7 @@ final class MeetingRecordingManager: ObservableObject {
         pendingNotes = nil
         notesSaveState = .idle
         notesHealthCheckTask?.cancel()
+        await notesHealthCheckTask?.value
         notesHealthCheckTask = nil
         if fileLogTemporarilyEnabled {
             UserDefaults.standard.removeObject(forKey: "overhear.enableFileLogs")
@@ -382,6 +384,7 @@ final class MeetingRecordingManager: ObservableObject {
         await performNotesSave(notes: notes)
     }
 
+    @MainActor
     private func performNotesSave(notes: String) async {
         // Serialize saves on the main actor with a simple re-entrancy guard.
         guard !notesSaveInProgress else {
@@ -389,14 +392,13 @@ final class MeetingRecordingManager: ObservableObject {
             return
         }
         notesSaveInProgress = true
-        let task = Task { @MainActor [weak self] in
+        notesSaveTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { notesSaveTask = nil; notesSaveInProgress = false }
             if Task.isCancelled { return }
             await self.performNotesSaveInternal(notes: notes)
         }
-        notesSaveTask = task
-        await task.value
+        await notesSaveTask?.value
     }
 
     private func performNotesSaveInternal(notes: String) async {
