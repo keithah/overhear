@@ -364,6 +364,9 @@ actor TranscriptStore {
         if let bypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"], truthy.contains(bypass) {
             return "OVERHEAR_INSECURE_NO_KEYCHAIN"
         }
+        if isRunningTests {
+            return "XCTestConfigurationFilePath"
+        }
         return nil
     }
     

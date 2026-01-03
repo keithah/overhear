@@ -710,6 +710,7 @@ extension MeetingRecordingManager {
                     if !loggedFirstStreamingToken, let start = streamingStartDate {
                         let delta = Date().timeIntervalSince(start)
                         loggedFirstStreamingToken = true
+                        preTokenStallLogged = false
                         FileLogger.log(
                             category: "MeetingRecordingManager",
                             message: String(format: "First streaming update after %.2fs", delta)
