@@ -372,6 +372,7 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     private func performNotesSaveInternal(notes: String) async {
+        if Task.isCancelled { return }
         guard let transcriptID = transcriptID else {
             FileLogger.log(category: "MeetingRecordingManager", message: "Deferring notes persist until transcriptID is available")
             return
@@ -454,6 +455,9 @@ final class MeetingRecordingManager: ObservableObject {
                     message: "Notes pending persist while idle/failed; triggering retry (healthRetries=\(healthRetries))"
                 )
                 await self.performNotesSave(notes: pendingNotes)
+                if pendingNotes == nil {
+                    healthRetries = 0
+                }
                 return true
             }
             // Immediate check before the first sleep to avoid waiting when notes are already pending.
