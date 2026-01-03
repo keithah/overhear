@@ -100,6 +100,11 @@ final class MeetingRecordingManager: ObservableObject {
         let clamped = min(max(value, 1), 60) // 1-60s
         return clamped > 1 ? clamped : 5
     }()
+    private let maxTranscriptWaits: Int = {
+        let value = UserDefaults.standard.integer(forKey: "overhear.notesMaxTranscriptWaits")
+        let clamped = min(max(value, 1), 600) // cap at 600 intervals
+        return clamped > 0 ? clamped : 120
+    }()
     private let maxHealthRetries: Int = {
         let value = UserDefaults.standard.integer(forKey: "overhear.notesHealthMaxRetries")
         let clamped = min(max(value, 1), 200)
@@ -855,13 +860,12 @@ extension MeetingRecordingManager {
     }
 
     func startStreamingMonitor() {
-            streamingMonitorTask?.cancel()
-            await streamingMonitorTask?.value
-            streamingMonitorTask = Task { @MainActor [weak self] in
-                while !Task.isCancelled {
-                    guard let self else { return }
-                    guard let start = streamingStartDate else { return }
-                    guard streamingManager != nil, streamingTask != nil else { return }
+        streamingMonitorTask?.cancel()
+        streamingMonitorTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                guard let start = streamingStartDate else { return }
+                guard streamingManager != nil, streamingTask != nil else { return }
                 // Grace period to allow first token before we declare a stall.
                 if !loggedFirstStreamingToken && Date().timeIntervalSince(start) < firstTokenGracePeriod {
                     try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
