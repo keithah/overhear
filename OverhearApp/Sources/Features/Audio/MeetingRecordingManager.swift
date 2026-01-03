@@ -160,31 +160,37 @@ final class MeetingRecordingManager: ObservableObject {
     private var streamingUpdateCount = 0
     private var loggedFirstStreamingToken = false
     private var isRegeneratingSummary = false
+    private enum ConfigKeys {
+        static let stallThreshold = "overhear.streamingStallThreshold"
+        static let firstTokenGrace = "overhear.streamingFirstTokenGrace"
+        static let monitorInterval = "overhear.streamingMonitorInterval"
+        static let monitorMaxSeconds = "overhear.streamingMonitorMaxSeconds"
+    }
     private static func clampedInterval(forKey key: String, min minimum: TimeInterval, max maximum: TimeInterval, defaultValue: TimeInterval) -> TimeInterval {
         let value = UserDefaults.standard.double(forKey: key)
         let clamped = min(max(value, minimum), maximum)
         return clamped > 0 ? clamped : defaultValue
     }
     private let stallThresholdSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
-        forKey: "overhear.streamingStallThreshold",
+        forKey: ConfigKeys.stallThreshold,
         min: 2,
         max: 120,
         defaultValue: 8
     )
     private let firstTokenGracePeriod: TimeInterval = MeetingRecordingManager.clampedInterval(
-        forKey: "overhear.streamingFirstTokenGrace",
+        forKey: ConfigKeys.firstTokenGrace,
         min: 5,
         max: 120,
         defaultValue: 30
     )
     private let monitorIntervalSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
-        forKey: "overhear.streamingMonitorInterval",
+        forKey: ConfigKeys.monitorInterval,
         min: 1,
         max: 30,
         defaultValue: 2
     )
     private let maxStreamingMonitorElapsed: TimeInterval = MeetingRecordingManager.clampedInterval(
-        forKey: "overhear.streamingMonitorMaxSeconds",
+        forKey: ConfigKeys.monitorMaxSeconds,
         min: 60,
         max: 4 * 3600,
         defaultValue: 3600
@@ -1044,15 +1050,15 @@ extension MeetingRecordingManager {
         streamingUpdateCount &+= 1
         if streamingUpdateCount % 10 == 0 {
             let status = update.isConfirmed ? "confirmed" : "hypothesis"
-        let charCount = update.text.count
-        let tokenCount = update.tokenIds.count
+            let charCount = update.text.count
+            let tokenCount = update.tokenIds.count
 #if DEBUG
-        FileLogger.log(
-            category: "MeetingRecordingManager",
-            message: "Streaming update (\(status)): [chars=\(charCount) tokens=\(tokenCount)]"
-        )
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Streaming update (\(status)): [chars=\(charCount) tokens=\(tokenCount)]"
+            )
 #endif
-        logger.debug("Streaming update (\(status)): [chars=\(charCount) tokens=\(tokenCount)]")
+            logger.debug("Streaming update (\(status)): [chars=\(charCount) tokens=\(tokenCount)]")
         }
         applySpeakerLabelsIfPossible()
     }
