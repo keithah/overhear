@@ -478,7 +478,7 @@ actor TranscriptStore {
             if addStatus == errSecSuccess {
                 return newKey
             } else {
-                if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable {
+                if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || addStatus == errSecAuthFailed {
 #if DEBUG
                     guard isKeychainBypassed else {
                         throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)); explicit bypass + CI/test required even in debug")

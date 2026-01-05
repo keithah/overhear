@@ -526,11 +526,11 @@ final class MeetingRecordingManager: ObservableObject {
             pendingNotes = nil
             lastNotesSavedAt = Date()
             notesRetryAttempts = 0
-            notesRetryTask = nil
-            lastNotesError = nil
-            notesSaveState = .idle
-        } catch {
-            notesRetryAttempts += 1
+        notesRetryTask = nil
+        lastNotesError = nil
+        notesSaveState = .idle
+    } catch {
+        notesRetryAttempts += 1
             lastNotesError = error.localizedDescription
             if notesRetryAttempts <= maxNotesRetryAttempts {
                 let delaySeconds = pow(2.0, Double(notesRetryAttempts - 1))
@@ -574,6 +574,10 @@ final class MeetingRecordingManager: ObservableObject {
             func attemptRetry() async -> Bool {
                 guard let self else { return false }
                 guard pendingNotes != nil else { return false }
+                // If a manual save just succeeded, reset health retries so we do not hit the cap unnecessarily.
+                if notesSaveState == .idle {
+                    healthRetries = 0
+                }
                 let state = notesSaveState
                 let hasRetry = notesRetryTask != nil
                 let hasSave = notesSaveTask != nil
@@ -608,6 +612,7 @@ final class MeetingRecordingManager: ObservableObject {
             _ = await attemptRetry()
             while !Task.isCancelled {
                 guard let self else { return }
+                iterations += 1
                 if Task.isCancelled { return }
                 if Date().timeIntervalSince(healthStart) > maxHealthElapsedSeconds {
                     FileLogger.log(
@@ -617,7 +622,6 @@ final class MeetingRecordingManager: ObservableObject {
                     notesSaveState = .failed("Health check timed out")
                     return
                 }
-                iterations += 1
                 if iterations > maxHealthIterations {
                     FileLogger.log(
                         category: "MeetingRecordingManager",

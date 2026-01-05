@@ -151,6 +151,7 @@ actor AVAudioCaptureService {
     private func finalizeRecording(result: Result<CaptureResult, Swift.Error>) async {
         guard isRecording else { return }
         isRecording = false
+        // Remove tap to stop audio callbacks and allow buffers to drain before notifying observers.
         engine.inputNode.removeTap(onBus: 0)
         bufferObservers.removeAll()
         engine.stop()
