@@ -182,10 +182,7 @@ actor AVAudioCaptureService {
         if bufferNotificationsLogged > 10_000_000 {
             bufferNotificationsLogged = 0
         }
-        if buffersSinceLastLog > 10_000_000 {
-            buffersSinceLastLog = 0
-        }
-        if bufferNotificationsLogged <= LogConstants.initialBufferLogs || buffersSinceLastLog >= LogConstants.buffersPerLog {
+        if bufferNotificationsLogged <= LogConstants.initialBufferLogs || (bufferNotificationsLogged % LogConstants.buffersPerLog) == 0 {
             let total = bufferNotificationsLogged
             let recent = buffersSinceLastLog
             FileLogger.log(

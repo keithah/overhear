@@ -493,7 +493,7 @@ struct LiveNotesView: View {
                     }
                 }
                 Button("Troubleshoot transcription issues") {
-                    if let url = URL(string: "https://help.granola.ai/article/transcription") {
+                    if let url = URL(string: "https://overhear.app/support/transcription") {
                         NSWorkspace.shared.open(url)
                     }
                 }
