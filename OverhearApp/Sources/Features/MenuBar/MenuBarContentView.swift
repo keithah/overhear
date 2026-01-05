@@ -1216,6 +1216,9 @@ struct LiveNotesManagerView: View {
                     .onChange(of: liveNotes) { _, newValue in
                         Task { await manager.saveNotes(newValue) }
                     }
+                    .onDisappear {
+                        Task { await manager.saveNotes(liveNotes) }
+                    }
             }
         }
         .onAppear {

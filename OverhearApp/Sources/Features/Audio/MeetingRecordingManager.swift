@@ -564,6 +564,7 @@ final class MeetingRecordingManager: ObservableObject {
         let previous = notesHealthCheckTask
         notesHealthCheckTask = Task { @MainActor [weak self] in
             // Ensure any prior task finishes before starting a new loop.
+            previous?.cancel()
             await previous?.value
             let healthStart = Date()
             var transcriptWaits = 0
