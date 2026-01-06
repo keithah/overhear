@@ -44,6 +44,7 @@ actor AVAudioCaptureService {
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
     private var bufferNotificationsLogged = 0
     private var buffersSinceLastLog = 0
+    private let maxBufferNotificationCount = 10_000_000
     private enum LogConstants {
         static let initialBufferLogs: Int = {
             let raw = UserDefaults.standard.integer(forKey: "overhear.capture.initialBufferLogs")
@@ -182,7 +183,7 @@ actor AVAudioCaptureService {
         guard !bufferObservers.isEmpty else { return }
         bufferNotificationsLogged += 1
         buffersSinceLastLog += 1
-        if bufferNotificationsLogged > 10_000_000 {
+        if bufferNotificationsLogged > maxBufferNotificationCount {
             bufferNotificationsLogged = 0
         }
         if bufferNotificationsLogged <= LogConstants.initialBufferLogs || (bufferNotificationsLogged % LogConstants.buffersPerLog) == 0 {
