@@ -193,7 +193,8 @@ actor AVAudioCaptureService {
             buffersSinceLastLog = 0
         }
         // Snapshot observers under the isRecording guard so any late tap callbacks
-        // still notify the observers that were active before stopCapture().
+        // still notify the observers that were active before stopCapture(). If stopCapture()
+        // clears observers between the guard and snapshot, late buffers are intentionally dropped.
         let observers = Array(bufferObservers.values)
         for observer in observers {
             guard let copy = buffer.cloned() else { continue }

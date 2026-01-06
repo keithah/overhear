@@ -151,9 +151,9 @@ actor LocalLLMPipeline {
             if downloadWatchGeneration != generation {
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
-                downloadWatchGeneration = generation
             }
             guard downloadWatchTask == nil else { return }
+            downloadWatchGeneration = generation
             downloadWatchTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64((self?.downloadWatchdogDelay ?? 2) * 1_000_000_000))
                 await self?.handleDownloadWatchdog(generation: generation)

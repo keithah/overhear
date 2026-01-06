@@ -121,6 +121,7 @@ final class MeetingRecordingManager: ObservableObject {
     let meetingTitle: String
     private let meetingDate: Date
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingManager")
+    private static let configLogger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingManager.Config")
     
     private var captureStartTime: Date?
     private var transcriptionTask: Task<Void, Never>?
@@ -161,40 +162,35 @@ final class MeetingRecordingManager: ObservableObject {
         static let monitorInterval = "overhear.streamingMonitorInterval"
         static let monitorMaxSeconds = "overhear.streamingMonitorMaxSeconds"
     }
-    private static func clampedInterval(forKey key: String, min minimum: TimeInterval, max maximum: TimeInterval, defaultValue: TimeInterval) -> TimeInterval {
-        let value = UserDefaults.standard.double(forKey: key)
-        let clamped = min(max(value, minimum), maximum)
-        if value != 0, clamped != value {
-            Logger(subsystem: "com.overhear.app", category: "MeetingRecordingManager.Config")
-                .warning("\(key, privacy: .public) override \(value, privacy: .public)s clamped to \(clamped, privacy: .public)s")
-        }
-        return clamped > 0 ? clamped : defaultValue
-    }
     // Default stall threshold tuned for FluidAudio streaming; 8s balances latency vs spurious stalls.
     private let stallThresholdSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
         forKey: ConfigKeys.stallThreshold,
+        defaultValue: 8,
         min: 2,
         max: 120,
-        defaultValue: 8
+        logger: MeetingRecordingManager.configLogger
     )
     // Allow first token up to 30s to account for model warmup on slower machines.
     private let firstTokenGracePeriod: TimeInterval = MeetingRecordingManager.clampedInterval(
         forKey: ConfigKeys.firstTokenGrace,
+        defaultValue: 30,
         min: 5,
         max: 120,
-        defaultValue: 30
+        logger: MeetingRecordingManager.configLogger
     )
     private let monitorIntervalSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
         forKey: ConfigKeys.monitorInterval,
+        defaultValue: 2,
         min: 1,
         max: 30,
-        defaultValue: 2
+        logger: MeetingRecordingManager.configLogger
     )
     private let maxStreamingMonitorElapsed: TimeInterval = MeetingRecordingManager.clampedInterval(
         forKey: ConfigKeys.monitorMaxSeconds,
+        defaultValue: 4 * 3600,
         min: 60,
-        max: 4 * 3600,
-        defaultValue: 3600
+        max: 8 * 3600,
+        logger: MeetingRecordingManager.configLogger
     )
 
     private var isStreamingEnabled: Bool {
@@ -1139,7 +1135,7 @@ extension MeetingRecordingManager {
         if streamingUpdateCount > 10_000_000 {
             streamingUpdateCount = 0
         }
-        if streamingUpdateCount <= 5 || streamingUpdateCount % 100 == 0 {
+        if (streamingUpdateCount > 0 && streamingUpdateCount <= 5) || streamingUpdateCount % 100 == 0 {
             let status = update.isConfirmed ? "confirmed" : "hypothesis"
             let charCount = update.text.count
             let tokenCount = update.tokenIds.count
@@ -1253,10 +1249,10 @@ private actor NotesSaveQueue {
     func enqueue(_ operation: @escaping @MainActor () async -> Void) async {
         let previous = lastTask
         let task = Task {
-            _ = await previous?.result
+            await previous?.value
             await operation()
         }
         lastTask = task
-        _ = await task.result
+        await task.value
     }
 }
