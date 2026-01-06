@@ -94,6 +94,7 @@ final class MeetingRecordingManager: ObservableObject {
     private let notesHealthIntervalSeconds: TimeInterval
     private let maxHealthIterations: Int
     private let maxTranscriptWaits: Int
+    // Log transcriptID wait progress roughly once per minute at the default 5s interval.
     private let transcriptWaitLogIntervalCount = 12
     private let maxHealthRetries: Int
     private let maxHealthElapsedSeconds: TimeInterval

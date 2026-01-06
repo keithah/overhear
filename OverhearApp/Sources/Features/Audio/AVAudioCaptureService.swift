@@ -181,11 +181,8 @@ actor AVAudioCaptureService {
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
         guard isRecording else { return }
         guard !bufferObservers.isEmpty else { return }
-        bufferNotificationsLogged += 1
+        bufferNotificationsLogged &+= 1
         buffersSinceLastLog += 1
-        if bufferNotificationsLogged > maxBufferNotificationCount {
-            bufferNotificationsLogged = 0
-        }
         if bufferNotificationsLogged <= LogConstants.initialBufferLogs || (bufferNotificationsLogged % LogConstants.buffersPerLog) == 0 {
             let total = bufferNotificationsLogged
             let recent = buffersSinceLastLog
