@@ -489,6 +489,7 @@ final class MeetingRecordingManager: ObservableObject {
         }
     }
 
+    @MainActor
     private func performNotesSaveInternal(notes: String) async {
         if Task.isCancelled { return }
         guard let transcriptID = transcriptID else {
@@ -1001,7 +1002,13 @@ extension MeetingRecordingManager {
                 default:
                     return
                 }
-                guard let start = streamingStartDate else { return }
+                guard let start = streamingStartDate else {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Streaming monitor exiting early: missing streamingStartDate"
+                    )
+                    return
+                }
                 guard streamingManager != nil, streamingTask != nil else { return }
                 if Date().timeIntervalSince(monitorStart) > maxStreamingMonitorElapsed {
                     FileLogger.log(
@@ -1128,7 +1135,7 @@ extension MeetingRecordingManager {
 
         liveTranscript = transcript
         streamingUpdateCount &+= 1
-        if streamingUpdateCount % 100 == 0 {
+        if streamingUpdateCount <= 5 || streamingUpdateCount % 100 == 0 {
             let status = update.isConfirmed ? "confirmed" : "hypothesis"
             let charCount = update.text.count
             let tokenCount = update.tokenIds.count
@@ -1153,9 +1160,10 @@ extension MeetingRecordingManager {
             let minTiming = timings.map(\.start).min() ?? 0
             let maxTiming = timings.map(\.end).max() ?? 0
             var overlapBySpeaker: [String: TimeInterval] = [:]
+            // Assumes speakerSegments sorted by start time; if not, we continue scanning all.
             for diarization in speakerSegments {
                 if diarization.end < minTiming { continue }
-                if diarization.start > maxTiming { break }
+                if diarization.start > maxTiming { continue }
                 let diarizationRange = diarization.start...diarization.end
                 for timing in timings {
                     let tokenRange = timing.start...timing.end
@@ -1236,7 +1244,15 @@ private extension MeetingRecordingManager {
 }
 
 private actor NotesSaveQueue {
+    private var lastTask: Task<Void, Never>?
+
     func enqueue(_ operation: @escaping @MainActor () async -> Void) async {
-        await operation()
+        let previous = lastTask
+        let task = Task {
+            _ = await previous?.result
+            await operation()
+        }
+        lastTask = task
+        _ = await task.result
     }
 }

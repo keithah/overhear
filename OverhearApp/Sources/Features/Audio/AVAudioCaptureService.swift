@@ -78,7 +78,7 @@ actor AVAudioCaptureService {
 
             do {
                 try file.write(from: buffer)
-                Task { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self else { return }
                     await self.notifyBufferObservers(buffer: bufferCopy)
                 }
@@ -155,8 +155,8 @@ actor AVAudioCaptureService {
         isRecording = false
         // Remove tap to stop audio callbacks; guard against late notifications with isRecording flag.
         engine.inputNode.removeTap(onBus: 0)
-        bufferObservers.removeAll()
         engine.stop()
+        bufferObservers.removeAll()
         durationTask?.cancel()
         durationTask = nil
 
