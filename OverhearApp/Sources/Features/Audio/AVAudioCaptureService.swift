@@ -117,6 +117,7 @@ actor AVAudioCaptureService {
         }
     }
 
+    /// Registers a buffer observer. Observers are cleared automatically when capture stops.
     func registerBufferObserver(_ observer: @escaping AudioBufferObserver) -> UUID {
         let id = UUID()
         bufferObservers[id] = observer
@@ -127,6 +128,7 @@ actor AVAudioCaptureService {
         return id
     }
 
+    /// Unregisters a previously registered buffer observer.
     func unregisterBufferObserver(_ id: UUID) {
         bufferObservers.removeValue(forKey: id)
     }
@@ -192,7 +194,7 @@ actor AVAudioCaptureService {
             )
             buffersSinceLastLog = 0
         }
-        let observers = bufferObservers.values
+        let observers = Array(bufferObservers.values)
         for observer in observers {
             guard let copy = buffer.cloned() else { continue }
             observer(copy)

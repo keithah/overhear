@@ -82,15 +82,15 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
     private var pendingNotes: String?
-    private var notesSaveInProgress = false
+    private var notesSaveRunning = false
     private var originalFileLogSetting: Bool?
     private var fileLogTemporarilyEnabled = false
     private var notesRetryTask: Task<Void, Never>?
     private var notesRetryAttempts = 0
     private let maxNotesRetryAttempts: Int
     private var notesHealthCheckTask: Task<Void, Never>?
-    private var notesSaveTask: Task<Void, Never>?
     private var lastNotesError: String?
+    private let notesSaveQueue = NotesSaveQueue()
     private let notesHealthIntervalSeconds: TimeInterval
     private let maxHealthIterations: Int
     private let maxTranscriptWaits: Int
@@ -417,8 +417,6 @@ final class MeetingRecordingManager: ObservableObject {
         await streamingMonitorTask?.value
         notesRetryTask?.cancel()
         await notesRetryTask?.value
-        notesSaveTask?.cancel()
-        await notesSaveTask?.value
         pendingNotes = nil
         notesSaveState = .idle
         notesHealthCheckTask?.cancel()
@@ -444,7 +442,6 @@ final class MeetingRecordingManager: ObservableObject {
     deinit {
         notesRetryTask?.cancel()
         notesHealthCheckTask?.cancel()
-        notesSaveTask?.cancel()
 #if canImport(FluidAudio)
         streamingMonitorTask?.cancel()
         streamingTask?.cancel()
@@ -482,22 +479,14 @@ final class MeetingRecordingManager: ObservableObject {
 
     @MainActor
     private func performNotesSave(notes: String) async {
-        // Serialize saves: if a save is in-flight, wait for it to finish before starting a new one.
-        if let existing = notesSaveTask {
-            await existing.value
-        }
-        guard !notesSaveInProgress else {
-            FileLogger.log(category: "MeetingRecordingManager", message: "Notes save already in progress; skipping new request")
-            return
-        }
-        notesSaveInProgress = true
-        notesSaveTask = Task { @MainActor [weak self] in
+        await notesSaveQueue.enqueue {
+            [weak self] in
             guard let self else { return }
-            defer { notesSaveTask = nil; notesSaveInProgress = false }
             if Task.isCancelled { return }
+            self.notesSaveRunning = true
+            defer { self.notesSaveRunning = false }
             await self.performNotesSaveInternal(notes: notes)
         }
-        await notesSaveTask?.value
     }
 
     private func performNotesSaveInternal(notes: String) async {
@@ -526,10 +515,12 @@ final class MeetingRecordingManager: ObservableObject {
             pendingNotes = nil
             lastNotesSavedAt = Date()
             notesRetryAttempts = 0
-        notesRetryTask = nil
-        lastNotesError = nil
-        notesSaveState = .idle
-    } catch {
+            notesRetryTask = nil
+            lastNotesError = nil
+            notesSaveState = .idle
+            // Successful save clears any accumulated health retries.
+            notesHealthCheckTask.map { _ in () }
+        } catch {
         notesRetryAttempts += 1
             lastNotesError = error.localizedDescription
             if notesRetryAttempts <= maxNotesRetryAttempts {
@@ -580,7 +571,7 @@ final class MeetingRecordingManager: ObservableObject {
                 }
                 let state = notesSaveState
                 let hasRetry = notesRetryTask != nil
-                let hasSave = notesSaveTask != nil
+                let hasSave = notesSaveRunning
                 guard Self.shouldRetryNotes(
                     pendingNotes: pendingNotes,
                     state: state,
@@ -937,6 +928,7 @@ extension MeetingRecordingManager {
         }
     }
 
+    /// Attempt to restart live streaming transcription after a stall. No-op if streaming is disabled or not active.
     func restartStreaming() async {
         guard isStreamingEnabled else { return }
         switch status {
@@ -1240,5 +1232,11 @@ private extension MeetingRecordingManager {
         let sanitized = raw.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
         let result = String(sanitized).trimmingCharacters(in: CharacterSet(charactersIn: "._"))
         return result.isEmpty ? "meeting" : result
+    }
+}
+
+private actor NotesSaveQueue {
+    func enqueue(_ operation: @escaping @MainActor () async -> Void) async {
+        await operation()
     }
 }

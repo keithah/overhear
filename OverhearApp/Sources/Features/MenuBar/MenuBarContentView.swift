@@ -943,7 +943,8 @@ struct LiveNotesView: View {
         llmStatePollTask?.cancel()
         guard !llmIsReady else { return }
         llmStatePollTask = Task { @MainActor in
-            let pollIntervalSeconds = 5.0
+            // Fallback polling in case state notifications are missed; prefer notification-driven updates.
+            let pollIntervalSeconds = 10.0
             let maxWarmupSeconds = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
             let resolvedMaxSeconds = maxWarmupSeconds > 0 ? maxWarmupSeconds : 900
             let maxAttempts = Int(resolvedMaxSeconds / pollIntervalSeconds)
@@ -1123,7 +1124,7 @@ struct LiveNotesManagerView: View {
                     }
                 }
                 Button("Troubleshoot transcription issues") {
-                    if let url = URL(string: "https://help.granola.ai/article/transcription") {
+                    if let url = URL(string: "https://overhear.app/support/transcription") {
                         NSWorkspace.shared.open(url)
                     }
                 }

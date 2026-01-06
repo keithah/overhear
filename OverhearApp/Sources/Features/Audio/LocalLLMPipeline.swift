@@ -272,6 +272,7 @@ actor LocalLLMPipeline {
         return state
     }
 
+    /// Returns the current pipeline state and recent warmup metadata for UI consumption.
     nonisolated func snapshot() async -> (state: State, lastReadyAt: Date?, lastWarmupDuration: TimeInterval?) {
         await (state, lastReadyAt, lastWarmupDuration)
     }
