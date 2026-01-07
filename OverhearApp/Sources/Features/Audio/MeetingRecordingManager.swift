@@ -341,7 +341,7 @@ final class MeetingRecordingManager: ObservableObject {
         captureStartTime = Date()
         liveTranscript = ""
         liveSegments = []
-        startNotesHealthCheck()
+        await startNotesHealthCheck()
 #if canImport(FluidAudio)
         streamingConfirmedSegments = []
         streamingHypothesis = nil
