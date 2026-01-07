@@ -83,6 +83,7 @@ final class MeetingRecordingManager: ObservableObject {
     private(set) var transcriptID: String?
     private var pendingNotes: String?
     private var isNotesSaveRunning = false
+    private var notesHealthGeneration: Int = 0
     private var originalFileLogSetting: Bool?
     private var fileLogTemporarilyEnabled = false
     private var notesRetryTask: Task<Void, Never>?
@@ -160,7 +161,6 @@ final class MeetingRecordingManager: ObservableObject {
         static let stallThreshold = "overhear.streamingStallThreshold"
         static let firstTokenGrace = "overhear.streamingFirstTokenGrace"
         static let monitorInterval = "overhear.streamingMonitorInterval"
-        static let monitorMaxSeconds = "overhear.streamingMonitorMaxSeconds"
     }
     // Default stall threshold tuned for FluidAudio streaming; 8s balances latency vs spurious stalls.
     private let stallThresholdSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
@@ -183,13 +183,6 @@ final class MeetingRecordingManager: ObservableObject {
         defaultValue: 2,
         min: 1,
         max: 30,
-        logger: MeetingRecordingManager.configLogger
-    )
-    private let maxStreamingMonitorElapsed: TimeInterval = MeetingRecordingManager.clampedInterval(
-        forKey: ConfigKeys.monitorMaxSeconds,
-        defaultValue: 4 * 3600,
-        min: 60,
-        max: 8 * 3600,
         logger: MeetingRecordingManager.configLogger
     )
 
@@ -515,10 +508,9 @@ final class MeetingRecordingManager: ObservableObject {
             notesRetryTask = nil
             lastNotesError = nil
             notesSaveState = .idle
-            // Successful save clears any accumulated health retries.
-            notesHealthCheckTask.map { _ in () }
         } catch {
-        notesRetryAttempts += 1
+            if Task.isCancelled { return }
+            notesRetryAttempts += 1
             lastNotesError = error.localizedDescription
             if notesRetryAttempts <= maxNotesRetryAttempts {
                 let delaySeconds = pow(2.0, Double(notesRetryAttempts - 1))
@@ -553,7 +545,14 @@ final class MeetingRecordingManager: ObservableObject {
         previous?.cancel()
         await previous?.value
         if Task.isCancelled { return }
+
+        notesHealthGeneration &+= 1
+        let generation = notesHealthGeneration
+
         notesHealthCheckTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Ensure a newer health check task does not continue work.
+            guard generation == self.notesHealthGeneration else { return }
             let healthStart = Date()
             var transcriptWaits = 0
             var healthRetries = 0
@@ -602,6 +601,7 @@ final class MeetingRecordingManager: ObservableObject {
                 guard let self else { return }
                 iterations += 1
                 if Task.isCancelled { return }
+
                 if Date().timeIntervalSince(healthStart) > maxHealthElapsedSeconds {
                     FileLogger.log(
                         category: "MeetingRecordingManager",
@@ -621,7 +621,7 @@ final class MeetingRecordingManager: ObservableObject {
                 case .capturing, .transcribing:
                     break
                 default:
-                    // If notes are still pending, keep the loop alive to allow final persistence.
+                    // If notes are still pending, keep the loop alive briefly to allow final persistence.
                     if pendingNotes != nil {
                         try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
                         continue
@@ -987,81 +987,71 @@ extension MeetingRecordingManager {
 
     func startStreamingMonitor() {
         let previous = streamingMonitorTask
-        streamingMonitorTask = Task { @MainActor [weak self] in
+        streamingMonitorTask = Task.detached(priority: .utility) { [weak self] in
             await previous?.value
             let monitorStart = Date()
             while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64((self?.monitorIntervalSeconds ?? 2) * 1_000_000_000))
                 guard let self else { return }
-                guard isStreamingEnabled else { return }
-                switch status {
-                case .capturing, .transcribing:
-                    break
-                default:
-                    return
-                }
-                guard let start = streamingStartDate else {
-                    FileLogger.log(
-                        category: "MeetingRecordingManager",
-                        message: "Streaming monitor exiting early: missing streamingStartDate"
-                    )
-                    return
-                }
-                guard streamingManager != nil, streamingTask != nil else { return }
-                if Date().timeIntervalSince(monitorStart) > maxStreamingMonitorElapsed {
-                    FileLogger.log(
-                        category: "MeetingRecordingManager",
-                        message: "Streaming monitor exceeded max elapsed time (\(Int(maxStreamingMonitorElapsed))s); exiting"
-                    )
-                    return
-                }
-                // Grace period to allow first token before we declare a stall.
-                if !loggedFirstStreamingToken && Date().timeIntervalSince(start) < firstTokenGracePeriod {
-                    try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
-                    continue
-                } else if !loggedFirstStreamingToken && Date().timeIntervalSince(start) >= firstTokenGracePeriod {
-                    if !preTokenStallLogged {
-                        streamingHealth.state = .stalled
-                        streamingHealth.lastUpdate = Date()
-                        FileLogger.log(
-                            category: "MeetingRecordingManager",
-                            message: "Streaming stalled before first token after \(firstTokenGracePeriod)s"
-                        )
-                        preTokenStallLogged = true
-                    }
-                    // If we were stalled pre-token, keep waiting but sleep to avoid tight loop.
-                    try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
-                    continue
-                }
-                let last = streamingLastUpdate ?? start
-                let delta = Date().timeIntervalSince(last)
-                let previousState = streamingHealth.state
-                var newState = previousState
-                if delta > stallThresholdSeconds {
-                    if previousState != .stalled {
-                        FileLogger.log(
-                            category: "MeetingRecordingManager",
-                            message: String(format: "Streaming stalled; last update %.2fs ago", delta)
-                        )
-                    }
-                    newState = .stalled
-                } else {
-                    let targetState: StreamingHealth.State = loggedFirstStreamingToken ? .active : .connecting
-                    if previousState == .stalled && targetState != .stalled {
-                        FileLogger.log(
-                            category: "MeetingRecordingManager",
-                            message: "Streaming recovered after stall"
-                        )
-                    }
-                    newState = targetState
-                }
-                streamingHealth = StreamingHealth(
-                    state: newState,
-                    lastUpdate: streamingLastUpdate ?? Date(),
-                    firstTokenLatency: streamingHealth.firstTokenLatency
-                )
-                try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
+                await self.evaluateStreamingHealth(monitorStart: monitorStart)
             }
         }
+    }
+
+    @MainActor
+    private func evaluateStreamingHealth(monitorStart: Date) async {
+        guard isStreamingEnabled else { return }
+        guard case .capturing = status || status == .transcribing else { return }
+        guard let start = streamingStartDate else {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Streaming monitor exiting early: missing streamingStartDate"
+            )
+            return
+        }
+        guard streamingManager != nil, streamingTask != nil else { return }
+
+        // Grace period to allow first token before we declare a stall.
+        let now = Date()
+        if !loggedFirstStreamingToken {
+            let elapsed = now.timeIntervalSince(start)
+            if elapsed >= firstTokenGracePeriod {
+                if !preTokenStallLogged {
+                    streamingHealth.state = .stalled
+                    streamingHealth.lastUpdate = now
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Streaming stalled before first token after \(firstTokenGracePeriod)s"
+                    )
+                    preTokenStallLogged = true
+                }
+            }
+            return
+        }
+
+        let last = streamingLastUpdate ?? start
+        let delta = now.timeIntervalSince(last)
+        let previousState = streamingHealth.state
+        let newState: StreamingHealth.State = delta > stallThresholdSeconds ? .stalled : .active
+        if previousState != newState {
+            let message: String
+            switch (previousState, newState) {
+            case (_, .stalled):
+                message = String(format: "Streaming stalled; last update %.2fs ago", delta)
+            case (.stalled, .active):
+                message = "Streaming recovered after stall"
+            default:
+                message = ""
+            }
+            if !message.isEmpty {
+                FileLogger.log(category: "MeetingRecordingManager", message: message)
+            }
+        }
+        streamingHealth = StreamingHealth(
+            state: newState,
+            lastUpdate: streamingLastUpdate ?? now,
+            firstTokenLatency: streamingHealth.firstTokenLatency
+        )
     }
 
     @MainActor

@@ -185,12 +185,8 @@ actor AVAudioCaptureService {
         let observers = Array(bufferObservers.values)
         guard !observers.isEmpty else { return }
 
-        if bufferNotificationsLogged >= UInt64(10_000_000) {
-            bufferNotificationsLogged = 0
-            buffersSinceLastLog = 0
-        }
-        bufferNotificationsLogged += 1
-        buffersSinceLastLog += 1
+        bufferNotificationsLogged &+= 1
+        buffersSinceLastLog &+= 1
         if bufferNotificationsLogged <= UInt64(LogConstants.initialBufferLogs) || (bufferNotificationsLogged % UInt64(LogConstants.buffersPerLog)) == 0 {
             let total = bufferNotificationsLogged
             let recent = buffersSinceLastLog
