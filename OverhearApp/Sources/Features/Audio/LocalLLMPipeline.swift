@@ -126,6 +126,7 @@ actor LocalLLMPipeline {
         }
     }
 
+    @MainActor
     private func setDownloading(_ progress: Double, generation: Int) {
         guard generation == warmupGeneration else { return }
         if state != .downloading(progress) {
@@ -329,7 +330,7 @@ actor LocalLLMPipeline {
                 // Run warmup and a timeout sentinel in parallel; whichever finishes first cancels the other.
                 group.addTask {
                     try await client.warmup(progress: { [weak self] progress in
-                        Task { [weak self] in
+                        Task { @MainActor [weak self] in
                             guard let self else { return }
                             await self.runIfCurrentGeneration(generation) {
                                 await self.setDownloading(progress, generation: generation)
