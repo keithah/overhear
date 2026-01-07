@@ -44,7 +44,6 @@ actor AVAudioCaptureService {
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
     private var bufferNotificationsLogged: UInt64 = 0
     private var buffersSinceLastLog: UInt64 = 0
-    private let maxBufferNotificationCount: UInt64 = 10_000_000
     private enum LogConstants {
         static let initialBufferLogs: Int = {
             let raw = UserDefaults.standard.integer(forKey: "overhear.capture.initialBufferLogs")
@@ -79,7 +78,7 @@ actor AVAudioCaptureService {
 
             do {
                 try file.write(from: buffer)
-                Task { @MainActor [weak self] in
+                Task { [weak self] in
                     guard let self else { return }
                     await self.notifyBufferObservers(buffer: bufferCopy)
                 }
@@ -94,6 +93,7 @@ actor AVAudioCaptureService {
         try engine.start()
         await log("Audio engine started")
         bufferNotificationsLogged = 0
+        buffersSinceLastLog = 0
         captureStartDate = Date()
         requestedDuration = duration
         self.file = file
@@ -156,6 +156,7 @@ actor AVAudioCaptureService {
         isRecording = false
         // Remove tap to stop audio callbacks; guard against late notifications with isRecording flag.
         engine.inputNode.removeTap(onBus: 0)
+        // Stop the engine before clearing observers to let any in-flight callbacks drain.
         engine.stop()
         bufferObservers.removeAll()
         durationTask?.cancel()
@@ -180,14 +181,16 @@ actor AVAudioCaptureService {
 
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
         guard isRecording else { return }
-        guard !bufferObservers.isEmpty else { return }
-        bufferNotificationsLogged &+= 1
-        buffersSinceLastLog &+= 1
-        // Reset counters if they grow too large to keep modulo math predictable.
-        if bufferNotificationsLogged > maxBufferNotificationCount {
-            bufferNotificationsLogged = 1
-            buffersSinceLastLog = 1
+        // Snapshot observers immediately so a concurrent stopCapture() won't invalidate this list.
+        let observers = Array(bufferObservers.values)
+        guard !observers.isEmpty else { return }
+
+        if bufferNotificationsLogged >= UInt64(10_000_000) {
+            bufferNotificationsLogged = 0
+            buffersSinceLastLog = 0
         }
+        bufferNotificationsLogged += 1
+        buffersSinceLastLog += 1
         if bufferNotificationsLogged <= UInt64(LogConstants.initialBufferLogs) || (bufferNotificationsLogged % UInt64(LogConstants.buffersPerLog)) == 0 {
             let total = bufferNotificationsLogged
             let recent = buffersSinceLastLog
@@ -197,10 +200,6 @@ actor AVAudioCaptureService {
             )
             buffersSinceLastLog = 0
         }
-        // Snapshot observers under the isRecording guard so any late tap callbacks
-        // still notify the observers that were active before stopCapture(). If stopCapture()
-        // clears observers between the guard and snapshot, late buffers are intentionally dropped.
-        let observers = Array(bufferObservers.values)
         for observer in observers {
             guard let copy = buffer.cloned() else { continue }
             observer(copy)

@@ -438,13 +438,38 @@ final class CallDetectionService {
 
     func resolveTitleInfo(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         let timeout = titleLookupTimeout
-        let start = Date()
-        let result = await titleInfoOffMain(for: app)
-        if timeout > 0 && Date().timeIntervalSince(start) > timeout {
-            logger.warning("Title lookup exceeded timeout \(timeout)s; returning nil")
+        // If no timeout is configured, just perform the lookup directly.
+        guard timeout > 0 else {
+            return await titleInfoOffMain(for: app)
+        }
+
+        return await withTaskGroup(of: (result: (displayTitle: String, urlDescription: String?, redacted: String?)?, isTimeout: Bool).self) { group in
+            // Task 1: perform the actual title lookup.
+            group.addTask { [weak self] in
+                guard let self else { return (nil, false) }
+                let result = await self.titleInfoOffMain(for: app)
+                return (result, false)
+            }
+
+            // Task 2: fire after the timeout interval.
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                return (nil, true)
+            }
+
+            for await value in group {
+                if value.isTimeout {
+                    group.cancelAll()
+                    logger.warning("Title lookup exceeded timeout \(timeout)s; returning nil")
+                    return nil
+                } else {
+                    group.cancelAll()
+                    return value.result
+                }
+            }
+            // Should not be reachable, but return nil defensively.
             return nil
         }
-        return result
     }
 
     private func processDetection(

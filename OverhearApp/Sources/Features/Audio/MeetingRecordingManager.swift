@@ -82,7 +82,7 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
     private var pendingNotes: String?
-    private var notesSaveRunning = false
+    private var isNotesSaveRunning = false
     private var originalFileLogSetting: Bool?
     private var fileLogTemporarilyEnabled = false
     private var notesRetryTask: Task<Void, Never>?
@@ -94,7 +94,7 @@ final class MeetingRecordingManager: ObservableObject {
     private let notesHealthIntervalSeconds: TimeInterval
     private let maxHealthIterations: Int
     private let maxTranscriptWaits: Int
-    // Log transcriptID wait progress roughly once per minute at the default 5s interval.
+    // Log transcriptID wait progress roughly once per minute at the default 5s interval (12 * 5s).
     private let transcriptWaitLogIntervalCount = 12
     private let maxHealthRetries: Int
     private let maxHealthElapsedSeconds: TimeInterval
@@ -315,7 +315,7 @@ final class MeetingRecordingManager: ObservableObject {
         } else {
             originalFileLogSetting = defaults.bool(forKey: fileLogsKey)
         }
-        restoreLogsOnExit = true
+        restoreLogsOnExit = fileLogTemporarilyEnabled || originalFileLogSetting != nil
         FileLogger.log(
             category: "MeetingRecordingManager",
             message: "startRecording requested (meetingID=\(meetingID) title=\(meetingTitle) duration=\(duration)s)"
@@ -341,7 +341,7 @@ final class MeetingRecordingManager: ObservableObject {
         captureStartTime = Date()
         liveTranscript = ""
         liveSegments = []
-        startNotesHealthCheck()
+        await startNotesHealthCheck()
 #if canImport(FluidAudio)
         streamingConfirmedSegments = []
         streamingHypothesis = nil
@@ -476,12 +476,11 @@ final class MeetingRecordingManager: ObservableObject {
 
     @MainActor
     private func performNotesSave(notes: String) async {
-        await notesSaveQueue.enqueue {
-            [weak self] in
+        await notesSaveQueue.enqueue { [weak self] in
             guard let self else { return }
             if Task.isCancelled { return }
-            self.notesSaveRunning = true
-            defer { self.notesSaveRunning = false }
+            self.isNotesSaveRunning = true
+            defer { self.isNotesSaveRunning = false }
             await self.performNotesSaveInternal(notes: notes)
         }
     }
@@ -569,7 +568,7 @@ final class MeetingRecordingManager: ObservableObject {
                 }
                 let state = notesSaveState
                 let hasRetry = notesRetryTask != nil
-                let hasSave = notesSaveRunning
+                let hasSave = isNotesSaveRunning
                 guard Self.shouldRetryNotes(
                     pendingNotes: pendingNotes,
                     state: state,
@@ -1139,9 +1138,10 @@ extension MeetingRecordingManager {
             .joined(separator: "\n")
 
         liveTranscript = transcript
-        streamingUpdateCount &+= 1
-        if streamingUpdateCount > 10_000_000 {
+        if streamingUpdateCount >= 10_000_000 {
             streamingUpdateCount = 0
+        } else {
+            streamingUpdateCount += 1
         }
         if (streamingUpdateCount > 0 && streamingUpdateCount <= 5) || streamingUpdateCount % 100 == 0 {
             let status = update.isConfirmed ? "confirmed" : "hypothesis"
