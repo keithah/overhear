@@ -187,11 +187,8 @@ final class MicUsageMonitor {
 
     deinit {
         if listenerAdded {
-            // Best-effort synchronous cleanup; CoreAudio listeners are removed here.
-            Task { @MainActor [weak self] in
-                self?.stop()
-            }
-            logger.error("MicUsageMonitor deinit while listener still active; attempted automatic stop()")
+            logger.error("MicUsageMonitor deinit while listener still active; calling stop() synchronously")
+            stop()
         }
     }
 

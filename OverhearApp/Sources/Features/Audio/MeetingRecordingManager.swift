@@ -82,7 +82,7 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
     private var pendingNotes: String?
-    private var notesSaveRunning = false
+    private var isNotesSaveRunning = false
     private var originalFileLogSetting: Bool?
     private var fileLogTemporarilyEnabled = false
     private var notesRetryTask: Task<Void, Never>?
@@ -315,7 +315,7 @@ final class MeetingRecordingManager: ObservableObject {
         } else {
             originalFileLogSetting = defaults.bool(forKey: fileLogsKey)
         }
-        restoreLogsOnExit = true
+        restoreLogsOnExit = fileLogTemporarilyEnabled || originalFileLogSetting != nil
         FileLogger.log(
             category: "MeetingRecordingManager",
             message: "startRecording requested (meetingID=\(meetingID) title=\(meetingTitle) duration=\(duration)s)"
@@ -476,12 +476,11 @@ final class MeetingRecordingManager: ObservableObject {
 
     @MainActor
     private func performNotesSave(notes: String) async {
-        await notesSaveQueue.enqueue {
-            [weak self] in
+        await notesSaveQueue.enqueue { [weak self] in
             guard let self else { return }
             if Task.isCancelled { return }
-            self.notesSaveRunning = true
-            defer { self.notesSaveRunning = false }
+            self.isNotesSaveRunning = true
+            defer { self.isNotesSaveRunning = false }
             await self.performNotesSaveInternal(notes: notes)
         }
     }
@@ -569,7 +568,7 @@ final class MeetingRecordingManager: ObservableObject {
                 }
                 let state = notesSaveState
                 let hasRetry = notesRetryTask != nil
-                let hasSave = notesSaveRunning
+                let hasSave = isNotesSaveRunning
                 guard Self.shouldRetryNotes(
                     pendingNotes: pendingNotes,
                     state: state,
@@ -1139,7 +1138,7 @@ extension MeetingRecordingManager {
             .joined(separator: "\n")
 
         liveTranscript = transcript
-        streamingUpdateCount &+= 1
+        streamingUpdateCount += 1
         if streamingUpdateCount > 10_000_000 {
             streamingUpdateCount = 0
         }
