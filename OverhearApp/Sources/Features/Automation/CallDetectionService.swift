@@ -271,13 +271,13 @@ final class CallDetectionService {
     /// Fall back to detecting native meeting apps when they are running in the background
     /// (non-frontmost) but the microphone is active. This helps catch minimized/behind other
     /// windows sessions without relying on browser URL heuristics.
+    @MainActor
     private func handleBackgroundDetection(excluding bundleID: String?) async -> Bool {
         guard isMicActive else { return false }
         guard let preferences else { return false }
 
-        let runningApps = await Task.detached(priority: .utility) {
-            NSWorkspace.shared.runningApplications
-        }.value
+        // NSRunningApplication is not Sendable; keep the lookup on the main actor.
+        let runningApps = NSWorkspace.shared.runningApplications
         if Task.isCancelled { return false }
 
         let candidate = runningApps.first { app in
@@ -321,24 +321,6 @@ final class CallDetectionService {
             logger.error("Accessibility not granted; cannot inspect windows for \(app.bundleIdentifier ?? "unknown", privacy: .public)")
             return nil
         }
-        if let timeout, timeout > 0 {
-            return await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group in
-                defer { group.cancelAll() }
-                group.addTask { [weak self] in
-                    guard let self else { return nil }
-                    return await self.activeWindowTitle(for: app, timeout: nil)
-                }
-                group.addTask { [weak self] in
-                    try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                    if let self {
-                        let bundle = app.bundleIdentifier ?? "unknown"
-                        self.logger.warning("AX query timed out after \(timeout)s for \(bundle, privacy: .public)")
-                    }
-                    return nil
-                }
-                return await group.next() ?? nil
-            }
-        }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         var focusedWindow: AnyObject?
         let status = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
@@ -350,8 +332,8 @@ final class CallDetectionService {
             logger.error("Focused window is not an AXUIElement (type=\(CFGetTypeID(window)))")
             return nil
         }
-        // Safe after CFTypeID guard; bridging to Swift AXUIElement requires a force cast to avoid CF warnings.
-        let windowElement = window as! AXUIElement
+        // Safe after CFTypeID guard; bridging to Swift AXUIElement requires an unchecked cast to avoid CF warnings.
+        let windowElement = unsafeDowncast(window as AnyObject, to: AXUIElement.self)
 
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue)
@@ -408,6 +390,7 @@ final class CallDetectionService {
         return nil
     }
 
+    @MainActor
     private func titleInfoOffMain(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
         let now = Date()
         if axQueryInFlight {
@@ -424,10 +407,7 @@ final class CallDetectionService {
             lastAXQueryDate = Date()
         }
         let result = await windowResolver(app, titleLookupTimeout)
-        if Task.isCancelled {
-            return nil
-        }
-        return result
+        return Task.isCancelled ? nil : result
     }
 
     nonisolated func isSupportedBrowserHost(_ host: String) -> Bool {
@@ -457,18 +437,14 @@ final class CallDetectionService {
     }
 
     func resolveTitleInfo(for app: NSRunningApplication) async -> (displayTitle: String, urlDescription: String?, redacted: String?)? {
-        await withTaskGroup(of: (displayTitle: String, urlDescription: String?, redacted: String?)?.self) { group -> (displayTitle: String, urlDescription: String?, redacted: String?)? in
-            group.addTask { [weak self] in
-                guard let self else { return nil }
-                return await self.titleInfoOffMain(for: app)
-            }
-            group.addTask { [weak self] in
-                guard let self else { return nil }
-                try? await Task.sleep(nanoseconds: UInt64(self.titleLookupTimeout * 1_000_000_000))
-                return nil
-            }
-            return await group.next() ?? nil
+        let timeout = titleLookupTimeout
+        let start = Date()
+        let result = await titleInfoOffMain(for: app)
+        if timeout > 0 && Date().timeIntervalSince(start) > timeout {
+            logger.warning("Title lookup exceeded timeout \(timeout)s; returning nil")
+            return nil
         }
+        return result
     }
 
     private func processDetection(

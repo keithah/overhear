@@ -8,10 +8,11 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: tenki-macos-latest-mini
+    runs-on:
+      - self-hosted
+      - macos
     env:
       OVERHEAR_INSECURE_NO_KEYCHAIN: "1"
-      CI: "true"
 
     steps:
     - name: Select latest Xcode 16.x

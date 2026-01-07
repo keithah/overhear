@@ -187,7 +187,11 @@ final class MicUsageMonitor {
 
     deinit {
         if listenerAdded {
-            logger.error("MicUsageMonitor deinit while listener still active; stop() should be called explicitly")
+            // Best-effort synchronous cleanup; CoreAudio listeners are removed here.
+            Task { @MainActor [weak self] in
+                self?.stop()
+            }
+            logger.error("MicUsageMonitor deinit while listener still active; attempted automatic stop()")
         }
     }
 
@@ -228,11 +232,16 @@ final class MicUsageMonitor {
     private var observedDevice: AudioObjectID?
     private var rebindTask: Task<Void, Never>?
 
+    @MainActor
     private func enqueueRebind() {
         // Avoid unbounded growth if the system flaps devices rapidly; coalesce to the latest device.
         let newCount = min(pendingRebinds + 1, Constants.maxPendingRebinds)
         if newCount == Constants.maxPendingRebinds, pendingRebinds < Constants.maxPendingRebinds {
             logger.warning("Mic rebind queue saturated; coalescing rapid device changes")
+            FileLogger.log(
+                category: "MicUsageMonitor",
+                message: "Mic rebind queue saturated; coalescing rapid device changes"
+            )
         }
         pendingRebinds = newCount
         guard rebindTask == nil else { return }

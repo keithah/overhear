@@ -8,6 +8,33 @@ extension NSNotification.Name {
     static let closeMenuPopover = NSNotification.Name("CloseMenuPopover")
 }
 
+private func makeLLMStatusChip(for state: LocalLLMPipeline.State) -> some View {
+    let (title, color, icon): (String, Color, String) = {
+        switch state {
+        case .ready:
+            return (state.displayDescription, .green, "checkmark.circle.fill")
+        case .downloading:
+            return (state.displayDescription, .orange, "arrow.down.circle.fill")
+        case .warming:
+            return (state.displayDescription, .orange, "clock")
+        case .unavailable:
+            return (state.displayDescription, .red, "exclamationmark.triangle.fill")
+        case .idle:
+            return (state.displayDescription, .secondary, "bolt.horizontal.circle")
+        }
+    }()
+    return HStack(spacing: 4) {
+        Image(systemName: icon)
+            .foregroundColor(color)
+        Text(title)
+            .font(.system(size: 10))
+            .foregroundColor(color)
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 4)
+    .background(Capsule().fill(color.opacity(0.12)))
+}
+
 struct MenuBarContentView: View {
      @ObservedObject var viewModel: MeetingListViewModel
      @ObservedObject var preferences: PreferencesService
@@ -38,7 +65,7 @@ struct MenuBarContentView: View {
                     },
                     stopRecording: {
                         Task { await recordingCoordinator.stopRecording() }
-                    },
+                    }
                 )
             }
             // Meetings list
@@ -325,9 +352,11 @@ struct LiveNotesView: View {
     @State private var showTranscript = true
     @State private var showNotes = true
     @State private var showAI = true
+    @State private var notesDebounceTask: Task<Void, Never>?
     @State private var isRegenerating = false
     @State private var notesPrefilled = false
     @State private var llmStateDescription: String = "Checking…"
+    @State private var llmState: LocalLLMPipeline.State = .idle
     @State private var isWarmingLLM = false
     @State private var warmupTask: Task<Void, Never>?
     @State private var llmStatePollTask: Task<Void, Never>?
@@ -343,10 +372,42 @@ struct LiveNotesView: View {
         coordinator.isRecording ? .green : .secondary
     }
 
+    private var streamingStatusText: String {
+        switch coordinator.streamingHealth.state {
+        case .idle: return "Streaming idle"
+        case .connecting: return "Streaming: connecting"
+        case .active: return "Streaming: active"
+        case .stalled: return "Streaming: stalled"
+        case .failed(let message): return "Streaming failed: \(message)"
+        }
+    }
+
+    private var streamingStatusColor: Color {
+        switch coordinator.streamingHealth.state {
+        case .active: return .green
+        case .connecting: return .blue
+        case .stalled, .failed: return .orange
+        case .idle: return .secondary
+        }
+    }
+
+    private let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
+
+    private var streamingLastUpdateText: String {
+        guard let ts = coordinator.streamingHealth.lastUpdate else { return "–" }
+        let delta = max(0, -ts.timeIntervalSinceNow)
+        return String(format: "%.1fs ago", delta)
+    }
+
     var body: some View {
         VStack(spacing: 14) {
             header
             consentNotice
+            streamingHealthRow
             if showTranscript { transcriptSection }
             if showNotes { notesSection }
             if showAI { aiSection }
@@ -393,12 +454,11 @@ struct LiveNotesView: View {
                     .lineLimit(1)
             }
             Spacer()
-            Text(statusText)
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(statusColor.opacity(0.15)))
-                .foregroundColor(statusColor)
+            HStack(spacing: 6) {
+                statusChip(title: statusText, color: statusColor, icon: "record.circle")
+                streamingChip
+                llmChip
+            }
             Button {
                 Task { await coordinator.stopRecording() }
             } label: {
@@ -433,7 +493,7 @@ struct LiveNotesView: View {
                     }
                 }
                 Button("Troubleshoot transcription issues") {
-                    if let url = URL(string: "https://help.granola.ai/article/transcription") {
+                    if let url = URL(string: "https://overhear.app/support/transcription") {
                         NSWorkspace.shared.open(url)
                     }
                 }
@@ -455,6 +515,45 @@ struct LiveNotesView: View {
         }
     }
 
+    private func statusChip(title: String, color: Color, icon: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+            Text(title)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(color.opacity(0.15)))
+        .foregroundColor(color)
+    }
+
+    private var streamingChip: some View {
+        let title: String
+        let color: Color
+        switch coordinator.streamingHealth.state {
+        case .active:
+            title = "Streaming"
+            color = .green
+        case .connecting:
+            title = "Connecting"
+            color = .orange
+        case .stalled:
+            title = "Stalled"
+            color = .orange
+        case .failed:
+            title = "Streaming failed"
+            color = .red
+        case .idle:
+            title = "Streaming idle"
+            color = .secondary
+        }
+        return statusChip(title: title, color: color, icon: "waveform.and.magnifyingglass")
+    }
+
+    private var llmChip: some View {
+        makeLLMStatusChip(for: llmState)
+    }
+
     private var consentNotice: some View {
         HStack(spacing: 6) {
             Image(systemName: "lock.shield.fill")
@@ -464,6 +563,53 @@ struct LiveNotesView: View {
                 .foregroundColor(.secondary)
             Spacer()
         }
+    }
+
+    private var streamingHealthRow: some View {
+        let canRestart: Bool = {
+            switch coordinator.status {
+            case .capturing, .transcribing:
+                return true
+            default:
+                return false
+            }
+        }()
+        return HStack(spacing: 8) {
+            Label(streamingStatusText, systemImage: "waveform.and.magnifyingglass")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(streamingStatusColor)
+            if let latency = coordinator.streamingHealth.firstTokenLatency {
+                Text(String(format: "First token: %.2fs", latency))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            switch coordinator.streamingHealth.state {
+            case .idle:
+                Text("No recent updates")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            default:
+                Text("Last update: \(streamingLastUpdateText)")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            if case .stalled = coordinator.streamingHealth.state, canRestart {
+                Button {
+                    Task { await coordinator.restartStreaming() }
+                } label: {
+                    Text("Restart stream")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.orange.opacity(0.15)))
+                }
+                .buttonStyle(.plain)
+                .help("Restart streaming transcription")
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
     }
 
     private var transcriptSection: some View {
@@ -492,6 +638,35 @@ struct LiveNotesView: View {
             HStack {
                 Text("Notes")
                     .font(.system(size: 12, weight: .semibold))
+                if case .saving = coordinator.notesSaveState {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                    Text("Saving…")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                } else if case .queued(let attempt) = coordinator.notesSaveState {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.arrow.2.circlepath")
+                            .foregroundColor(.orange)
+                        Text("Retrying save (attempt \(attempt))")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                } else if case .failed = coordinator.notesSaveState {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("Autosave failed")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                } else if let ts = coordinator.lastNotesSavedAt {
+                    Text("Saved \(relativeFormatter.localizedString(for: ts, relativeTo: Date()))")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
                 Spacer()
                 Button {
                     copyNotes()
@@ -524,8 +699,16 @@ struct LiveNotesView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
                     .onChange(of: coordinator.liveNotes) { _, newValue in
-                        // Manual notes persistence best-effort
-                        Task { await coordinator.saveNotes(newValue) }
+                        notesDebounceTask?.cancel()
+                        notesDebounceTask = Task { @MainActor [weak coordinator] in
+                            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms debounce
+                            guard let coordinator else { return }
+                            await coordinator.saveNotes(newValue)
+                        }
+                    }
+                    .onDisappear {
+                        notesDebounceTask?.cancel()
+                        notesDebounceTask = nil
                     }
             }
         }
@@ -675,7 +858,10 @@ struct LiveNotesView: View {
         guard let summary = coordinator.summary else { return }
         let bullets = (summary.summary.isEmpty ? [] : [summary.summary])
             + summary.highlights
-            + summary.actionItems.map { "Action: \($0.description)\( ($0.owner?.isEmpty == false) ? " [\($0.owner!)]" : "")" }
+            + summary.actionItems.map { action in
+                let ownerSuffix: String = action.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
+                return "Action: \(action.description)\(ownerSuffix)"
+            }
         let text = bullets.joined(separator: "\n")
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -689,6 +875,8 @@ struct LiveNotesView: View {
         await coordinator.regenerateSummary(template: template)
         isRegenerating = false
     }
+
+    private var llmStatusChip: some View { makeLLMStatusChip(for: llmState) }
 
     private func prefillNotesIfNeeded() async {
         let shouldPrefill = await MainActor.run { () -> Bool in
@@ -723,34 +911,10 @@ struct LiveNotesView: View {
     private func refreshLLMState() async {
         let state = await LocalLLMPipeline.shared.currentState()
         await MainActor.run {
-            switch state {
-            case .unavailable(let reason):
-                llmStateDescription = "LLM unavailable (\(reason))"
-                llmIsReady = false
-            case .idle:
-                llmStateDescription = "LLM idle"
-                llmIsReady = false
-            case .downloading(let progress):
-                let pct = Int((progress * 100).rounded())
-                llmStateDescription = "LLM downloading… \(pct)%"
-                llmIsReady = false
-            case .warming:
-                llmStateDescription = "LLM warming…"
-                llmIsReady = false
-            case .ready(let modelID):
-                if let modelID {
-                    llmStateDescription = "LLM ready (\(modelID))"
-                } else {
-                    llmStateDescription = "LLM ready"
-                }
-                llmIsReady = true
-            }
-            if llmIsReady {
-                // Ready is the steady-state; avoid noisy logs.
-                lastLoggedLLMState = llmStateDescription
-                return
-            }
+            llmStateDescription = state.displayDescription
+            llmIsReady = state.isReady
             lastLoggedLLMState = llmStateDescription
+            llmState = state
         }
     }
 
@@ -779,17 +943,23 @@ struct LiveNotesView: View {
         llmStatePollTask?.cancel()
         guard !llmIsReady else { return }
         llmStatePollTask = Task { @MainActor in
+            // Fallback polling in case state notifications are missed; prefer notification-driven updates.
+            let pollIntervalSeconds = 10.0
+            let maxWarmupSeconds = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
+            let resolvedMaxSeconds = maxWarmupSeconds > 0 ? maxWarmupSeconds : 900
+            let maxAttempts = Int(resolvedMaxSeconds / pollIntervalSeconds)
             var attempts = 0
             defer { llmStatePollTask = nil }
-            while !Task.isCancelled && !llmIsReady && attempts < 120 {
+            while !Task.isCancelled && !llmIsReady && attempts < maxAttempts {
                 attempts += 1
                 await refreshLLMState()
                 if llmIsReady { break }
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? await Task.sleep(nanoseconds: UInt64(pollIntervalSeconds * 1_000_000_000))
             }
         }
     }
 
+    @MainActor
     private func exportSummary() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "NewNote.md"
@@ -814,7 +984,7 @@ struct LiveNotesView: View {
                     if !summary.actionItems.isEmpty {
                         lines.append("\n## Action Items")
                         summary.actionItems.forEach { item in
-                            let owner = (item.owner?.isEmpty == false) ? " [\(item.owner!)]" : ""
+                            let owner: String = item.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
                             lines.append("- \(item.description)\(owner)")
                         }
                     }
@@ -843,6 +1013,7 @@ struct LiveNotesManagerView: View {
     @State private var isRegenerating = false
     @State private var liveNotes: String = ""
     @State private var llmStateDescription: String = "Checking…"
+    @State private var llmState: LocalLLMPipeline.State = .idle
     @State private var isWarmingLLM = false
     @State private var warmupTask: Task<Void, Never>?
     var onHide: () -> Void
@@ -953,7 +1124,7 @@ struct LiveNotesManagerView: View {
                     }
                 }
                 Button("Troubleshoot transcription issues") {
-                    if let url = URL(string: "https://help.granola.ai/article/transcription") {
+                    if let url = URL(string: "https://overhear.app/support/transcription") {
                         NSWorkspace.shared.open(url)
                     }
                 }
@@ -1046,6 +1217,9 @@ struct LiveNotesManagerView: View {
                     .onChange(of: liveNotes) { _, newValue in
                         Task { await manager.saveNotes(newValue) }
                     }
+                    .onDisappear {
+                        Task { await manager.saveNotes(liveNotes) }
+                    }
             }
         }
         .onAppear {
@@ -1072,9 +1246,7 @@ struct LiveNotesManagerView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
-                Text(llmStateDescription)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                llmStatusChipManager
                 Menu {
                     Button("Regenerate (default prompt)") {
                         Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
@@ -1184,7 +1356,10 @@ struct LiveNotesManagerView: View {
         guard let summary = manager.summary else { return }
         let bullets = (summary.summary.isEmpty ? [] : [summary.summary])
             + summary.highlights
-            + summary.actionItems.map { "Action: \($0.description)\( ($0.owner?.isEmpty == false) ? " [\($0.owner!)]" : "")" }
+            + summary.actionItems.map { action in
+                let ownerSuffix: String = action.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
+                return "Action: \(action.description)\(ownerSuffix)"
+            }
         let text = bullets.joined(separator: "\n")
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -1198,6 +1373,8 @@ struct LiveNotesManagerView: View {
         await manager.regenerateSummary(template: template)
         isRegenerating = false
     }
+
+    private var llmStatusChipManager: some View { makeLLMStatusChip(for: llmState) }
 
     private func prefillNotesIfNeeded() async {
         guard liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -1235,8 +1412,8 @@ struct LiveNotesManagerView: View {
                 if !summary.actionItems.isEmpty {
                     lines.append("\n## Action Items")
                     summary.actionItems.forEach { item in
-                        let owner = (item.owner?.isEmpty == false) ? " [\(item.owner!)]" : ""
-                        lines.append("- \(item.description)\(owner)")
+                        let ownerSuffix: String = item.owner.flatMap { !$0.isEmpty ? " [\($0)]" : "" } ?? ""
+                        lines.append("- \(item.description)\(ownerSuffix)")
                     }
                 }
             }
@@ -1271,22 +1448,8 @@ struct LiveNotesManagerView: View {
     private func refreshLLMState() async {
         let state = await LocalLLMPipeline.shared.currentState()
         await MainActor.run {
-            switch state {
-            case .unavailable(let reason):
-                llmStateDescription = "LLM unavailable (\(reason))"
-            case .idle:
-                llmStateDescription = "LLM idle"
-            case .downloading:
-                llmStateDescription = "LLM downloading model…"
-            case .warming:
-                llmStateDescription = "LLM warming…"
-            case .ready(let modelID):
-                if let modelID {
-                    llmStateDescription = "LLM ready (\(modelID))"
-                } else {
-                    llmStateDescription = "LLM ready"
-                }
-            }
+            llmStateDescription = state.displayDescription
+            llmState = state
         }
     }
 

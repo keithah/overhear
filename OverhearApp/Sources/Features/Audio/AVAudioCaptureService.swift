@@ -42,7 +42,21 @@ actor AVAudioCaptureService {
     private var isRecording = false
     private var durationTask: Task<Void, Never>?
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
-    private var bufferNotificationsLogged = 0
+    private var bufferNotificationsLogged: UInt64 = 0
+    private var buffersSinceLastLog: UInt64 = 0
+    private let maxBufferNotificationCount: UInt64 = 10_000_000
+    private enum LogConstants {
+        static let initialBufferLogs: Int = {
+            let raw = UserDefaults.standard.integer(forKey: "overhear.capture.initialBufferLogs")
+            let clamped = min(max(raw, 1), 100)
+            return clamped > 0 ? clamped : 5
+        }()
+        static let buffersPerLog: Int = {
+            let raw = UserDefaults.standard.integer(forKey: "overhear.capture.buffersPerLog")
+            let clamped = min(max(raw, 10), 500)
+            return clamped > 0 ? clamped : 50
+        }()
+    }
     private var captureStartDate: Date?
     private var requestedDuration: TimeInterval = 0
    
@@ -104,13 +118,18 @@ actor AVAudioCaptureService {
         }
     }
 
+    /// Registers a buffer observer. Observers are cleared automatically when capture stops.
     func registerBufferObserver(_ observer: @escaping AudioBufferObserver) -> UUID {
         let id = UUID()
         bufferObservers[id] = observer
-        FileLogger.log(category: "AVAudioCaptureService", message: "Registered buffer observer (total \(bufferObservers.count))")
+        FileLogger.log(
+            category: "AVAudioCaptureService",
+            message: "Registered buffer observer id=\(id) (total \(bufferObservers.count))"
+        )
         return id
     }
 
+    /// Unregisters a previously registered buffer observer.
     func unregisterBufferObserver(_ id: UUID) {
         bufferObservers.removeValue(forKey: id)
     }
@@ -120,9 +139,9 @@ actor AVAudioCaptureService {
         guard isRecording else { return }
         guard let targetURL = outputURL else {
             await log("stopCapture failed - missing output URL")
-        await finalizeRecording(result: .failure(Error.captureFailed("Missing output file")))
-        return
-    }
+            await finalizeRecording(result: .failure(Error.captureFailed("Missing output file")))
+            return
+        }
         let shouldMarkStoppedEarly: Bool
         if let startedAt = captureStartDate {
             shouldMarkStoppedEarly = Date().timeIntervalSince(startedAt) < requestedDuration
@@ -135,12 +154,12 @@ actor AVAudioCaptureService {
     private func finalizeRecording(result: Result<CaptureResult, Swift.Error>) async {
         guard isRecording else { return }
         isRecording = false
+        // Remove tap to stop audio callbacks; guard against late notifications with isRecording flag.
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        bufferObservers.removeAll()
         durationTask?.cancel()
         durationTask = nil
-
-        bufferObservers.removeAll()
 
         switch result {
         case .success(let captureResult):
@@ -160,12 +179,29 @@ actor AVAudioCaptureService {
     }
 
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
+        guard isRecording else { return }
         guard !bufferObservers.isEmpty else { return }
-        bufferNotificationsLogged += 1
-        if bufferNotificationsLogged <= 5 {
-            FileLogger.log(category: "AVAudioCaptureService", message: "notifyBufferObservers count=\(bufferNotificationsLogged), frameLength=\(buffer.frameLength)")
+        bufferNotificationsLogged &+= 1
+        buffersSinceLastLog &+= 1
+        // Reset counters if they grow too large to keep modulo math predictable.
+        if bufferNotificationsLogged > maxBufferNotificationCount {
+            bufferNotificationsLogged = 1
+            buffersSinceLastLog = 1
         }
-        for observer in bufferObservers.values {
+        if bufferNotificationsLogged <= UInt64(LogConstants.initialBufferLogs) || (bufferNotificationsLogged % UInt64(LogConstants.buffersPerLog)) == 0 {
+            let total = bufferNotificationsLogged
+            let recent = buffersSinceLastLog
+            FileLogger.log(
+                category: "AVAudioCaptureService",
+                message: "notifyBufferObservers total=\(total) recent=\(recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
+            )
+            buffersSinceLastLog = 0
+        }
+        // Snapshot observers under the isRecording guard so any late tap callbacks
+        // still notify the observers that were active before stopCapture(). If stopCapture()
+        // clears observers between the guard and snapshot, late buffers are intentionally dropped.
+        let observers = Array(bufferObservers.values)
+        for observer in observers {
             guard let copy = buffer.cloned() else { continue }
             observer(copy)
         }

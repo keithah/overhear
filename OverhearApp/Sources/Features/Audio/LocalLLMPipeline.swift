@@ -12,6 +12,31 @@ actor LocalLLMPipeline {
         case downloading(Double)
         case warming
         case ready(String?) // Model ID if available
+
+        var isReady: Bool {
+            if case .ready = self { return true }
+            return false
+        }
+
+        var displayDescription: String {
+            switch self {
+            case .unavailable(let reason):
+                return "LLM unavailable (\(reason))"
+            case .idle:
+                return "LLM idle"
+            case .downloading(let progress):
+                let pct = Int((progress * 100).rounded())
+                return "LLM downloading… \(pct)%"
+            case .warming:
+                return "LLM warming…"
+            case .ready(let modelID):
+                if let modelID {
+                    return "LLM ready (\(modelID))"
+                } else {
+                    return "LLM ready"
+                }
+            }
+        }
     }
 
     static let shared = LocalLLMPipeline(
@@ -23,8 +48,8 @@ actor LocalLLMPipeline {
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
     private let logCategory = "LocalLLMPipeline"
     private let warmupTimeout: TimeInterval
-    private let downloadWatchdogDelay: TimeInterval = 2
-    private let failureCooldown: TimeInterval = 300
+    private let downloadWatchdogDelay: TimeInterval
+    private let failureCooldown: TimeInterval
     private(set) var state: State
     private var downloadWatchTask: Task<Void, Never>?
     private var warmupGeneration: Int = 0
@@ -35,6 +60,10 @@ actor LocalLLMPipeline {
     private var lastLoggedState: State?
     private var lastNotifiedState: State?
     private var downloadWatchGeneration: Int = 0
+    private var hasLoggedDownloadStart = false
+    private var downloadStartAt: Date?
+    private var lastReadyAt: Date?
+    private var lastWarmupDuration: TimeInterval?
     private var modelID: String {
         MLXPreferences.modelID()
     }
@@ -46,7 +75,22 @@ actor LocalLLMPipeline {
     init(client: MLXClient?) {
         self.client = client
         let overrideTimeout = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
-        self.warmupTimeout = overrideTimeout > 0 ? overrideTimeout : 900
+        let rawTimeout = overrideTimeout > 0 ? overrideTimeout : 900
+        // Prevent misconfiguration from disabling warmup or hanging forever.
+        let clampedWarmupTimeout = min(max(rawTimeout, 60.0), 3600.0)
+        if clampedWarmupTimeout != rawTimeout {
+            logger.warning("Warmup timeout override \(rawTimeout, privacy: .public)s clamped to \(clampedWarmupTimeout, privacy: .public)s")
+        }
+        self.warmupTimeout = clampedWarmupTimeout
+
+        let overrideCooldown = UserDefaults.standard.double(forKey: "overhear.mlxFailureCooldown")
+        let rawCooldown = overrideCooldown > 0 ? overrideCooldown : 300
+        self.failureCooldown = min(max(rawCooldown, 5.0), 900.0)
+
+        let watchdogOverride = UserDefaults.standard.double(forKey: "overhear.mlxDownloadWatchdogDelay")
+        let resolvedWatchdog = watchdogOverride > 0 ? watchdogOverride : 2
+        self.downloadWatchdogDelay = min(max(resolvedWatchdog, 1.0), 60.0) // clamp to sensible bounds
+
         if client == nil {
             state = .unavailable("MLX client not available")
         } else {
@@ -57,12 +101,19 @@ actor LocalLLMPipeline {
     /// Warms the local model (best-effort). Safe to call multiple times.
     func warmup() async {
         if let task = warmupTask {
+            task.cancel()
             await task.value
-            return
+            warmupTask = nil
         }
+        downloadWatchTask?.cancel()
+        await downloadWatchTask?.value
+        downloadWatchTask = nil
 
         warmupGeneration &+= 1
         let generation = warmupGeneration
+        if downloadStartAt == nil {
+            downloadStartAt = Date()
+        }
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -77,7 +128,16 @@ actor LocalLLMPipeline {
 
     private func setDownloading(_ progress: Double, generation: Int) {
         guard generation == warmupGeneration else { return }
-        state = .downloading(progress)
+        if state != .downloading(progress) {
+            state = .downloading(progress)
+        }
+        if !hasLoggedDownloadStart {
+            hasLoggedDownloadStart = true
+            FileLogger.log(category: logCategory, message: "MLX download started (model=\(modelID))")
+        }
+        if downloadStartAt == nil {
+            downloadStartAt = Date()
+        }
         notifyStateChanged()
         let bucket = Int((progress * 100).rounded(.towardZero) / 10)
         if bucket != lastProgressLogBucket {
@@ -87,14 +147,17 @@ actor LocalLLMPipeline {
 
         // Watchdog: if we reach 100% download but never transition to ready, auto-promote after a short delay.
         if progress >= 0.999 {
-            downloadWatchTask?.cancel()
-            downloadWatchTask = nil
+            // Only arm one watchdog per generation.
+            if downloadWatchGeneration != generation {
+                downloadWatchTask?.cancel()
+                downloadWatchTask = nil
+            }
+            guard downloadWatchTask == nil else { return }
             downloadWatchGeneration = generation
-            let watchTask = Task { [weak self] in
+            downloadWatchTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64((self?.downloadWatchdogDelay ?? 2) * 1_000_000_000))
                 await self?.handleDownloadWatchdog(generation: generation)
             }
-            downloadWatchTask = watchTask
         }
     }
 
@@ -112,6 +175,7 @@ actor LocalLLMPipeline {
             FileLogger.log(category: logCategory, message: "Download reached 100% but warmup not completed; promoting to ready")
             state = .ready(modelID)
             notifyStateChanged()
+            lastReadyAt = Date()
         default:
             break
         }
@@ -208,6 +272,11 @@ actor LocalLLMPipeline {
         return state
     }
 
+    /// Returns the current pipeline state and recent warmup metadata for UI consumption.
+    nonisolated func snapshot() async -> (state: State, lastReadyAt: Date?, lastWarmupDuration: TimeInterval?) {
+        await (state, lastReadyAt, lastWarmupDuration)
+    }
+
     private func chunkedTranscript(_ transcript: String, chunkSize: Int, maxChunks: Int) -> String {
         guard transcript.count > chunkSize else { return transcript }
         var chunks: [String] = []
@@ -260,7 +329,7 @@ actor LocalLLMPipeline {
                 // Run warmup and a timeout sentinel in parallel; whichever finishes first cancels the other.
                 group.addTask {
                     try await client.warmup(progress: { [weak self] progress in
-                        Task.detached(priority: .utility) { [weak self] in
+                        Task { @MainActor [weak self] in
                             guard let self else { return }
                             await self.runIfCurrentGeneration(generation) {
                                 await self.setDownloading(progress, generation: generation)
@@ -286,7 +355,9 @@ actor LocalLLMPipeline {
                 let backoffSeconds = pow(2.0, Double(attempts - 2))
                 try? await Task.sleep(nanoseconds: UInt64(backoffSeconds * 1_000_000_000))
                 if Task.isCancelled { return }
+                if generation != warmupGeneration { return }
             }
+            if generation != warmupGeneration { return }
 
             // Allow recovery from unavailable; only skip if we're already working or ready.
             switch state {
@@ -294,6 +365,8 @@ actor LocalLLMPipeline {
                 return
             case .idle, .unavailable:
                 consecutiveFailures = 0
+                hasLoggedDownloadStart = false
+                downloadStartAt = nil
                 state = .downloading(0)
                 notifyStateChanged()
             }
@@ -302,6 +375,7 @@ actor LocalLLMPipeline {
 
             do {
                 FileLogger.log(category: logCategory, message: "Warming MLX model \(modelInUse)")
+                if Task.isCancelled { return }
                 try await runWarmupWithTimeout()
                 guard generation == warmupGeneration else { return }
                 state = .warming
@@ -314,6 +388,16 @@ actor LocalLLMPipeline {
                 FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse)) in \(durationString)s")
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
+                if let downloadStartAt {
+                    let downloadDuration = Date().timeIntervalSince(downloadStartAt)
+                    FileLogger.log(
+                        category: logCategory,
+                        message: String(format: "MLX download duration: %.2fs", downloadDuration)
+                    )
+                }
+                downloadStartAt = nil
+                lastReadyAt = Date()
+                lastWarmupDuration = duration
                 consecutiveFailures = 0
                 cooldownUntil = nil
                 return

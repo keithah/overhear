@@ -61,6 +61,13 @@ final class MeetingRecordingManager: ObservableObject {
         }
     }
 
+    enum NotesSaveState: Equatable {
+        case idle
+        case saving
+        case queued(Int) // retry attempt count
+        case failed(String)
+    }
+
     let meetingID: String
     private let fileSafeMeetingID: String
     
@@ -71,8 +78,42 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var audioFileURL: URL?
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     @Published private(set) var summary: MeetingSummary?
+    @Published private(set) var notesSaveState: NotesSaveState = .idle
+    @Published private(set) var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
     private var pendingNotes: String?
+    private var notesSaveRunning = false
+    private var originalFileLogSetting: Bool?
+    private var fileLogTemporarilyEnabled = false
+    private var notesRetryTask: Task<Void, Never>?
+    private var notesRetryAttempts = 0
+    private let maxNotesRetryAttempts: Int
+    private var notesHealthCheckTask: Task<Void, Never>?
+    private var lastNotesError: String?
+    private let notesSaveQueue = NotesSaveQueue()
+    private let notesHealthIntervalSeconds: TimeInterval
+    private let maxHealthIterations: Int
+    private let maxTranscriptWaits: Int
+    // Log transcriptID wait progress roughly once per minute at the default 5s interval.
+    private let transcriptWaitLogIntervalCount = 12
+    private let maxHealthRetries: Int
+    private let maxHealthElapsedSeconds: TimeInterval
+    nonisolated static func shouldRetryNotes(
+        pendingNotes: String?,
+        state: NotesSaveState,
+        hasRetryTask: Bool,
+        hasSaveTask: Bool
+    ) -> Bool {
+        guard let pendingNotes, !pendingNotes.isEmpty else { return false }
+        guard !hasRetryTask else { return false }
+        guard !hasSaveTask else { return false }
+        switch state {
+        case .idle, .failed:
+            return true
+        default:
+            return false
+        }
+    }
 
     private let captureService: AVAudioCaptureService
     private let pipeline: MeetingRecordingPipeline
@@ -80,10 +121,28 @@ final class MeetingRecordingManager: ObservableObject {
     let meetingTitle: String
     private let meetingDate: Date
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingManager")
+    private static let configLogger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingManager.Config")
     
     private var captureStartTime: Date?
     private var transcriptionTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
+    private static func clampedInt(forKey key: String, defaultValue: Int, min minimum: Int, max maximum: Int, logger: Logger) -> Int {
+        let raw = UserDefaults.standard.integer(forKey: key)
+        let clamped = min(max(raw, minimum), maximum)
+        if raw != 0, clamped != raw {
+            logger.warning("\(key, privacy: .public) override \(raw) clamped to \(clamped)")
+        }
+        return clamped > 0 ? clamped : defaultValue
+    }
+
+    private static func clampedInterval(forKey key: String, defaultValue: TimeInterval, min minimum: TimeInterval, max maximum: TimeInterval, logger: Logger) -> TimeInterval {
+        let raw = UserDefaults.standard.double(forKey: key)
+        let clamped = min(max(raw, minimum), maximum)
+        if raw != 0, clamped != raw {
+            logger.warning("\(key, privacy: .public) override \(raw, privacy: .public)s clamped to \(clamped, privacy: .public)s")
+        }
+        return clamped > 0 ? clamped : defaultValue
+    }
 
 #if canImport(FluidAudio)
     private var streamingManager: StreamingAsrManager?
@@ -93,12 +152,68 @@ final class MeetingRecordingManager: ObservableObject {
     private var streamingHypothesis: LiveTranscriptSegment?
     private var consecutiveEmptyStreamingUpdates = 0
     private var streamingStartDate: Date?
+    private var streamingUpdateCount = 0
     private var loggedFirstStreamingToken = false
+    private var lastLabeledConfirmedCount = 0
     private var isRegeneratingSummary = false
+    private enum ConfigKeys {
+        static let stallThreshold = "overhear.streamingStallThreshold"
+        static let firstTokenGrace = "overhear.streamingFirstTokenGrace"
+        static let monitorInterval = "overhear.streamingMonitorInterval"
+        static let monitorMaxSeconds = "overhear.streamingMonitorMaxSeconds"
+    }
+    // Default stall threshold tuned for FluidAudio streaming; 8s balances latency vs spurious stalls.
+    private let stallThresholdSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
+        forKey: ConfigKeys.stallThreshold,
+        defaultValue: 8,
+        min: 2,
+        max: 120,
+        logger: MeetingRecordingManager.configLogger
+    )
+    // Allow first token up to 30s to account for model warmup on slower machines.
+    private let firstTokenGracePeriod: TimeInterval = MeetingRecordingManager.clampedInterval(
+        forKey: ConfigKeys.firstTokenGrace,
+        defaultValue: 30,
+        min: 5,
+        max: 120,
+        logger: MeetingRecordingManager.configLogger
+    )
+    private let monitorIntervalSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
+        forKey: ConfigKeys.monitorInterval,
+        defaultValue: 2,
+        min: 1,
+        max: 30,
+        logger: MeetingRecordingManager.configLogger
+    )
+    private let maxStreamingMonitorElapsed: TimeInterval = MeetingRecordingManager.clampedInterval(
+        forKey: ConfigKeys.monitorMaxSeconds,
+        defaultValue: 4 * 3600,
+        min: 60,
+        max: 8 * 3600,
+        logger: MeetingRecordingManager.configLogger
+    )
 
     private var isStreamingEnabled: Bool {
         FluidAudioAdapter.isEnabled
     }
+
+    struct StreamingHealth: Equatable {
+        enum State: Equatable {
+            case idle
+            case connecting
+            case active
+            case stalled
+            case failed(String)
+        }
+        var state: State
+        var lastUpdate: Date?
+        var firstTokenLatency: TimeInterval?
+    }
+
+    @Published private(set) var streamingHealth: StreamingHealth = .init(state: .idle)
+    private var streamingMonitorTask: Task<Void, Never>?
+    private var streamingLastUpdate: Date?
+    private var preTokenStallLogged = false
 #endif
     
     init(
@@ -131,6 +246,49 @@ final class MeetingRecordingManager: ObservableObject {
             summarizationService: summarizationService,
             transcriptStore: transcriptStore
         )
+
+        self.maxNotesRetryAttempts = Self.clampedInt(
+            forKey: "overhear.notesMaxRetryAttempts",
+            defaultValue: 3,
+            min: 1,
+            max: 20,
+            logger: logger
+        )
+        self.notesHealthIntervalSeconds = Self.clampedInterval(
+            forKey: "overhear.notesHealthIntervalSeconds",
+            defaultValue: 5,
+            min: 1,
+            max: 60,
+            logger: logger
+        )
+        self.maxHealthIterations = Self.clampedInt(
+            forKey: "overhear.notesHealthMaxIterations",
+            defaultValue: 1000,
+            min: 50,
+            max: 2000,
+            logger: logger
+        )
+        self.maxTranscriptWaits = Self.clampedInt(
+            forKey: "overhear.notesMaxTranscriptWaits",
+            defaultValue: 120,
+            min: 1,
+            max: 600,
+            logger: logger
+        )
+        self.maxHealthRetries = Self.clampedInt(
+            forKey: "overhear.notesHealthMaxRetries",
+            defaultValue: 50,
+            min: 1,
+            max: 200,
+            logger: logger
+        )
+        self.maxHealthElapsedSeconds = Self.clampedInterval(
+            forKey: "overhear.notesHealthMaxElapsedSeconds",
+            defaultValue: 300,
+            min: 60,
+            max: 7200,
+            logger: logger
+        )
     }
     
     /// Start recording the meeting
@@ -144,14 +302,52 @@ final class MeetingRecordingManager: ObservableObject {
         default:
             break
         }
-        
+
+        // Enable file logging for this session only if no preference is set.
+        let defaults = UserDefaults.standard
+        let fileLogsKey = "overhear.enableFileLogs"
+        var restoreLogsOnExit = false
+        if defaults.object(forKey: fileLogsKey) == nil {
+            originalFileLogSetting = nil
+            fileLogTemporarilyEnabled = true
+            defaults.set(true, forKey: fileLogsKey)
+            FileLogger.log(category: "MeetingRecordingManager", message: "File logging enabled for this session (no prior preference set)")
+        } else {
+            originalFileLogSetting = defaults.bool(forKey: fileLogsKey)
+        }
+        restoreLogsOnExit = true
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "startRecording requested (meetingID=\(meetingID) title=\(meetingTitle) duration=\(duration)s)"
+        )
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "Audio capture mode: mic-only (system/output capture not yet wired)"
+        )
+
+        defer {
+            // If we exited early (e.g., error before stopRecording), restore any temp logging change.
+            if restoreLogsOnExit {
+                switch status {
+                case .capturing, .transcribing, .completed:
+                    break
+                default:
+                    restoreFileLoggingPreference()
+                }
+            }
+        }
+
         status = .capturing
         captureStartTime = Date()
         liveTranscript = ""
         liveSegments = []
+        startNotesHealthCheck()
 #if canImport(FluidAudio)
         streamingConfirmedSegments = []
         streamingHypothesis = nil
+        streamingHealth = .init(state: .idle)
+        streamingLastUpdate = nil
+        loggedFirstStreamingToken = false
         if isStreamingEnabled {
             await startLiveStreaming()
         }
@@ -193,11 +389,20 @@ final class MeetingRecordingManager: ObservableObject {
         } catch {
             await stopLiveStreaming()
             status = .failed(RecordingError.captureService(error))
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "startRecording failed: \(error.localizedDescription)"
+            )
+            restoreFileLoggingPreference()
         }
     }
     
     /// Stop the current recording
     func stopRecording() async {
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "stopRecording requested (status=\(status))"
+        )
         await captureService.stopCapture()
         await stopLiveStreaming()
         
@@ -205,7 +410,41 @@ final class MeetingRecordingManager: ObservableObject {
         if case .transcribing = status {
             transcriptionTask?.cancel()
         }
+        streamingMonitorTask?.cancel()
+        await streamingMonitorTask?.value
+        notesRetryTask?.cancel()
+        await notesRetryTask?.value
+        pendingNotes = nil
+        notesSaveState = .idle
+        notesHealthCheckTask?.cancel()
+        await notesHealthCheckTask?.value
+        notesHealthCheckTask = nil
+        streamingMonitorTask = nil
+        restoreFileLoggingPreference()
         status = .completed
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "stopRecording completed; status=\(status)"
+        )
+    }
+
+    private func restoreFileLoggingPreference() {
+        if fileLogTemporarilyEnabled {
+            UserDefaults.standard.removeObject(forKey: "overhear.enableFileLogs")
+        } else if let original = originalFileLogSetting {
+            UserDefaults.standard.set(original, forKey: "overhear.enableFileLogs")
+        }
+    }
+
+    deinit {
+        notesRetryTask?.cancel()
+        notesHealthCheckTask?.cancel()
+#if canImport(FluidAudio)
+        streamingMonitorTask?.cancel()
+        streamingTask?.cancel()
+#endif
+        transcriptionTask?.cancel()
+        // Do not call async work from deinit; startRecording/stopRecording perform cleanup.
     }
 
     var displayTitle: String {
@@ -228,11 +467,34 @@ final class MeetingRecordingManager: ObservableObject {
     func saveNotes(_ notes: String) async {
         // Always remember the latest notes in case the transcript ID is not yet assigned.
         pendingNotes = notes
+        notesRetryTask?.cancel()
+        notesRetryAttempts = 0
+        lastNotesError = nil
+        await startNotesHealthCheck()
+        await performNotesSave(notes: notes)
+    }
+
+    @MainActor
+    private func performNotesSave(notes: String) async {
+        await notesSaveQueue.enqueue {
+            [weak self] in
+            guard let self else { return }
+            if Task.isCancelled { return }
+            self.notesSaveRunning = true
+            defer { self.notesSaveRunning = false }
+            await self.performNotesSaveInternal(notes: notes)
+        }
+    }
+
+    @MainActor
+    private func performNotesSaveInternal(notes: String) async {
+        if Task.isCancelled { return }
         guard let transcriptID = transcriptID else {
             FileLogger.log(category: "MeetingRecordingManager", message: "Deferring notes persist until transcriptID is available")
             return
         }
         do {
+            notesSaveState = .saving
             try await pipeline.updateTranscript(id: transcriptID) { stored in
                 StoredTranscript(
                     id: stored.id,
@@ -249,8 +511,155 @@ final class MeetingRecordingManager: ObservableObject {
             }
             FileLogger.log(category: "MeetingRecordingManager", message: "Persisted notes for \(transcriptID)")
             pendingNotes = nil
+            lastNotesSavedAt = Date()
+            notesRetryAttempts = 0
+            notesRetryTask = nil
+            lastNotesError = nil
+            notesSaveState = .idle
+            // Successful save clears any accumulated health retries.
+            notesHealthCheckTask.map { _ in () }
         } catch {
-            FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes: \(error.localizedDescription)")
+        notesRetryAttempts += 1
+            lastNotesError = error.localizedDescription
+            if notesRetryAttempts <= maxNotesRetryAttempts {
+                let delaySeconds = pow(2.0, Double(notesRetryAttempts - 1))
+                notesSaveState = .queued(notesRetryAttempts)
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Notes persist failed (attempt \(notesRetryAttempts)/\(maxNotesRetryAttempts)); retrying in \(Int(delaySeconds))s: \(error.localizedDescription)"
+                )
+                notesRetryTask = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                    guard let self else { return }
+                    if Task.isCancelled {
+                        FileLogger.log(category: "MeetingRecordingManager", message: "Notes retry cancelled")
+                        notesSaveState = .idle
+                        return
+                    }
+                    let latestNotes = pendingNotes ?? notes
+                    await self.performNotesSave(notes: latestNotes)
+                }
+            } else {
+                FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes after retries: \(error.localizedDescription)")
+                notesRetryTask = nil
+                notesSaveState = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    @MainActor
+    func startNotesHealthCheck() async {
+        let intervalSeconds = notesHealthIntervalSeconds
+        let previous = notesHealthCheckTask
+        previous?.cancel()
+        await previous?.value
+        if Task.isCancelled { return }
+        notesHealthCheckTask = Task { @MainActor [weak self] in
+            let healthStart = Date()
+            var transcriptWaits = 0
+            var healthRetries = 0
+            var iterations = 0
+            @MainActor
+            func attemptRetry() async -> Bool {
+                guard let self else { return false }
+                guard pendingNotes != nil else { return false }
+                // If a manual save just succeeded, reset health retries so we do not hit the cap unnecessarily.
+                if notesSaveState == .idle {
+                    healthRetries = 0
+                }
+                let state = notesSaveState
+                let hasRetry = notesRetryTask != nil
+                let hasSave = notesSaveRunning
+                guard Self.shouldRetryNotes(
+                    pendingNotes: pendingNotes,
+                    state: state,
+                    hasRetryTask: hasRetry,
+                    hasSaveTask: hasSave
+                ) else {
+                    return false
+                }
+                healthRetries += 1
+                if healthRetries > maxHealthRetries {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Notes health check hit max retries; giving up to avoid infinite loop"
+                    )
+                    return false
+                }
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Notes pending persist while idle/failed; triggering retry (healthRetries=\(healthRetries))"
+                )
+                guard let latest = pendingNotes else { return false }
+                await self.performNotesSave(notes: latest)
+                if pendingNotes == nil && self.notesSaveState == .idle {
+                    healthRetries = 0
+                }
+                return true
+            }
+            // Immediate check before the first sleep to avoid waiting when notes are already pending.
+            _ = await attemptRetry()
+            while !Task.isCancelled {
+                guard let self else { return }
+                iterations += 1
+                if Task.isCancelled { return }
+                if Date().timeIntervalSince(healthStart) > maxHealthElapsedSeconds {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Notes health check exceeded max elapsed time (\(Int(maxHealthElapsedSeconds))s); exiting"
+                    )
+                    notesSaveState = .failed("Health check timed out")
+                    return
+                }
+                if iterations > maxHealthIterations {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Notes health check exceeded max iterations (\(maxHealthIterations)); exiting to avoid infinite loop"
+                    )
+                    return
+                }
+                switch status {
+                case .capturing, .transcribing:
+                    break
+                default:
+                    // If notes are still pending, keep the loop alive to allow final persistence.
+                    if pendingNotes != nil {
+                        try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                        continue
+                    }
+                    return
+                }
+                if Task.isCancelled { return }
+                guard transcriptID != nil else {
+                    transcriptWaits += 1
+            if transcriptWaits.isMultiple(of: transcriptWaitLogIntervalCount) {
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Notes health check still waiting for transcriptID; skipping retries"
+                )
+                        // Keep waiting and periodically log progress; subsequent check exits if we've waited too long overall.
+                    }
+                    if transcriptWaits >= maxTranscriptWaits {
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: "Notes health check giving up waiting for transcriptID after \(transcriptWaits) intervals"
+                        )
+                        notesSaveState = .failed("Transcript ID unavailable")
+                        return
+                    }
+                    try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                    continue
+                }
+                if Task.isCancelled { return }
+                let retried = await attemptRetry()
+                if !retried && healthRetries > maxHealthRetries {
+                    notesSaveState = .failed("Health check retry limit exceeded")
+                    return
+                }
+                if Task.isCancelled { return }
+                try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                if Task.isCancelled { return }
+            }
         }
     }
     
@@ -436,7 +845,7 @@ final class MeetingRecordingManager: ObservableObject {
 }
 
 #if canImport(FluidAudio)
-private extension MeetingRecordingManager {
+extension MeetingRecordingManager {
     /// Streaming configuration tuned for balanced accuracy/latency for live transcripts.
     private var streamingConfig: StreamingAsrConfig {
         // Favor accuracy/stability: longer chunks and context so we stop dropping words.
@@ -459,12 +868,15 @@ private extension MeetingRecordingManager {
             streamingConfirmedSegments = []
             streamingHypothesis = nil
             consecutiveEmptyStreamingUpdates = 0
+            streamingLastUpdate = nil
+            streamingHealth = .init(state: .connecting, lastUpdate: nil, firstTokenLatency: nil)
+            preTokenStallLogged = false
 
             let manager = StreamingAsrManager(config: streamingConfig)
             streamingManager = manager
 
             let updates = await manager.transcriptionUpdates
-            streamingTask = Task { [weak self] in
+            streamingTask = Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 logger.info("Streaming task launched; awaiting updates")
                 FileLogger.log(category: "MeetingRecordingManager", message: "Streaming updates subscriber started")
@@ -472,12 +884,18 @@ private extension MeetingRecordingManager {
                     if !loggedFirstStreamingToken, let start = streamingStartDate {
                         let delta = Date().timeIntervalSince(start)
                         loggedFirstStreamingToken = true
+                        preTokenStallLogged = false
                         FileLogger.log(
                             category: "MeetingRecordingManager",
                             message: String(format: "First streaming update after %.2fs", delta)
                         )
                         logger.info("Streaming first token latency: \(delta, privacy: .public)s")
+                        streamingHealth.firstTokenLatency = delta
+                        streamingHealth.state = .active
                     }
+                    streamingLastUpdate = Date()
+                    streamingHealth.state = .active
+                    streamingHealth.lastUpdate = streamingLastUpdate
                     await self.handleStreamingUpdate(update)
                 }
                 logger.info("Streaming updates stream ended")
@@ -493,17 +911,39 @@ private extension MeetingRecordingManager {
             streamingObserverToken = await captureService.registerBufferObserver { [weak manager] buffer in
                 guard let manager else { return }
                 // Buffer provided by AVAudioCaptureService is already cloned per observer; forward off the main thread.
-                Task.detached(priority: .userInitiated) {
+                Task.detached(priority: .userInitiated) { [weak manager] in
+                    guard let manager else { return }
                     await manager.streamAudio(buffer)
                 }
             }
 
             try await manager.start()
             FileLogger.log(category: "MeetingRecordingManager", message: "Streaming ASR started")
+            startStreamingMonitor()
         } catch {
             logger.error("Streaming ASR failed to start: \(error.localizedDescription, privacy: .public)")
+            streamingHealth.state = .failed(error.localizedDescription)
             await stopLiveStreaming()
         }
+    }
+
+    /// Attempt to restart live streaming transcription after a stall. No-op if streaming is disabled or not active.
+    func restartStreaming() async {
+        guard isStreamingEnabled else { return }
+        switch status {
+        case .capturing, .transcribing:
+            break
+        default:
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Restart streaming request ignored; status=\(status)"
+            )
+            return
+        }
+        FileLogger.log(category: "MeetingRecordingManager", message: "Restarting streaming transcription after stall/manual request")
+        await stopLiveStreaming()
+        streamingHealth = .init(state: .connecting, lastUpdate: nil, firstTokenLatency: nil)
+        await startLiveStreaming()
     }
 
     func stopLiveStreaming() async {
@@ -527,6 +967,9 @@ private extension MeetingRecordingManager {
 
         streamingTask?.cancel()
         streamingTask = nil
+        streamingMonitorTask?.cancel()
+        await streamingMonitorTask?.value
+        streamingMonitorTask = nil
 
         if let token = streamingObserverToken {
             defer { streamingObserverToken = nil }
@@ -536,10 +979,95 @@ private extension MeetingRecordingManager {
         }
 
         streamingManager = nil
+        streamingHealth = .init(state: .idle, lastUpdate: nil, firstTokenLatency: streamingHealth.firstTokenLatency)
+        FileLogger.log(
+            category: "MeetingRecordingManager",
+            message: "stopLiveStreaming completed; final liveTranscript length=\(liveTranscript.count)"
+        )
+    }
+
+    func startStreamingMonitor() {
+        let previous = streamingMonitorTask
+        streamingMonitorTask = Task { @MainActor [weak self] in
+            await previous?.value
+            let monitorStart = Date()
+            while !Task.isCancelled {
+                guard let self else { return }
+                guard isStreamingEnabled else { return }
+                switch status {
+                case .capturing, .transcribing:
+                    break
+                default:
+                    return
+                }
+                guard let start = streamingStartDate else {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Streaming monitor exiting early: missing streamingStartDate"
+                    )
+                    return
+                }
+                guard streamingManager != nil, streamingTask != nil else { return }
+                if Date().timeIntervalSince(monitorStart) > maxStreamingMonitorElapsed {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Streaming monitor exceeded max elapsed time (\(Int(maxStreamingMonitorElapsed))s); exiting"
+                    )
+                    return
+                }
+                // Grace period to allow first token before we declare a stall.
+                if !loggedFirstStreamingToken && Date().timeIntervalSince(start) < firstTokenGracePeriod {
+                    try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
+                    continue
+                } else if !loggedFirstStreamingToken && Date().timeIntervalSince(start) >= firstTokenGracePeriod {
+                    if !preTokenStallLogged {
+                        streamingHealth.state = .stalled
+                        streamingHealth.lastUpdate = Date()
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: "Streaming stalled before first token after \(firstTokenGracePeriod)s"
+                        )
+                        preTokenStallLogged = true
+                    }
+                    // If we were stalled pre-token, keep waiting but sleep to avoid tight loop.
+                    try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
+                    continue
+                }
+                let last = streamingLastUpdate ?? start
+                let delta = Date().timeIntervalSince(last)
+                let previousState = streamingHealth.state
+                var newState = previousState
+                if delta > stallThresholdSeconds {
+                    if previousState != .stalled {
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: String(format: "Streaming stalled; last update %.2fs ago", delta)
+                        )
+                    }
+                    newState = .stalled
+                } else {
+                    let targetState: StreamingHealth.State = loggedFirstStreamingToken ? .active : .connecting
+                    if previousState == .stalled && targetState != .stalled {
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: "Streaming recovered after stall"
+                        )
+                    }
+                    newState = targetState
+                }
+                streamingHealth = StreamingHealth(
+                    state: newState,
+                    lastUpdate: streamingLastUpdate ?? Date(),
+                    firstTokenLatency: streamingHealth.firstTokenLatency
+                )
+                try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
+            }
+        }
     }
 
     @MainActor
     func handleStreamingUpdate(_ update: StreamingTranscriptionUpdate) async {
+        if Task.isCancelled { return }
         let segmentID = streamingHypothesis?.id ?? UUID()
         let timingSnapshots = update.tokenTimings.map { timing in
             TokenTimingSnapshot(start: timing.startTime, end: timing.endTime)
@@ -598,7 +1126,12 @@ private extension MeetingRecordingManager {
         if let hyp = streamingHypothesis {
             segments.append(hyp)
         }
-        liveSegments = segments
+        // Trim live segments to avoid unbounded growth during very long sessions.
+        if segments.count > 1000 {
+            liveSegments = Array(segments.suffix(1000))
+        } else {
+            liveSegments = segments
+        }
 
         let transcript = segments
             .map(\.text)
@@ -606,12 +1139,22 @@ private extension MeetingRecordingManager {
             .joined(separator: "\n")
 
         liveTranscript = transcript
-        let status = update.isConfirmed ? "confirmed" : "hypothesis"
-        FileLogger.log(
-            category: "MeetingRecordingManager",
-            message: "Streaming update (\(status)): \(update.text) [chars=\(update.text.count) tokens=\(update.tokenIds.count)]"
-        )
-        logger.debug("Streaming update (\(status)): \(update.text)")
+        streamingUpdateCount &+= 1
+        if streamingUpdateCount > 10_000_000 {
+            streamingUpdateCount = 0
+        }
+        if (streamingUpdateCount > 0 && streamingUpdateCount <= 5) || streamingUpdateCount % 100 == 0 {
+            let status = update.isConfirmed ? "confirmed" : "hypothesis"
+            let charCount = update.text.count
+            let tokenCount = update.tokenIds.count
+#if DEBUG
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Streaming update (\(status)): [chars=\(charCount) tokens=\(tokenCount)]"
+            )
+#endif
+            logger.debug("Streaming update (\(status)): [chars=\(charCount) tokens=\(tokenCount)]")
+        }
         applySpeakerLabelsIfPossible()
     }
 
@@ -622,11 +1165,16 @@ private extension MeetingRecordingManager {
         func label(for segment: LiveTranscriptSegment) -> String? {
             let timings = segment.tokenTimings
             guard !timings.isEmpty else { return nil }
+            let minTiming = timings.map(\.start).min() ?? 0
+            let maxTiming = timings.map(\.end).max() ?? 0
             var overlapBySpeaker: [String: TimeInterval] = [:]
-            for timing in timings {
-                let tokenRange = timing.start...timing.end
-                for diarization in speakerSegments {
-                    let diarizationRange = diarization.start...diarization.end
+            // Assumes speakerSegments sorted by start time; if not, we continue scanning all.
+            for diarization in speakerSegments {
+                if diarization.end < minTiming { continue }
+                if diarization.start > maxTiming { continue }
+                let diarizationRange = diarization.start...diarization.end
+                for timing in timings {
+                    let tokenRange = timing.start...timing.end
                     let overlapStart = max(tokenRange.lowerBound, diarizationRange.lowerBound)
                     let overlapEnd = min(tokenRange.upperBound, diarizationRange.upperBound)
                     let overlap = max(0, overlapEnd - overlapStart)
@@ -638,10 +1186,17 @@ private extension MeetingRecordingManager {
             return overlapBySpeaker.max(by: { $0.value < $1.value })?.key
         }
 
-        streamingConfirmedSegments = streamingConfirmedSegments.map { segment in
-            guard let speaker = label(for: segment) else { return segment }
-            return segment.assigningSpeaker(speaker)
+        if lastLabeledConfirmedCount > streamingConfirmedSegments.count {
+            lastLabeledConfirmedCount = 0
         }
+
+        for index in streamingConfirmedSegments.indices {
+            guard index >= lastLabeledConfirmedCount else { continue }
+            let segment = streamingConfirmedSegments[index]
+            guard let speaker = label(for: segment) else { continue }
+            streamingConfirmedSegments[index] = segment.assigningSpeaker(speaker)
+        }
+        lastLabeledConfirmedCount = streamingConfirmedSegments.count
 
         var combined = streamingConfirmedSegments
         if let hyp = streamingHypothesis {
@@ -693,5 +1248,21 @@ private extension MeetingRecordingManager {
         let sanitized = raw.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
         let result = String(sanitized).trimmingCharacters(in: CharacterSet(charactersIn: "._"))
         return result.isEmpty ? "meeting" : result
+    }
+}
+
+private actor NotesSaveQueue {
+    private var lastTask: Task<Void, Never>?
+
+    /// Serializes note save operations. The call awaits completion to keep callers
+    /// aware of persistence failures rather than fire-and-forget.
+    func enqueue(_ operation: @escaping @MainActor () async -> Void) async {
+        let previous = lastTask
+        let task = Task {
+            await previous?.value
+            await operation()
+        }
+        lastTask = task
+        await task.value
     }
 }

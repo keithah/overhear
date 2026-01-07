@@ -1,5 +1,5 @@
 import Foundation
-import CryptoKit
+@preconcurrency import CryptoKit
 import Security
 
 /// Represents a stored transcript with metadata
@@ -179,7 +179,10 @@ actor TranscriptStore {
                 let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
                 transcripts.append(transcript)
             } catch {
-                // Skip files that can't be decoded
+                FileLogger.log(
+                    category: "TranscriptStore",
+                    message: "Skipped corrupt or unreadable transcript at \(fileURL.lastPathComponent): \(error.localizedDescription)"
+                )
                 continue
             }
         }
@@ -249,6 +252,10 @@ actor TranscriptStore {
         
         // Fallback to plaintext legacy JSON
         if let transcript = try? decoder.decode(StoredTranscript.self, from: data) {
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "Loaded plaintext transcript fallback (legacy/unencrypted data)"
+            )
             return transcript
         }
         
@@ -343,36 +350,85 @@ actor TranscriptStore {
             .first
     }
     
-    /// Determine if we should bypass the Keychain (CI / explicit env override).
+    /// Determine if we should bypass the Keychain (explicit env override only).
     nonisolated private static var isKeychainBypassed: Bool {
         let env = ProcessInfo.processInfo.environment
         let truthy: Set<String> = ["1", "true", "TRUE", "True"]
-        let bypass = env["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? ""
-        let ci = env["CI"] ?? ""
-        let gha = env["GITHUB_ACTIONS"] ?? ""
-        // Prefer explicit bypass; otherwise require both CI and GitHub Actions markers.
-        return truthy.contains(bypass) || (truthy.contains(ci) && truthy.contains(gha))
+        guard truthy.contains(env["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? "") else { return false }
+        let isCI = (env["CI"] == "true") && (env["GITHUB_ACTIONS"] == "true") && env["GITHUB_RUNNER_NAME"] != nil
+        let isRunningTests = env["XCTestConfigurationFilePath"] != nil
+        return isCI || isRunningTests
+    }
+
+    nonisolated private static var keychainBypassReason: String? {
+        guard isKeychainBypassed else { return nil }
+        let env = ProcessInfo.processInfo.environment
+        if env["OVERHEAR_INSECURE_NO_KEYCHAIN"] != nil { return "OVERHEAR_INSECURE_NO_KEYCHAIN" }
+        if env["XCTestConfigurationFilePath"] != nil { return "XCTestConfigurationFilePath" }
+        if env["GITHUB_RUNNER_NAME"] != nil { return "CI/GitHubActions" }
+        return nil
     }
     
     // MARK: - Encryption
+
+    private struct EphemeralKeyBox: @unchecked Sendable {
+        let key: SymmetricKey
+    }
+
+    private enum KeyStorage {
+        static let ephemeralKeyBox = EphemeralKeyBox(key: SymmetricKey(size: .bits256))
+        private static let insecureKeyDefaultsKey = "overhear.insecureTranscriptKey"
+        nonisolated(unsafe) private static var didLogBypass = false
+        private static let logLock = NSLock()
+
+        static func shouldLogBypass() -> Bool {
+            logLock.lock()
+            defer { logLock.unlock() }
+            if didLogBypass { return false }
+            didLogBypass = true
+            return true
+        }
+
+        /// Persists an insecure key outside the Keychain so transcripts remain readable across restarts
+        /// when bypassing secure storage. This is intentionally insecure and only used when bypassing.
+        static func insecurePersistedKey() -> SymmetricKey {
+            let defaults = UserDefaults.standard
+            if let data = defaults.data(forKey: insecureKeyDefaultsKey), data.count == 32 {
+                return SymmetricKey(data: data)
+            }
+            let key = SymmetricKey(size: .bits256)
+            let keyData = key.withUnsafeBytes { Data($0) }
+            defaults.set(keyData, forKey: insecureKeyDefaultsKey)
+            return key
+        }
+    }
     
     /// Return or create the encryption key for transcript persistence.
     /// In CI/debug bypass scenarios the Keychain is unavailable, so we use a process-scoped
     /// ephemeral key instead. In production this persists to the Keychain.
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
-        // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
+#if !DEBUG
+        // Never allow bypass in release builds, even if env is spoofed.
         if isKeychainBypassed {
-            #if !DEBUG
-            assertionFailure("OVERHEAR_INSECURE_NO_KEYCHAIN should never be set in production")
-            #endif
-            struct EphemeralKeyHolder {
-                static let key = SymmetricKey(size: .bits256)
-            }
             FileLogger.log(
                 category: "TranscriptStore",
-                message: "Using ephemeral in-memory encryption key (Keychain bypass active)"
+                message: "CRITICAL: Keychain bypass attempted in release build"
             )
-            return EphemeralKeyHolder.key
+            throw Error.keyManagementFailed("Keychain bypass is not allowed in production builds")
+        }
+#endif
+
+        // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
+        if isKeychainBypassed {
+            let insecureKey = KeyStorage.insecurePersistedKey()
+            let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
+            if KeyStorage.shouldLogBypass() {
+                FileLogger.log(
+                    category: "TranscriptStore",
+                    message: "Using insecure persisted encryption key (Keychain bypass active\(reasonSuffix)); transcripts are NOT encrypted at rest"
+                )
+            }
+            return insecureKey
         }
 
         let keyTag = "com.overhear.app.transcripts.key"
@@ -419,11 +475,27 @@ actor TranscriptStore {
             ]
             
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
-            guard addStatus == errSecSuccess else {
+            if addStatus == errSecSuccess {
+                return newKey
+            } else {
+                if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || addStatus == errSecAuthFailed {
+#if DEBUG
+                    guard isKeychainBypassed else {
+                        throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)); explicit bypass + CI/test required even in debug")
+                    }
+                    let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
+                    FileLogger.log(
+                        category: "TranscriptStore",
+                        message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix). Transcripts may be unreadable after restart"
+                    )
+                    return KeyStorage.ephemeralKeyBox.key
+#else
+                    throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)) and bypass is not permitted in production")
+#endif
+                }
+
                 throw Error.keyManagementFailed("Failed to store encryption key in Keychain: status \(addStatus)")
             }
-            
-            return newKey
         }
         
         throw Error.keyManagementFailed("Unexpected Keychain error: \(status)")
@@ -446,6 +518,10 @@ actor TranscriptStore {
             let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
             return try AES.GCM.open(sealedBox, using: key)
         } catch {
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "Decryption failed; attempting plaintext decode as fallback"
+            )
             throw Error.decryptionFailed(error.localizedDescription)
         }
     }
