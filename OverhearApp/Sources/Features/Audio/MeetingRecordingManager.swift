@@ -1138,9 +1138,10 @@ extension MeetingRecordingManager {
             .joined(separator: "\n")
 
         liveTranscript = transcript
-        streamingUpdateCount += 1
-        if streamingUpdateCount > 10_000_000 {
+        if streamingUpdateCount >= 10_000_000 {
             streamingUpdateCount = 0
+        } else {
+            streamingUpdateCount += 1
         }
         if (streamingUpdateCount > 0 && streamingUpdateCount <= 5) || streamingUpdateCount % 100 == 0 {
             let status = update.isConfirmed ? "confirmed" : "hypothesis"

@@ -139,7 +139,7 @@ actor LocalLLMPipeline {
             downloadStartAt = Date()
         }
         notifyStateChanged()
-        let bucket = Int((progress * 100).rounded(.towardZero) / 10)
+        let bucket = min(10, max(0, Int((progress * 100).rounded(.towardZero) / 10)))
         if bucket != lastProgressLogBucket {
             lastProgressLogBucket = bucket
             FileLogger.log(category: logCategory, message: "Download progress: \(Int(progress * 100))%")
@@ -329,7 +329,7 @@ actor LocalLLMPipeline {
                 // Run warmup and a timeout sentinel in parallel; whichever finishes first cancels the other.
                 group.addTask {
                     try await client.warmup(progress: { [weak self] progress in
-                        Task { @MainActor [weak self] in
+                        Task { [weak self] in
                             guard let self else { return }
                             await self.runIfCurrentGeneration(generation) {
                                 await self.setDownloading(progress, generation: generation)
