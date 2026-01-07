@@ -1034,24 +1034,31 @@ extension MeetingRecordingManager {
                 }
                 let last = streamingLastUpdate ?? start
                 let delta = Date().timeIntervalSince(last)
+                let previousState = streamingHealth.state
+                var newState = previousState
                 if delta > stallThresholdSeconds {
-                    if streamingHealth.state != .stalled {
+                    if previousState != .stalled {
                         FileLogger.log(
                             category: "MeetingRecordingManager",
                             message: String(format: "Streaming stalled; last update %.2fs ago", delta)
                         )
                     }
-                    streamingHealth.state = .stalled
+                    newState = .stalled
                 } else {
-                    if streamingHealth.state == .stalled {
+                    let targetState: StreamingHealth.State = loggedFirstStreamingToken ? .active : .connecting
+                    if previousState == .stalled && targetState != .stalled {
                         FileLogger.log(
                             category: "MeetingRecordingManager",
                             message: "Streaming recovered after stall"
                         )
                     }
-                    streamingHealth.state = loggedFirstStreamingToken ? .active : .connecting
+                    newState = targetState
                 }
-                streamingHealth.lastUpdate = streamingLastUpdate ?? Date()
+                streamingHealth = StreamingHealth(
+                    state: newState,
+                    lastUpdate: streamingLastUpdate ?? Date(),
+                    firstTokenLatency: streamingHealth.firstTokenLatency
+                )
                 try? await Task.sleep(nanoseconds: UInt64(monitorIntervalSeconds * 1_000_000_000))
             }
         }
