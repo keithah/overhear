@@ -549,117 +549,126 @@ final class MeetingRecordingManager: ObservableObject {
         notesHealthGeneration &+= 1
         let generation = notesHealthGeneration
 
-        notesHealthCheckTask = Task { @MainActor [weak self] in
+        notesHealthCheckTask = Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
-            // Ensure a newer health check task does not continue work.
-            guard generation == self.notesHealthGeneration else { return }
-            let healthStart = Date()
-            var transcriptWaits = 0
-            var healthRetries = 0
-            var iterations = 0
-            @MainActor
-            func attemptRetry() async -> Bool {
-                guard let self else { return false }
-                guard pendingNotes != nil else { return false }
-                // If a manual save just succeeded, reset health retries so we do not hit the cap unnecessarily.
+            await self.runNotesHealthCheck(generation: generation, intervalSeconds: intervalSeconds)
+        }
+    }
+
+    nonisolated private func runNotesHealthCheck(generation: Int, intervalSeconds: TimeInterval) async {
+        let healthStart = Date()
+        var transcriptWaits = 0
+        var healthRetries = 0
+        var iterations = 0
+
+        while !Task.isCancelled {
+            iterations += 1
+            if Task.isCancelled { return }
+
+            if Date().timeIntervalSince(healthStart) > maxHealthElapsedSeconds {
+                await MainActor.run { [weak self] in
+                    guard let self, generation == self.notesHealthGeneration else { return }
+                    notesSaveState = .failed("Notes health check exceeded maximum duration")
+                }
+                return
+            }
+            if iterations > maxHealthIterations {
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Notes health check exceeded max iterations (\(maxHealthIterations)); exiting to avoid infinite loop"
+                )
+                return
+            }
+
+            let snapshot = await MainActor.run { [weak self] in
+                guard let self else {
+                    return (status: status, transcriptID: transcriptID, pending: pendingNotes, retryTask: notesRetryTask != nil, saveRunning: isNotesSaveRunning, saveState: notesSaveState, genMatches: generation == notesHealthGeneration)
+                }
+                return (status: status, transcriptID: transcriptID, pending: pendingNotes, retryTask: notesRetryTask != nil, saveRunning: isNotesSaveRunning, saveState: notesSaveState, genMatches: generation == notesHealthGeneration)
+            }
+            guard snapshot.genMatches else { return }
+
+            switch snapshot.status {
+            case .capturing, .transcribing:
+                break
+            default:
+                if snapshot.pending != nil {
+                    try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                    continue
+                }
+                return
+            }
+
+            if Task.isCancelled { return }
+            guard snapshot.transcriptID != nil else {
+                transcriptWaits += 1
+                if transcriptWaits.isMultiple(of: transcriptWaitLogIntervalCount) {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Notes health check still waiting for transcriptID; skipping retries"
+                    )
+                }
+                if transcriptWaits >= maxTranscriptWaits {
+                    await MainActor.run { [weak self] in
+                        guard let self, generation == self.notesHealthGeneration else { return }
+                        notesSaveState = .failed("Transcript ID unavailable")
+                    }
+                    return
+                }
+                try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                continue
+            }
+            if Task.isCancelled { return }
+
+            let retryPlan = await MainActor.run { [weak self] in
+                guard let self, generation == self.notesHealthGeneration else {
+                    return (shouldRetry: false, notes: nil, shouldReset: false)
+                }
+                guard pendingNotes != nil else { return (false, nil, false) }
                 if notesSaveState == .idle {
                     healthRetries = 0
                 }
-                let state = notesSaveState
-                let hasRetry = notesRetryTask != nil
-                let hasSave = isNotesSaveRunning
                 guard Self.shouldRetryNotes(
                     pendingNotes: pendingNotes,
-                    state: state,
-                    hasRetryTask: hasRetry,
-                    hasSaveTask: hasSave
+                    state: notesSaveState,
+                    hasRetryTask: notesRetryTask != nil,
+                    hasSaveTask: isNotesSaveRunning
                 ) else {
-                    return false
+                    return (false, nil, false)
                 }
+                return (true, pendingNotes ?? "", false)
+            }
+
+            if retryPlan.shouldRetry {
                 healthRetries += 1
                 if healthRetries > maxHealthRetries {
-                    FileLogger.log(
-                        category: "MeetingRecordingManager",
-                        message: "Notes health check hit max retries; giving up to avoid infinite loop"
-                    )
-                    return false
+                    await MainActor.run { [weak self] in
+                        guard let self, generation == self.notesHealthGeneration else { return }
+                        notesSaveState = .failed("Health check retry limit exceeded")
+                    }
+                    return
                 }
                 FileLogger.log(
                     category: "MeetingRecordingManager",
                     message: "Notes pending persist while idle/failed; triggering retry (healthRetries=\(healthRetries))"
                 )
-                guard let latest = pendingNotes else { return false }
-                await self.performNotesSave(notes: latest)
-                guard let self else { return false }
-                if pendingNotes == nil && self.notesSaveState == .idle {
+                if let notes = retryPlan.notes {
+                    await MainActor.run { [weak self] in
+                        guard let self, generation == self.notesHealthGeneration else { return }
+                        await self.performNotesSave(notes: notes)
+                    }
+                }
+                let resetRetries = await MainActor.run { [weak self] in
+                    guard let self, generation == self.notesHealthGeneration else { return false }
+                    return pendingNotes == nil && notesSaveState == .idle
+                }
+                if resetRetries {
                     healthRetries = 0
                 }
-                return true
             }
-            // Immediate check before the first sleep to avoid waiting when notes are already pending.
-            _ = await attemptRetry()
-            while !Task.isCancelled {
-                guard let self else { return }
-                iterations += 1
-                if Task.isCancelled { return }
 
-                if Date().timeIntervalSince(healthStart) > maxHealthElapsedSeconds {
-                    FileLogger.log(
-                        category: "MeetingRecordingManager",
-                        message: "Notes health check exceeded max elapsed time (\(Int(maxHealthElapsedSeconds))s); exiting"
-                    )
-                    notesSaveState = .failed("Health check timed out")
-                    return
-                }
-                if iterations > maxHealthIterations {
-                    FileLogger.log(
-                        category: "MeetingRecordingManager",
-                        message: "Notes health check exceeded max iterations (\(maxHealthIterations)); exiting to avoid infinite loop"
-                    )
-                    return
-                }
-                switch status {
-                case .capturing, .transcribing:
-                    break
-                default:
-                    // If notes are still pending, keep the loop alive briefly to allow final persistence.
-                    if pendingNotes != nil {
-                        try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
-                        continue
-                    }
-                    return
-                }
-                if Task.isCancelled { return }
-                guard transcriptID != nil else {
-                    transcriptWaits += 1
-            if transcriptWaits.isMultiple(of: transcriptWaitLogIntervalCount) {
-                FileLogger.log(
-                    category: "MeetingRecordingManager",
-                    message: "Notes health check still waiting for transcriptID; skipping retries"
-                )
-                        // Keep waiting and periodically log progress; subsequent check exits if we've waited too long overall.
-                    }
-                    if transcriptWaits >= maxTranscriptWaits {
-                        FileLogger.log(
-                            category: "MeetingRecordingManager",
-                            message: "Notes health check giving up waiting for transcriptID after \(transcriptWaits) intervals"
-                        )
-                        notesSaveState = .failed("Transcript ID unavailable")
-                        return
-                    }
-                    try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
-                    continue
-                }
-                if Task.isCancelled { return }
-                let retried = await attemptRetry()
-                if !retried && healthRetries > maxHealthRetries {
-                    notesSaveState = .failed("Health check retry limit exceeded")
-                    return
-                }
-                if Task.isCancelled { return }
-                try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
-                if Task.isCancelled { return }
-            }
+            if Task.isCancelled { return }
+            try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
         }
     }
     
