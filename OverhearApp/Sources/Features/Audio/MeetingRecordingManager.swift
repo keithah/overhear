@@ -555,6 +555,7 @@ final class MeetingRecordingManager: ObservableObject {
             // Ensure any prior task finishes before starting a new loop.
             previous?.cancel()
             await previous?.value
+            if Task.isCancelled { return }
             let healthStart = Date()
             var transcriptWaits = 0
             var healthRetries = 0
@@ -1253,6 +1254,8 @@ private extension MeetingRecordingManager {
 private actor NotesSaveQueue {
     private var lastTask: Task<Void, Never>?
 
+    /// Serializes note save operations. The call awaits completion to keep callers
+    /// aware of persistence failures rather than fire-and-forget.
     func enqueue(_ operation: @escaping @MainActor () async -> Void) async {
         let previous = lastTask
         let task = Task {
