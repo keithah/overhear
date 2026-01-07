@@ -470,7 +470,7 @@ final class MeetingRecordingManager: ObservableObject {
         notesRetryTask?.cancel()
         notesRetryAttempts = 0
         lastNotesError = nil
-        startNotesHealthCheck()
+        await startNotesHealthCheck()
         await performNotesSave(notes: notes)
     }
 
@@ -548,14 +548,13 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     @MainActor
-    func startNotesHealthCheck() {
+    func startNotesHealthCheck() async {
         let intervalSeconds = notesHealthIntervalSeconds
         let previous = notesHealthCheckTask
+        previous?.cancel()
+        await previous?.value
+        if Task.isCancelled { return }
         notesHealthCheckTask = Task { @MainActor [weak self] in
-            // Ensure any prior task finishes before starting a new loop.
-            previous?.cancel()
-            await previous?.value
-            if Task.isCancelled { return }
             let healthStart = Date()
             var transcriptWaits = 0
             var healthRetries = 0
@@ -657,6 +656,7 @@ final class MeetingRecordingManager: ObservableObject {
                     notesSaveState = .failed("Health check retry limit exceeded")
                     return
                 }
+                if Task.isCancelled { return }
                 try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
                 if Task.isCancelled { return }
             }
