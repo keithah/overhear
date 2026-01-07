@@ -180,10 +180,10 @@ actor AVAudioCaptureService {
     }
 
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
-        guard isRecording else { return }
-        // Snapshot observers immediately so a concurrent stopCapture() won't invalidate this list.
-        let observers = Array(bufferObservers.values)
-        guard !observers.isEmpty else { return }
+        // Snapshot flags and observers together to avoid TOCTOU during stopCapture().
+        let observersSnapshot = bufferObservers.values
+        guard isRecording, !observersSnapshot.isEmpty else { return }
+        let observers = Array(observersSnapshot)
 
         bufferNotificationsLogged += 1
         buffersSinceLastLog += 1
