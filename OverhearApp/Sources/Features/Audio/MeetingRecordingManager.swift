@@ -161,6 +161,7 @@ final class MeetingRecordingManager: ObservableObject {
         static let stallThreshold = "overhear.streamingStallThreshold"
         static let firstTokenGrace = "overhear.streamingFirstTokenGrace"
         static let monitorInterval = "overhear.streamingMonitorInterval"
+        static let monitorHealthyInterval = "overhear.streamingMonitorHealthyInterval"
     }
     // Default stall threshold tuned for FluidAudio streaming; 8s balances latency vs spurious stalls.
     private let stallThresholdSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
@@ -183,6 +184,13 @@ final class MeetingRecordingManager: ObservableObject {
         defaultValue: 2,
         min: 1,
         max: 30,
+        logger: MeetingRecordingManager.configLogger
+    )
+    private let monitorHealthyIntervalSeconds: TimeInterval = MeetingRecordingManager.clampedInterval(
+        forKey: ConfigKeys.monitorHealthyInterval,
+        defaultValue: 5,
+        min: 2,
+        max: 60,
         logger: MeetingRecordingManager.configLogger
     )
 
@@ -1001,9 +1009,17 @@ extension MeetingRecordingManager {
             await previous?.value
             let monitorStart = Date()
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64((self?.monitorIntervalSeconds ?? 2) * 1_000_000_000))
                 guard let self else { return }
                 await self.evaluateStreamingHealth(monitorStart: monitorStart)
+                if Task.isCancelled { return }
+                let interval = await MainActor.run { [weak self] () -> TimeInterval in
+                    guard let self else { return self?.monitorIntervalSeconds ?? 2 }
+                    if self.loggedFirstStreamingToken && self.streamingHealth.state == .active {
+                        return self.monitorHealthyIntervalSeconds
+                    }
+                    return self.monitorIntervalSeconds
+                }
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             }
         }
     }
