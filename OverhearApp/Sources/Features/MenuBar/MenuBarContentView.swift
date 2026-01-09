@@ -457,7 +457,7 @@ struct LiveNotesView: View {
             HStack(spacing: 6) {
                 statusChip(title: statusText, color: statusColor, icon: "record.circle")
                 streamingChip
-                llmChip
+                llmStatusChip
             }
             Button {
                 Task { await coordinator.stopRecording() }
@@ -550,9 +550,7 @@ struct LiveNotesView: View {
         return statusChip(title: title, color: color, icon: "waveform.and.magnifyingglass")
     }
 
-    private var llmChip: some View {
-        makeLLMStatusChip(for: llmState)
-    }
+    private var llmStatusChip: some View { makeLLMStatusChip(for: llmState) }
 
     private var consentNotice: some View {
         HStack(spacing: 6) {
@@ -1246,7 +1244,7 @@ struct LiveNotesManagerView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
-                llmStatusChipManager
+                llmStatusChip
                 Menu {
                     Button("Regenerate (default prompt)") {
                         Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
@@ -1373,8 +1371,6 @@ struct LiveNotesManagerView: View {
         await manager.regenerateSummary(template: template)
         isRegenerating = false
     }
-
-    private var llmStatusChipManager: some View { makeLLMStatusChip(for: llmState) }
 
     private func prefillNotesIfNeeded() async {
         guard liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
