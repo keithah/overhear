@@ -1,14 +1,19 @@
 name: Multi-Provider Code Review
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
 
 jobs:
   check-guidelines:
     if: |
-      github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/review')
+      (github.event_name == 'pull_request') ||
+      (github.event.issue.pull_request &&
+       (startsWith(github.event.comment.body, '/review') ||
+        contains(github.event.comment.body, '@opencode') ||
+        contains(github.event.comment.body, '@claude')))
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
@@ -17,7 +22,7 @@ jobs:
       - name: Get PR number
         id: pr-number
         run: |
-          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "pull_request_target" ]; then
             echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
           else
             echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
