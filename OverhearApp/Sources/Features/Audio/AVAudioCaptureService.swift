@@ -179,12 +179,10 @@ actor AVAudioCaptureService {
         await finalizeRecording(result: .success(makeCaptureResult(url: url, stoppedEarly: stoppedEarly)))
     }
 
-    @MainActor
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
         // Snapshot flags and observers together to avoid TOCTOU during stopCapture().
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
         guard isRecording, !observersSnapshot.isEmpty else { return }
-        let observers = Array(observersSnapshot)
 
         bufferNotificationsLogged += 1
         buffersSinceLastLog += 1
@@ -197,7 +195,7 @@ actor AVAudioCaptureService {
             )
             buffersSinceLastLog = 0
         }
-        for observer in observers {
+        for observer in observersSnapshot {
             guard let copy = buffer.cloned() else { continue }
             observer(copy)
         }
