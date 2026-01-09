@@ -1014,6 +1014,7 @@ struct LiveNotesManagerView: View {
     @State private var llmState: LocalLLMPipeline.State = .idle
     @State private var isWarmingLLM = false
     @State private var warmupTask: Task<Void, Never>?
+    @State private var notesDebounceTask: Task<Void, Never>?
     var onHide: () -> Void
 
     private var isActiveRecording: Bool {
@@ -1213,9 +1214,16 @@ struct LiveNotesManagerView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
                     .onChange(of: liveNotes) { _, newValue in
-                        Task { await manager.saveNotes(newValue) }
+                        notesDebounceTask?.cancel()
+                        notesDebounceTask = Task { @MainActor [weak manager] in
+                            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms debounce
+                            guard let manager else { return }
+                            await manager.saveNotes(newValue)
+                        }
                     }
                     .onDisappear {
+                        notesDebounceTask?.cancel()
+                        notesDebounceTask = nil
                         Task { await manager.saveNotes(liveNotes) }
                     }
             }
