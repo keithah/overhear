@@ -14,7 +14,7 @@ jobs:
        (startsWith(github.event.comment.body, '/review') ||
         contains(github.event.comment.body, '@opencode') ||
         contains(github.event.comment.body, '@claude')))
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
@@ -22,7 +22,7 @@ jobs:
       - name: Get PR number
         id: pr-number
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "pull_request_target" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
           else
             echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
@@ -47,82 +47,29 @@ jobs:
           gh api /repos/${{ github.repository }}/pulls/${{ steps.pr-number.outputs.number }} > pr_data.json
           echo "title=$(jq -r .title pr_data.json)" >> $GITHUB_OUTPUT
           echo "sha=$(jq -r .head.sha pr_data.json)" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for AGENTS.md
+        id: agents-md
+        run: |
+          if [ -f AGENTS.md ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Run Multi-Provider Review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENCODE_PERMISSION: '{ "bash": {  "*": "deny", "gh*": "allow", "gh pr review*": "deny" } }'
+          REVIEW_PROVIDERS: opencode/big-pickle,opencode/grok-code,opencode/minimax-m2.1-free,opencode/glm-4.7-free
           PR_TITLE: ${{ steps.pr-details.outputs.title }}
-          PR_SHA: ${{ steps.pr-details.outputs.sha }}
           PR_NUMBER: ${{ steps.pr-number.outputs.number }}
-          REVIEW_PROVIDERS: ${{ vars.REVIEW_PROVIDERS || 'opencode/big-pickle,opencode/grok-code,opencode/minimax-m2.1-free,opencode/glm-4.7-free' }}
+          HAS_AGENTS: ${{ steps.agents-md.outputs.exists }}
         run: |
           PR_BODY=$(jq -r .body pr_data.json)
+          curl -o multi-review.ts https://raw.githubusercontent.com/anomalyco/opencode/main/github/multi-review-script.ts
 
-          # Use printf with %s to safely construct the prompt
-          printf -v REVIEW_PROMPT "A new pull request has been created: %s
-
-          <pr-number>
-          %s
-          </pr-number>
-
-          <pr-description>
-          %s
-          </pr-description>
-
-          Please check all code changes against the style guide and look for bugs. If the code follows guidelines, respond with 'lgtm'. Otherwise create GitHub comments on specific files with violations.
-          " "$PR_TITLE" "$PR_NUMBER" "$PR_BODY"
-
-          export REVIEW_PROMPT
-
-          # Write the multi-review script
-          cat > multi-review.ts << 'ENDOFSCRIPT'
-          import { execSync } from "child_process"
-
-          const providers = (process.env.REVIEW_PROVIDERS || "").split(",").map(p => p.trim())
-          const prompt = process.env.REVIEW_PROMPT || ""
-          const prNumber = process.env.PR_NUMBER || ""
-          const repo = process.env.GITHUB_REPOSITORY || ""
-
-          async function runReview(provider: string) {
-            console.log(`Reviewing with ${provider}...`)
-            try {
-              return execSync(`opencode run -m ${provider} -- "${prompt.replace(/"/g, '\\"')}"`, { 
-                encoding: "utf8", 
-                timeout: 180000 
-              })
-            } catch (e) {
-              return `Error with ${provider}`
-            }
-          }
-
-          async function synthesize(reviews: string[]) {
-            const combined = reviews.join("\n\n---\n\n")
-            const synthesis = `Synthesize these code reviews into one comprehensive review. Combine overlapping feedback, highlight unique insights, remove duplicates:\n\n${combined}`
-            try {
-              return execSync(`opencode run -m opencode/big-pickle -- "${synthesis}"`, { 
-                encoding: "utf8", 
-                timeout: 180000 
-              })
-            } catch (e) {
-              return combined
-            }
-          }
-
-          async function main() {
-            console.log(`Running ${providers.length} parallel reviews...`)
-            const results = await Promise.all(providers.map(runReview))
-            console.log("Synthesizing results...")
-            const final = await synthesize(results)
-            console.log("\n=== SYNTHESIS ===\n" + final)
-            
-            // Post as PR comment
-            execSync(`gh api --method POST -H "Accept: application/vnd.github+json" /repos/${repo}/issues/${prNumber}/comments -f "body=${final.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`, { encoding: "utf8" })
-          }
-
-          main().catch(e => { console.error(e); process.exit(1) })
-          ENDOFSCRIPT
+          if [ "$HAS_AGENTS" = "true" ]; then
+            export INCLUDE_AGENTS=true
+          fi
 
           bun run multi-review.ts
