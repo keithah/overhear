@@ -516,6 +516,10 @@ final class MeetingRecordingManager: ObservableObject {
             notesRetryTask = nil
             lastNotesError = nil
             notesSaveState = .idle
+            if Task.isCancelled {
+                notesSaveState = .idle
+                return
+            }
         } catch {
             if Task.isCancelled { return }
             notesRetryAttempts += 1
