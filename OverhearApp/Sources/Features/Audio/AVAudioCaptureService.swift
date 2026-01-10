@@ -63,6 +63,9 @@ actor AVAudioCaptureService {
 
     func startCapture(duration: TimeInterval, outputURL: URL) async throws -> CaptureResult {
         guard !isRecording else { throw Error.alreadyRecording }
+        // Reset counters for this session.
+        bufferNotificationsLogged = 0
+        buffersSinceLastLog = 0
         await log("startCapture requested (duration: \(duration)s, output: \(outputURL.path))")
         let format = engine.inputNode.outputFormat(forBus: 0)
         await log("Input format: \(format.sampleRate) Hz, channels: \(format.channelCount)")
@@ -181,11 +184,12 @@ actor AVAudioCaptureService {
 
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
         // Snapshot flags and observers together to avoid TOCTOU during stopCapture().
+        guard isRecording else { return }
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
-        guard isRecording, !observersSnapshot.isEmpty else { return }
+        guard !observersSnapshot.isEmpty else { return }
 
-        bufferNotificationsLogged += 1
-        buffersSinceLastLog += 1
+        bufferNotificationsLogged &+= 1
+        buffersSinceLastLog &+= 1
         if bufferNotificationsLogged <= UInt64(LogConstants.initialBufferLogs) || (bufferNotificationsLogged % UInt64(LogConstants.buffersPerLog)) == 0 {
             let total = bufferNotificationsLogged
             let recent = buffersSinceLastLog

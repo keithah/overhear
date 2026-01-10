@@ -677,6 +677,7 @@ final class MeetingRecordingManager: ObservableObject {
 
             if Task.isCancelled { return }
             try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+            if Task.isCancelled { return }
         }
     }
     
@@ -1154,8 +1155,12 @@ extension MeetingRecordingManager {
             .joined(separator: "\n")
 
         liveTranscript = transcript
-        streamingUpdateCount += 1
-        if (streamingUpdateCount <= 5) || streamingUpdateCount % 100 == 0 {
+        if streamingUpdateCount == Int.max {
+            streamingUpdateCount = 0
+        } else {
+            streamingUpdateCount += 1
+        }
+        if (streamingUpdateCount > 0 && streamingUpdateCount <= 5) || streamingUpdateCount % 100 == 0 {
             let status = update.isConfirmed ? "confirmed" : "hypothesis"
             let charCount = update.text.count
             let tokenCount = update.tokenIds.count
