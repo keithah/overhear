@@ -1222,9 +1222,13 @@ struct LiveNotesManagerView: View {
                         }
                     }
                     .onDisappear {
+                        let pendingTask = notesDebounceTask
                         notesDebounceTask?.cancel()
                         notesDebounceTask = nil
-                        Task { await manager.saveNotes(liveNotes) }
+                        Task {
+                            _ = await pendingTask?.result
+                            await manager.saveNotes(liveNotes)
+                        }
                     }
             }
         }
