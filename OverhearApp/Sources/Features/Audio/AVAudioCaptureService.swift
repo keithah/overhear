@@ -189,9 +189,8 @@ actor AVAudioCaptureService {
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
         guard !observersSnapshot.isEmpty else { return }
 
-        // Use saturating increments to avoid wraparound while keeping counters monotonic.
-        bufferNotificationsLogged &+= 1
-        buffersSinceLastLog &+= 1
+        bufferNotificationsLogged += 1
+        buffersSinceLastLog += 1
         if bufferNotificationsLogged <= UInt64(LogConstants.initialBufferLogs) || (bufferNotificationsLogged % UInt64(LogConstants.buffersPerLog)) == 0 {
             let total = bufferNotificationsLogged
             let recent = buffersSinceLastLog
