@@ -1013,6 +1013,7 @@ extension MeetingRecordingManager {
         let previous = streamingMonitorTask
         streamingMonitorTask = Task.detached(priority: .utility) { [weak self] in
             await previous?.value
+            if Task.isCancelled { return }
             let monitorStart = Date()
             while !Task.isCancelled {
                 guard let self else { return }
