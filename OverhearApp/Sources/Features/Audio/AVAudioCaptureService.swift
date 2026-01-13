@@ -44,6 +44,7 @@ actor AVAudioCaptureService {
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
     private var bufferNotificationsLogged: UInt64 = 0
     private var buffersSinceLastLog: UInt64 = 0
+    private var didFinishInitialBufferLogs = false
     private enum LogConstants {
         static let initialBufferLogs: Int = {
             let raw = UserDefaults.standard.integer(forKey: "overhear.capture.initialBufferLogs")
@@ -66,6 +67,7 @@ actor AVAudioCaptureService {
         // Reset counters for this session.
         bufferNotificationsLogged = 0
         buffersSinceLastLog = 0
+        didFinishInitialBufferLogs = false
         await log("startCapture requested (duration: \(duration)s, output: \(outputURL.path))")
         let format = engine.inputNode.outputFormat(forBus: 0)
         await log("Input format: \(format.sampleRate) Hz, channels: \(format.channelCount)")
@@ -98,6 +100,7 @@ actor AVAudioCaptureService {
         await log("Audio engine started")
         bufferNotificationsLogged = 0
         buffersSinceLastLog = 0
+        didFinishInitialBufferLogs = false
         captureStartDate = Date()
         requestedDuration = duration
         self.file = file
@@ -202,6 +205,11 @@ actor AVAudioCaptureService {
                 message: "notifyBufferObservers total=\(total) recent=\(recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
             )
             buffersSinceLastLog = 0
+            if bufferNotificationsLogged >= UInt64(LogConstants.initialBufferLogs) {
+                didFinishInitialBufferLogs = true
+            }
+        } else if !didFinishInitialBufferLogs && bufferNotificationsLogged > UInt64(LogConstants.initialBufferLogs) {
+            didFinishInitialBufferLogs = true
         }
         for observer in observersSnapshot {
             guard let copy = buffer.cloned() else { continue }
