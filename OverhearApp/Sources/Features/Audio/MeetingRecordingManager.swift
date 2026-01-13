@@ -680,8 +680,11 @@ final class MeetingRecordingManager: ObservableObject {
             }
 
             if Task.isCancelled { return }
-            if Task.isCancelled { return }
-            try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+            // Exponential backoff when retries are active to avoid tight loops on persistent failures.
+            let retryBackoffSeconds = healthRetries > 0
+                ? min(intervalSeconds * pow(2.0, Double(min(healthRetries, 4))), 60)
+                : intervalSeconds
+            try? await Task.sleep(nanoseconds: UInt64(retryBackoffSeconds * 1_000_000_000))
             if Task.isCancelled { return }
         }
     }
