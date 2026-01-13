@@ -56,6 +56,8 @@ actor AVAudioCaptureService {
             let clamped = min(max(raw, 10), 500)
             return clamped > 0 ? clamped : 50
         }()
+        // Extra defensive cap to avoid unbounded counters in long sessions.
+        static let maxBufferNotificationCount: UInt64 = 10_000_000
     }
     private var captureStartDate: Date?
     private var requestedDuration: TimeInterval = 0
@@ -190,14 +192,26 @@ actor AVAudioCaptureService {
         // Snapshot flags and observers together to avoid TOCTOU during stopCapture().
         // Late buffers after stopCapture() are intentionally dropped via the isRecording guard.
         guard isRecording else { return }
+        // Snapshot observers once per callback; mutations are serialized by the actor.
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
         guard !observersSnapshot.isEmpty else { return }
 
-        // Actor isolation keeps these mutations serialized relative to the tap handler;
-        // no additional locking is needed because every mutation flows through this actor.
+        // Actor isolation keeps these mutations serialized relative to the tap handler; no extra locking needed.
         bufferNotificationsLogged += 1
         buffersSinceLastLog += 1
-        if bufferNotificationsLogged <= UInt64(LogConstants.initialBufferLogs) || (bufferNotificationsLogged % UInt64(LogConstants.buffersPerLog)) == 0 {
+
+        // Prevent unbounded growth and avoid re-running the "first N" log burst after rollover.
+        if bufferNotificationsLogged > LogConstants.maxBufferNotificationCount {
+            bufferNotificationsLogged = UInt64(LogConstants.initialBufferLogs)
+            didFinishInitialBufferLogs = true
+        }
+
+        let initialLogLimit = UInt64(LogConstants.initialBufferLogs)
+        let perLogInterval = UInt64(LogConstants.buffersPerLog)
+        let shouldLogInitial = !didFinishInitialBufferLogs && bufferNotificationsLogged <= initialLogLimit
+        let shouldLogPeriodic = bufferNotificationsLogged % perLogInterval == 0
+
+        if shouldLogInitial || shouldLogPeriodic {
             let total = bufferNotificationsLogged
             let recent = buffersSinceLastLog
             FileLogger.log(
@@ -205,11 +219,9 @@ actor AVAudioCaptureService {
                 message: "notifyBufferObservers total=\(total) recent=\(recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
             )
             buffersSinceLastLog = 0
-            if bufferNotificationsLogged >= UInt64(LogConstants.initialBufferLogs) {
+            if bufferNotificationsLogged >= initialLogLimit {
                 didFinishInitialBufferLogs = true
             }
-        } else if !didFinishInitialBufferLogs && bufferNotificationsLogged > UInt64(LogConstants.initialBufferLogs) {
-            didFinishInitialBufferLogs = true
         }
         for observer in observersSnapshot {
             guard let copy = buffer.cloned() else { continue }
