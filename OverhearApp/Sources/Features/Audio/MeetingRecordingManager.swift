@@ -1161,7 +1161,8 @@ extension MeetingRecordingManager {
 
         liveTranscript = transcript
         streamingUpdateCount += 1
-        if (streamingUpdateCount > 0 && streamingUpdateCount <= 5) || streamingUpdateCount % 100 == 0 {
+        // Keep logs lightweight: log the first few updates and then every 200th.
+        if streamingUpdateCount <= 3 || streamingUpdateCount % 200 == 0 {
             let status = update.isConfirmed ? "confirmed" : "hypothesis"
             let charCount = update.text.count
             let tokenCount = update.tokenIds.count

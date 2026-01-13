@@ -81,6 +81,7 @@ actor AVAudioCaptureService {
 
             do {
                 try file.write(from: buffer)
+                // Hop onto the capture actor so counter mutations and observer callbacks stay serialized.
                 Task { [weak self] in
                     guard let self else { return }
                     await self.notifyBufferObservers(buffer: bufferCopy)
@@ -189,7 +190,8 @@ actor AVAudioCaptureService {
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
         guard !observersSnapshot.isEmpty else { return }
 
-        // Actor isolation keeps these mutations serialized relative to the tap handler.
+        // Actor isolation keeps these mutations serialized relative to the tap handler;
+        // no additional locking is needed because every mutation flows through this actor.
         bufferNotificationsLogged += 1
         buffersSinceLastLog += 1
         if bufferNotificationsLogged <= UInt64(LogConstants.initialBufferLogs) || (bufferNotificationsLogged % UInt64(LogConstants.buffersPerLog)) == 0 {
