@@ -189,6 +189,7 @@ actor AVAudioCaptureService {
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
         guard !observersSnapshot.isEmpty else { return }
 
+        // Actor isolation keeps these mutations serialized relative to the tap handler.
         bufferNotificationsLogged += 1
         buffersSinceLastLog += 1
         if bufferNotificationsLogged <= UInt64(LogConstants.initialBufferLogs) || (bufferNotificationsLogged % UInt64(LogConstants.buffersPerLog)) == 0 {
