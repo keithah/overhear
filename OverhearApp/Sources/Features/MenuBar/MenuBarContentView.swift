@@ -1,4 +1,27 @@
 import SwiftUI
+
+/// Simple async debouncer used by multiple note editors to avoid spawning a task per keystroke.
+final class Debouncer: ObservableObject {
+    private var task: Task<Void, Never>?
+
+    func schedule(delayNanoseconds: UInt64, action: @escaping @MainActor () async -> Void) {
+        task?.cancel()
+        task = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            if Task.isCancelled { return }
+            await action()
+        }
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
+    }
+
+    deinit {
+        cancel()
+    }
+}
 import AppKit
 import UniformTypeIdentifiers
 import Combine
@@ -352,7 +375,7 @@ struct LiveNotesView: View {
     @State private var showTranscript = true
     @State private var showNotes = true
     @State private var showAI = true
-    @State private var notesDebounceTask: Task<Void, Never>?
+    @StateObject private var notesDebouncer = Debouncer()
     @State private var isRegenerating = false
     @State private var notesPrefilled = false
     @State private var llmStateDescription: String = "Checking…"
@@ -697,16 +720,13 @@ struct LiveNotesView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
                     .onChange(of: coordinator.liveNotes) { _, newValue in
-                        notesDebounceTask?.cancel()
-                        notesDebounceTask = Task { @MainActor [weak coordinator] in
-                            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms debounce
+                        notesDebouncer.schedule(delayNanoseconds: 500_000_000) { [weak coordinator] in
                             guard let coordinator else { return }
                             await coordinator.saveNotes(newValue)
                         }
                     }
                     .onDisappear {
-                        notesDebounceTask?.cancel()
-                        notesDebounceTask = nil
+                        notesDebouncer.cancel()
                     }
             }
         }
@@ -1004,6 +1024,7 @@ struct LiveNotesView: View {
 
 struct LiveNotesManagerView: View {
     @ObservedObject var manager: MeetingRecordingManager
+    @StateObject private var managerNotesDebouncer = Debouncer()
     @State private var searchText: String = ""
     @State private var showTranscript = true
     @State private var showNotes = true
@@ -1014,7 +1035,6 @@ struct LiveNotesManagerView: View {
     @State private var llmState: LocalLLMPipeline.State = .idle
     @State private var isWarmingLLM = false
     @State private var warmupTask: Task<Void, Never>?
-    @State private var notesDebounceTask: Task<Void, Never>?
     var onHide: () -> Void
 
     private var isActiveRecording: Bool {
@@ -1214,21 +1234,14 @@ struct LiveNotesManagerView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
                     .onChange(of: liveNotes) { _, newValue in
-                        notesDebounceTask?.cancel()
-                        notesDebounceTask = Task { @MainActor [weak manager] in
-                            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms debounce
+                        managerNotesDebouncer.schedule(delayNanoseconds: 500_000_000) { [weak manager] in
                             guard let manager else { return }
                             await manager.saveNotes(newValue)
                         }
                     }
                     .onDisappear {
-                        let pendingTask = notesDebounceTask
-                        notesDebounceTask?.cancel()
-                        notesDebounceTask = nil
-                        Task {
-                            _ = await pendingTask?.result
-                            await manager.saveNotes(liveNotes)
-                        }
+                        managerNotesDebouncer.cancel()
+                        Task { await manager.saveNotes(liveNotes) }
                     }
             }
         }
