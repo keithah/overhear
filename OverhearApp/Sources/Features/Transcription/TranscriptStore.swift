@@ -352,21 +352,77 @@ actor TranscriptStore {
     
     /// Determine if we should bypass the Keychain (explicit env override only).
     nonisolated private static var isKeychainBypassed: Bool {
-        let env = ProcessInfo.processInfo.environment
-        let truthy: Set<String> = ["1", "true", "TRUE", "True"]
-        guard truthy.contains(env["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? "") else { return false }
-        let isCI = (env["CI"] == "true") && (env["GITHUB_ACTIONS"] == "true") && env["GITHUB_RUNNER_NAME"] != nil
-        let isRunningTests = env["XCTestConfigurationFilePath"] != nil
-        return isCI || isRunningTests
+        isKeychainBypassEnabled(environment: ProcessInfo.processInfo.environment)
     }
 
     nonisolated private static var keychainBypassReason: String? {
-        guard isKeychainBypassed else { return nil }
-        let env = ProcessInfo.processInfo.environment
-        if env["OVERHEAR_INSECURE_NO_KEYCHAIN"] != nil { return "OVERHEAR_INSECURE_NO_KEYCHAIN" }
-        if env["XCTestConfigurationFilePath"] != nil { return "XCTestConfigurationFilePath" }
-        if env["GITHUB_RUNNER_NAME"] != nil { return "CI/GitHubActions" }
+        keychainBypassReason(environment: ProcessInfo.processInfo.environment)
+    }
+
+    nonisolated internal static func isKeychainBypassEnabled(environment: [String: String]) -> Bool {
+        let truthy: Set<String> = ["1", "true", "TRUE", "True"]
+        guard truthy.contains(environment["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? "") else { return false }
+        return isCIEnvironment(environment) || isTestEnvironment(environment)
+    }
+
+    nonisolated internal static func keychainBypassReason(environment: [String: String]) -> String? {
+        guard isKeychainBypassEnabled(environment: environment) else { return nil }
+        if isTestEnvironment(environment) { return "XCTestConfigurationFilePath" }
+        if isCIEnvironment(environment) { return "CI/GitHubActions" }
+        if environment["OVERHEAR_INSECURE_NO_KEYCHAIN"] != nil { return "OVERHEAR_INSECURE_NO_KEYCHAIN" }
         return nil
+    }
+
+    private static let bypassWarningLock = NSLock()
+    // Accesses guarded by bypassWarningLock; marked unsafe to retain static mutables with explicit locking.
+    nonisolated(unsafe) private static var didLogInvalidBypass = false
+
+    nonisolated private static func logInvalidBypassIfNeeded(environment: [String: String]) {
+        guard environment["OVERHEAR_INSECURE_NO_KEYCHAIN"] != nil else { return }
+        guard !isKeychainBypassEnabled(environment: environment) else { return }
+        bypassWarningLock.lock()
+        defer { bypassWarningLock.unlock() }
+        guard !didLogInvalidBypass else { return }
+        didLogInvalidBypass = true
+        FileLogger.log(
+            category: "TranscriptStore",
+            message: "Ignoring OVERHEAR_INSECURE_NO_KEYCHAIN outside trusted CI/test context; Keychain remains required"
+        )
+    }
+
+    nonisolated private static func isCIEnvironment(_ environment: [String: String]) -> Bool {
+        (environment["CI"] == "true") && (environment["GITHUB_ACTIONS"] == "true") && environment["GITHUB_RUNNER_NAME"] != nil
+    }
+
+    nonisolated private static func isTestEnvironment(_ environment: [String: String]) -> Bool {
+        environment["XCTestConfigurationFilePath"] != nil
+    }
+
+    // Testing helpers
+    nonisolated internal static func logInvalidBypassIfNeededForTests(environment: [String: String]) {
+        logInvalidBypassIfNeeded(environment: environment)
+    }
+
+    nonisolated internal static func resetBypassLogStateForTests() {
+        bypassWarningLock.lock()
+        didLogInvalidBypass = false
+        bypassWarningLock.unlock()
+        KeyStorage.resetLogsForTests()
+    }
+
+    nonisolated internal static func didLogInvalidBypassForTests() -> Bool {
+        bypassWarningLock.lock()
+        let value = didLogInvalidBypass
+        bypassWarningLock.unlock()
+        return value
+    }
+
+    nonisolated internal static func didLogEphemeralFallbackForTests() -> Bool {
+        KeyStorage.didLogEphemeralFallbackForTests()
+    }
+
+    nonisolated internal static func markEphemeralFallbackLoggedForTests() -> Bool {
+        KeyStorage.shouldLogEphemeralFallback()
     }
     
     // MARK: - Encryption
@@ -378,7 +434,9 @@ actor TranscriptStore {
     private enum KeyStorage {
         static let ephemeralKeyBox = EphemeralKeyBox(key: SymmetricKey(size: .bits256))
         private static let insecureKeyDefaultsKey = "overhear.insecureTranscriptKey"
+        // Accesses guarded by logLock; marked unsafe to keep lightweight global counters.
         nonisolated(unsafe) private static var didLogBypass = false
+        nonisolated(unsafe) private static var didLogEphemeralFallback = false
         private static let logLock = NSLock()
 
         static func shouldLogBypass() -> Bool {
@@ -387,6 +445,30 @@ actor TranscriptStore {
             if didLogBypass { return false }
             didLogBypass = true
             return true
+        }
+
+        static func shouldLogEphemeralFallback() -> Bool {
+            logLock.lock()
+            defer { logLock.unlock() }
+            if didLogEphemeralFallback { return false }
+            didLogEphemeralFallback = true
+            return true
+        }
+
+        // Testing helpers
+        static func resetLogsForTests() {
+            logLock.lock()
+            didLogBypass = false
+            didLogEphemeralFallback = false
+            logLock.unlock()
+        }
+
+        static func didLogBypassForTests() -> Bool {
+            didLogBypass
+        }
+
+        static func didLogEphemeralFallbackForTests() -> Bool {
+            didLogEphemeralFallback
         }
 
         /// Persists an insecure key outside the Keychain so transcripts remain readable across restarts
@@ -407,6 +489,7 @@ actor TranscriptStore {
     /// In CI/debug bypass scenarios the Keychain is unavailable, so we use a process-scoped
     /// ephemeral key instead. In production this persists to the Keychain.
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
+        logInvalidBypassIfNeeded(environment: ProcessInfo.processInfo.environment)
 #if !DEBUG
         // Never allow bypass in release builds, even if env is spoofed.
         if isKeychainBypassed {
@@ -484,10 +567,12 @@ actor TranscriptStore {
                         throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)); explicit bypass + CI/test required even in debug")
                     }
                     let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
-                    FileLogger.log(
-                        category: "TranscriptStore",
-                        message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix). Transcripts may be unreadable after restart"
-                    )
+                    if KeyStorage.shouldLogEphemeralFallback() {
+                        FileLogger.log(
+                            category: "TranscriptStore",
+                            message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix). Transcripts may be unreadable after restart"
+                        )
+                    }
                     return KeyStorage.ephemeralKeyBox.key
 #else
                     throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)) and bypass is not permitted in production")

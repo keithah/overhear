@@ -42,9 +42,9 @@ actor AVAudioCaptureService {
     private var isRecording = false
     private var durationTask: Task<Void, Never>?
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
-    private var bufferNotificationsLogged: UInt64 = 0
-    private var buffersSinceLastLog: UInt64 = 0
-    private var didFinishInitialBufferLogs = false
+    private var bufferLogState = BufferLogState()
+    // Updated per capture start so late buffers from a prior session are ignored.
+    private var observerSessionID = UUID()
     private enum LogConstants {
         static let initialBufferLogs: Int = {
             let raw = UserDefaults.standard.integer(forKey: "overhear.capture.initialBufferLogs")
@@ -59,6 +59,46 @@ actor AVAudioCaptureService {
         // Extra defensive cap to avoid unbounded counters in long sessions.
         static let maxBufferNotificationCount: UInt64 = 10_000_000
     }
+
+    /// Computes whether a buffer notification should be logged while updating counters in-place.
+    static func advanceLoggingDecision(state: inout BufferLogState) -> BufferLogDecision {
+        state.total &+= 1
+        state.sinceLast &+= 1
+
+        // Prevent unbounded growth and avoid re-running the "first N" log burst after rollover.
+        if state.total > LogConstants.maxBufferNotificationCount {
+            state.total = UInt64(LogConstants.initialBufferLogs)
+            state.didFinishInitialBurst = true
+        }
+
+        let initialLimit = UInt64(LogConstants.initialBufferLogs)
+        let perLogInterval = UInt64(LogConstants.buffersPerLog)
+
+        let shouldLogInitial = !state.didFinishInitialBurst && state.total <= initialLimit
+        let shouldLogPeriodic = state.total % perLogInterval == 0
+        let shouldLog = shouldLogInitial || shouldLogPeriodic
+
+        let decision = BufferLogDecision(shouldLog: shouldLog, total: state.total, recent: state.sinceLast)
+
+        if shouldLog {
+            state.sinceLast = 0
+            if state.total >= initialLimit {
+                state.didFinishInitialBurst = true
+            }
+        }
+
+        return decision
+    }
+    struct BufferLogState {
+        var total: UInt64 = 0
+        var sinceLast: UInt64 = 0
+        var didFinishInitialBurst = false
+    }
+    struct BufferLogDecision {
+        let shouldLog: Bool
+        let total: UInt64
+        let recent: UInt64
+    }
     private var captureStartDate: Date?
     private var requestedDuration: TimeInterval = 0
    
@@ -67,14 +107,14 @@ actor AVAudioCaptureService {
     func startCapture(duration: TimeInterval, outputURL: URL) async throws -> CaptureResult {
         guard !isRecording else { throw Error.alreadyRecording }
         // Reset counters for this session.
-        bufferNotificationsLogged = 0
-        buffersSinceLastLog = 0
-        didFinishInitialBufferLogs = false
+        observerSessionID = UUID()
+        resetBufferLogState()
         await log("startCapture requested (duration: \(duration)s, output: \(outputURL.path))")
         let format = engine.inputNode.outputFormat(forBus: 0)
         await log("Input format: \(format.sampleRate) Hz, channels: \(format.channelCount)")
         try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
+        let sessionID = observerSessionID
 
         // Use a smaller buffer to reduce latency for streaming transcripts.
         engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
@@ -88,7 +128,7 @@ actor AVAudioCaptureService {
                 // Hop onto the capture actor so counter mutations and observer callbacks stay serialized.
                 Task { [weak self] in
                     guard let self else { return }
-                    await self.notifyBufferObservers(buffer: bufferCopy)
+                    await self.notifyBufferObservers(buffer: bufferCopy, sessionID: sessionID)
                 }
             } catch {
                 Task { [weak self] in
@@ -100,9 +140,6 @@ actor AVAudioCaptureService {
 
         try engine.start()
         await log("Audio engine started")
-        bufferNotificationsLogged = 0
-        buffersSinceLastLog = 0
-        didFinishInitialBufferLogs = false
         captureStartDate = Date()
         requestedDuration = duration
         self.file = file
@@ -188,45 +225,33 @@ actor AVAudioCaptureService {
         await finalizeRecording(result: .success(makeCaptureResult(url: url, stoppedEarly: stoppedEarly)))
     }
 
-    private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
+    private func notifyBufferObservers(buffer: AVAudioPCMBuffer, sessionID: UUID) async {
         // Snapshot flags and observers together to avoid TOCTOU during stopCapture().
-        // Late buffers after stopCapture() are intentionally dropped via the isRecording guard.
-        guard isRecording else { return }
+        // Late buffers after stopCapture() (or from a prior session) are intentionally dropped via the isRecording/session guard.
+        guard isRecording, observerSessionID == sessionID else { return }
         // Snapshot observers once per callback; mutations are serialized by the actor.
+        // If stopCapture() clears observers between the guard and the snapshot, late buffers are dropped by design.
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
         guard !observersSnapshot.isEmpty else { return }
 
-        // Actor isolation keeps these mutations serialized relative to the tap handler; no extra locking needed.
-        bufferNotificationsLogged += 1
-        buffersSinceLastLog += 1
+        var decisionState = bufferLogState
+        let decision = Self.advanceLoggingDecision(state: &decisionState)
+        bufferLogState = decisionState
 
-        // Prevent unbounded growth and avoid re-running the "first N" log burst after rollover.
-        if bufferNotificationsLogged > LogConstants.maxBufferNotificationCount {
-            bufferNotificationsLogged = UInt64(LogConstants.initialBufferLogs)
-            didFinishInitialBufferLogs = true
-        }
-
-        let initialLogLimit = UInt64(LogConstants.initialBufferLogs)
-        let perLogInterval = UInt64(LogConstants.buffersPerLog)
-        let shouldLogInitial = !didFinishInitialBufferLogs && bufferNotificationsLogged <= initialLogLimit
-        let shouldLogPeriodic = bufferNotificationsLogged % perLogInterval == 0
-
-        if shouldLogInitial || shouldLogPeriodic {
-            let total = bufferNotificationsLogged
-            let recent = buffersSinceLastLog
+        if decision.shouldLog {
             FileLogger.log(
                 category: "AVAudioCaptureService",
-                message: "notifyBufferObservers total=\(total) recent=\(recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
+                message: "notifyBufferObservers total=\(decision.total) recent=\(decision.recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
             )
-            buffersSinceLastLog = 0
-            if bufferNotificationsLogged >= initialLogLimit {
-                didFinishInitialBufferLogs = true
-            }
         }
         for observer in observersSnapshot {
             guard let copy = buffer.cloned() else { continue }
             observer(copy)
         }
+    }
+
+    private func resetBufferLogState() {
+        bufferLogState = BufferLogState()
     }
 
     private func log(_ message: String) async {

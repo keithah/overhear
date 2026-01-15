@@ -22,6 +22,26 @@ final class Debouncer: ObservableObject {
         cancel()
     }
 }
+
+struct StatusChip: View {
+    let title: String
+    let color: Color
+    var icon: String? = nil
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let icon {
+                Image(systemName: icon)
+            }
+            Text(title)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(color.opacity(0.15)))
+        .foregroundColor(color)
+    }
+}
 import AppKit
 import UniformTypeIdentifiers
 import Combine
@@ -375,7 +395,6 @@ struct LiveNotesView: View {
     @State private var showTranscript = true
     @State private var showNotes = true
     @State private var showAI = true
-    @StateObject private var notesDebouncer = Debouncer()
     @State private var isRegenerating = false
     @State private var notesPrefilled = false
     @State private var llmStateDescription: String = "Checking…"
@@ -446,7 +465,9 @@ struct LiveNotesView: View {
             Task { await prefillNotesIfNeeded() }
             Task { await refreshLLMState() }
             Task { await warmLLM() }
-            startLLMStatePolling()
+            if isLLMFallbackPollingEnabled {
+                startLLMStatePolling()
+            }
         }
         .onDisappear {
             llmStatePollTask?.cancel()
@@ -478,9 +499,9 @@ struct LiveNotesView: View {
             }
             Spacer()
             HStack(spacing: 6) {
-                statusChip(title: statusText, color: statusColor, icon: "record.circle")
-                streamingChip
-                llmStatusChip
+                StatusChip(title: statusText, color: statusColor, icon: "record.circle")
+                streamingStatusChip
+                makeLLMStatusChip(for: llmState)
             }
             Button {
                 Task { await coordinator.stopRecording() }
@@ -538,19 +559,7 @@ struct LiveNotesView: View {
         }
     }
 
-    private func statusChip(title: String, color: Color, icon: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-            Text(title)
-        }
-        .font(.system(size: 11, weight: .semibold))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(Capsule().fill(color.opacity(0.15)))
-        .foregroundColor(color)
-    }
-
-    private var streamingChip: some View {
+    private var streamingStatusChip: some View {
         let title: String
         let color: Color
         switch coordinator.streamingHealth.state {
@@ -570,10 +579,8 @@ struct LiveNotesView: View {
             title = "Streaming idle"
             color = .secondary
         }
-        return statusChip(title: title, color: color, icon: "waveform.and.magnifyingglass")
+        return StatusChip(title: title, color: color, icon: "waveform.and.magnifyingglass")
     }
-
-    private var llmStatusChip: some View { makeLLMStatusChip(for: llmState) }
 
     private var consentNotice: some View {
         HStack(spacing: 6) {
@@ -720,13 +727,10 @@ struct LiveNotesView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
                     .onChange(of: coordinator.liveNotes) { _, newValue in
-                        notesDebouncer.schedule(delayNanoseconds: 500_000_000) { [weak coordinator] in
-                            guard let coordinator else { return }
-                            await coordinator.saveNotes(newValue)
-                        }
+                        coordinator.scheduleDebouncedNotesSave(newValue)
                     }
                     .onDisappear {
-                        notesDebouncer.cancel()
+                        coordinator.cancelPendingNotesSave()
                     }
             }
         }
@@ -894,8 +898,6 @@ struct LiveNotesView: View {
         isRegenerating = false
     }
 
-    private var llmStatusChip: some View { makeLLMStatusChip(for: llmState) }
-
     private func prefillNotesIfNeeded() async {
         let shouldPrefill = await MainActor.run { () -> Bool in
             guard !notesPrefilled else { return false }
@@ -957,15 +959,18 @@ struct LiveNotesView: View {
         isWarmingLLM = false
     }
 
+    private var isLLMFallbackPollingEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "overhear.llm.enableFallbackPolling")
+    }
+
     private func startLLMStatePolling() {
         llmStatePollTask?.cancel()
-        guard !llmIsReady else { return }
+        guard isLLMFallbackPollingEnabled, !llmIsReady else { return }
         llmStatePollTask = Task { @MainActor in
-            // Fallback polling in case state notifications are missed; prefer notification-driven updates.
-            let pollIntervalSeconds = 10.0
-            let maxWarmupSeconds = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
-            let resolvedMaxSeconds = maxWarmupSeconds > 0 ? maxWarmupSeconds : 900
-            let maxAttempts = Int(resolvedMaxSeconds / pollIntervalSeconds)
+            // Fallback polling in case a state-changed notification is missed.
+            // Use a conservative interval to avoid needless wakeups; most updates arrive via notifications.
+            let pollIntervalSeconds: TimeInterval = 60.0
+            let maxAttempts = 5 // ~5 minutes of fallback polling
             var attempts = 0
             defer { llmStatePollTask = nil }
             while !Task.isCancelled && !llmIsReady && attempts < maxAttempts {
@@ -1100,15 +1105,10 @@ struct LiveNotesManagerView: View {
                     .foregroundColor(.secondary)
                 Text(manager.displayTitle)
                     .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
+                .lineLimit(1)
             }
             Spacer()
-            Text(statusText)
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(statusColor.opacity(0.15)))
-                .foregroundColor(statusColor)
+            StatusChip(title: statusText, color: statusColor, icon: "record.circle")
             Button {
                 Task { await manager.stopRecording() }
             } label: {
@@ -1269,7 +1269,7 @@ struct LiveNotesManagerView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
-                llmStatusChip
+                makeLLMStatusChip(for: llmState)
                 Menu {
                     Button("Regenerate (default prompt)") {
                         Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }

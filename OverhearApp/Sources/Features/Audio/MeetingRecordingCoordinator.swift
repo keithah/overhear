@@ -25,6 +25,7 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
     private var manualRecordingEmitted: Bool = false
     private var hasRecordedOnce = false
     var onRecordingStatusChange: ((Bool, String?) -> Void)?
+    private let notesDebouncer = Debouncer()
 
     private let logger = Logger(subsystem: "com.overhear.app", category: "MeetingRecordingCoordinator")
     weak var autoRecordingCoordinator: AutoRecordingCoordinator?
@@ -210,6 +211,17 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
         await manager.saveNotes(notes)
     }
 
+    func scheduleDebouncedNotesSave(_ notes: String, delayNanoseconds: UInt64 = 500_000_000) {
+        notesDebouncer.schedule(delayNanoseconds: delayNanoseconds) { @MainActor [weak self] in
+            guard let self else { return }
+            await self.recordingManager?.saveNotes(notes)
+        }
+    }
+
+    func cancelPendingNotesSave() {
+        notesDebouncer.cancel()
+    }
+
     private func cleanupAfterRecordingIfNeeded() {
         recordingManager = nil
         recordingTask = nil
@@ -219,6 +231,7 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
         transcriptSubscription = nil
         liveSegments = []
         summary = nil
+        notesDebouncer.cancel()
     }
 
     private func completeManualRecordingIfNeeded() {

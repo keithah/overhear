@@ -98,6 +98,20 @@ actor LocalLLMPipeline {
         }
     }
 
+    /// Testing initializer that allows injecting configuration without user defaults/clamps.
+    init(
+        client: MLXClient?,
+        warmupTimeout: TimeInterval,
+        failureCooldown: TimeInterval,
+        downloadWatchdogDelay: TimeInterval
+    ) {
+        self.client = client
+        self.warmupTimeout = warmupTimeout
+        self.failureCooldown = failureCooldown
+        self.downloadWatchdogDelay = downloadWatchdogDelay
+        state = client == nil ? .unavailable("MLX client not available") : .idle
+    }
+
     /// Warms the local model (best-effort). Safe to call multiple times.
     func warmup() async {
         if let task = warmupTask {
@@ -125,7 +139,6 @@ actor LocalLLMPipeline {
         }
     }
 
-    @MainActor
     private func setDownloading(_ progress: Double, generation: Int) {
         guard generation == warmupGeneration else { return }
         if state != .downloading(progress) {
