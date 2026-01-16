@@ -1,5 +1,8 @@
 name: Multi-Provider Code Review
 
+# Triggers:
+# - Automatic on PR events (opened/synchronize/reopened)
+# - Manual on PR comments starting with /review or containing @opencode/@claude
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -7,69 +10,88 @@ on:
     types: [created]
 
 jobs:
-  check-guidelines:
+  review:
     if: |
-      (github.event_name == 'pull_request') ||
-      (github.event.issue.pull_request &&
-       (startsWith(github.event.comment.body, '/review') ||
+      github.event_name == 'pull_request' ||
+      (github.event.issue.pull_request && (
+        startsWith(github.event.comment.body, '/review') ||
         contains(github.event.comment.body, '@opencode') ||
-        contains(github.event.comment.body, '@claude')))
+        contains(github.event.comment.body, '@claude')
+      ))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     steps:
-      - name: Get PR number
-        id: pr-number
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install OpenCode CLI
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          else
-            echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          if ! command -v opencode >/dev/null 2>&1; then
+            NPM_PREFIX="$HOME/.npm-global"
+            mkdir -p "$NPM_PREFIX"
+            npm config set prefix "$NPM_PREFIX"
+            npm install -g opencode-ai@latest
+            echo "$NPM_PREFIX/bin" >> "$GITHUB_PATH"
           fi
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Collect PR metadata
+        id: pr
+        uses: actions/github-script@v7
         with:
-          fetch-depth: 1
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prPayload = context.payload.pull_request ?? context.payload.issue?.pull_request;
+            const issueNumber = context.payload.issue?.number;
+            if (!prPayload && !issueNumber) {
+              core.setFailed('No pull request context available');
+              return;
+            }
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
+            const number =
+              prPayload?.number ??
+              issueNumber ??
+              (prPayload?.url ? Number(prPayload.url.split('/').pop()) : undefined);
+            if (!number) {
+              core.setFailed('Could not determine PR number');
+              return;
+            }
 
-      - name: Install opencode
-        run: curl -fsSL https://opencode.ai/install | bash
+            const { data } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: number,
+            });
 
-      - name: Get PR details
-        id: pr-details
-        run: |
-          gh api /repos/${{ github.repository }}/pulls/${{ steps.pr-number.outputs.number }} > pr_data.json
-          echo "title=$(jq -r .title pr_data.json)" >> $GITHUB_OUTPUT
-          echo "sha=$(jq -r .head.sha pr_data.json)" >> $GITHUB_OUTPUT
+            core.setOutput('number', data.number);
+            core.setOutput('title', data.title || '');
+            core.setOutput('body', data.body || '');
 
-      - name: Check for AGENTS.md
-        id: agents-md
+      - name: Detect AGENTS.md
+        id: agents
         run: |
           if [ -f AGENTS.md ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run Multi-Provider Review
-        env:
+        uses: keithah/multi-provider-code-review@main
+        with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REVIEW_PROVIDERS: opencode/big-pickle,opencode/grok-code,opencode/minimax-m2.1-free,opencode/glm-4.7-free
-          PR_TITLE: ${{ steps.pr-details.outputs.title }}
-          PR_NUMBER: ${{ steps.pr-number.outputs.number }}
-          HAS_AGENTS: ${{ steps.agents-md.outputs.exists }}
-        run: |
-          PR_BODY=$(jq -r .body pr_data.json)
-          curl -o multi-review.ts https://raw.githubusercontent.com/anomalyco/opencode/main/github/multi-review-script.ts
+          REVIEW_PROVIDERS: ${{ vars.REVIEW_PROVIDERS || 'opencode/big-pickle,opencode/grok-code,opencode/minimax-m2.1-free,opencode/glm-4.7-free' }}
+          PR_TITLE: ${{ steps.pr.outputs.title }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_BODY: ${{ steps.pr.outputs.body }}
+          HAS_AGENTS: ${{ steps.agents.outputs.exists }}
 
-          if [ "$HAS_AGENTS" = "true" ]; then
-            export INCLUDE_AGENTS=true
-          fi
-
-          bun run multi-review.ts
+# To disable auto-run on every PR change, remove the pull_request block.
+# To disable manual triggers, remove the issue_comment block or the IF filter.
