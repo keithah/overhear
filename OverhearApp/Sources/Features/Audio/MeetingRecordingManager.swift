@@ -235,6 +235,7 @@ final class MeetingRecordingManager: ObservableObject {
 
     @Published private(set) var streamingHealth: StreamingHealth = .init(state: .idle)
     private var streamingMonitorTask: Task<Void, Never>?
+    private var streamingMonitorGeneration: Int = 0
     private var streamingMonitorStartDate: Date?
     private var streamingLastUpdate: Date?
     private var preTokenStallLogged = false
@@ -538,6 +539,11 @@ final class MeetingRecordingManager: ObservableObject {
                 notesSaveState = .idle
                 return
             }
+            if Task.isCancelled {
+                notesRetryTask = nil
+                notesSaveState = .idle
+                return
+            }
             pendingNotes = nil
             lastNotesSavedAt = Date()
             notesRetryAttempts = 0
@@ -590,7 +596,7 @@ final class MeetingRecordingManager: ObservableObject {
         notesHealthGeneration &+= 1
         let generation = notesHealthGeneration
 
-        notesHealthCheckTask = Task.detached(priority: .utility) { [weak self] in
+        let task = Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
             await self.runNotesHealthCheck(generation: generation, intervalSeconds: intervalSeconds)
             await MainActor.run { [weak self] in
@@ -598,6 +604,7 @@ final class MeetingRecordingManager: ObservableObject {
                 self.notesHealthCheckTask = nil
             }
         }
+        notesHealthCheckTask = task
     }
 
     nonisolated private func runNotesHealthCheck(generation: Int, intervalSeconds: TimeInterval) async {
@@ -1095,19 +1102,27 @@ extension MeetingRecordingManager {
     }
 
     func startStreamingMonitor() {
+        streamingMonitorGeneration &+= 1
+        let generation = streamingMonitorGeneration
         let previous = streamingMonitorTask
         streamingMonitorStartDate = Date()
-        streamingMonitorTask = Task.detached(priority: .utility) { [weak self] in
+        let task = Task.detached(priority: .utility) { [weak self] in
             await previous?.value
             if Task.isCancelled { return }
             while !Task.isCancelled {
                 guard let self else { return }
-                let shouldContinue = await self.evaluateStreamingHealthTick()
+                let isCurrent = await MainActor.run { [weak self] in
+                    guard let self else { return false }
+                    return self.streamingMonitorGeneration == generation
+                }
+                guard isCurrent else { return }
+                let shouldContinue = await self.evaluateStreamingHealthTick(generation: generation)
                 if !shouldContinue || Task.isCancelled { return }
                 let interval = await self.nextStreamingMonitorInterval()
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             }
         }
+        streamingMonitorTask = task
     }
 
     nonisolated private func nextStreamingMonitorInterval() async -> TimeInterval {
@@ -1125,12 +1140,16 @@ extension MeetingRecordingManager {
         }
     }
 
-    nonisolated private func evaluateStreamingHealthTick(now: Date = Date()) async -> Bool {
+    nonisolated private func evaluateStreamingHealthTick(
+        generation: Int,
+        now: Date = Date()
+    ) async -> Bool {
         guard let snapshot = await streamingMonitorSnapshot() else { return true }
         guard let evaluation = Self.computeStreamingHealth(snapshot: snapshot, now: now) else { return true }
 
         await MainActor.run { [weak self] in
             guard let self else { return }
+            guard generation == streamingMonitorGeneration else { return }
             preTokenStallLogged = evaluation.preTokenStallLogged
             if let message = evaluation.logMessage {
                 FileLogger.log(category: "MeetingRecordingManager", message: message)

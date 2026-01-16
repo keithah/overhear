@@ -70,6 +70,7 @@ actor AVAudioCaptureService {
         if state.total > LogConstants.maxBufferNotificationCount {
             state.total = UInt64(LogConstants.initialBufferLogs)
             state.sinceLast = 0
+            // Keep the initial-burst flag set so rollover doesn't repeat the early log flood.
             state.didFinishInitialBurst = true
         }
 
