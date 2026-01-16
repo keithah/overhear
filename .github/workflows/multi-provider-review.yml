@@ -34,7 +34,7 @@ jobs:
             NPM_PREFIX="$HOME/.npm-global"
             mkdir -p "$NPM_PREFIX"
             npm config set prefix "$NPM_PREFIX"
-            npm install -g opencode-ai@latest
+            npm install -g opencode-ai@1
             echo "$NPM_PREFIX/bin" >> "$GITHUB_PATH"
           fi
 

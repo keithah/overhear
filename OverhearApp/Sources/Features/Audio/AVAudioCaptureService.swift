@@ -69,6 +69,7 @@ actor AVAudioCaptureService {
         // Prevent unbounded growth and avoid re-running the "first N" log burst after rollover.
         if state.total > LogConstants.maxBufferNotificationCount {
             state.total = UInt64(LogConstants.initialBufferLogs)
+            state.sinceLast = 0
             state.didFinishInitialBurst = true
         }
 

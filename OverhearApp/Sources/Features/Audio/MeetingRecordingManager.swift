@@ -677,6 +677,7 @@ final class MeetingRecordingManager: ObservableObject {
                 if snapshot.pendingNotes != nil {
                     let delay = Self.healthRetryDelay(base: intervalSeconds, retries: healthRetries)
                     try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    if Task.isCancelled { return }
                     continue
                 }
                 return
@@ -699,6 +700,7 @@ final class MeetingRecordingManager: ObservableObject {
                     return
                 }
                 try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                if Task.isCancelled { return }
                 continue
             }
             if Task.isCancelled { return }
