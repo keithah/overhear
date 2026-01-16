@@ -1,5 +1,8 @@
 name: Multi-Provider Code Review
 
+# Triggers:
+# - Automatic on PR events (opened/synchronize/reopened)
+# - Manual on PR comments starting with /review or containing @opencode/@claude
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -10,10 +13,11 @@ jobs:
   review:
     if: |
       github.event_name == 'pull_request' ||
-      (github.event.issue.pull_request &&
-        (startsWith(github.event.comment.body, '/review') ||
-         contains(github.event.comment.body, '@opencode') ||
-         contains(github.event.comment.body, '@claude')))
+      (github.event.issue.pull_request && (
+        startsWith(github.event.comment.body, '/review') ||
+        contains(github.event.comment.body, '@opencode') ||
+        contains(github.event.comment.body, '@claude')
+      ))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,7 +38,7 @@ jobs:
             NPM_PREFIX="$HOME/.npm-global"
             mkdir -p "$NPM_PREFIX"
             npm config set prefix "$NPM_PREFIX"
-            npm install -g opencode-ai@1.0.0
+            npm install -g opencode-ai@latest
             echo "$NPM_PREFIX/bin" >> "$GITHUB_PATH"
           fi
 
@@ -83,8 +87,11 @@ jobs:
         uses: keithah/multi-provider-code-review@main
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REVIEW_PROVIDERS: "${{ vars.REVIEW_PROVIDERS || 'opencode/big-pickle,opencode/grok-code,opencode/minimax-m2.1-free,opencode/glm-4.7-free' }}"
+          REVIEW_PROVIDERS: ${{ vars.REVIEW_PROVIDERS || 'opencode/big-pickle,opencode/grok-code,opencode/minimax-m2.1-free,opencode/glm-4.7-free' }}
           PR_TITLE: ${{ steps.pr.outputs.title }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           PR_BODY: ${{ steps.pr.outputs.body }}
           HAS_AGENTS: ${{ steps.agents.outputs.exists }}
+
+# To disable auto-run on every PR change, remove the pull_request block.
+# To disable manual triggers, remove the issue_comment block or the IF filter.
