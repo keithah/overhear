@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import CryptoKit
 import Security
+import os
 
 /// Represents a stored transcript with metadata
 struct StoredTranscript: Codable, Identifiable {
@@ -369,25 +370,23 @@ actor TranscriptStore {
         guard isKeychainBypassEnabled(environment: environment) else { return nil }
         if isTestEnvironment(environment) { return "XCTestConfigurationFilePath" }
         if isCIEnvironment(environment) { return "CI/GitHubActions" }
-        if environment["OVERHEAR_INSECURE_NO_KEYCHAIN"] != nil { return "OVERHEAR_INSECURE_NO_KEYCHAIN" }
-        return nil
+        return "OVERHEAR_INSECURE_NO_KEYCHAIN"
     }
 
-    private static let bypassWarningLock = NSLock()
-    // Accesses guarded by bypassWarningLock; marked unsafe to retain static mutables with explicit locking.
-    nonisolated(unsafe) private static var didLogInvalidBypass = false
+    // Global lock protects process-scoped bypass logging flags that may be touched from many call sites.
+    private static let bypassWarningLock = OSAllocatedUnfairLock(initialState: false)
 
     nonisolated private static func logInvalidBypassIfNeeded(environment: [String: String]) {
         guard environment["OVERHEAR_INSECURE_NO_KEYCHAIN"] != nil else { return }
         guard !isKeychainBypassEnabled(environment: environment) else { return }
-        bypassWarningLock.lock()
-        defer { bypassWarningLock.unlock() }
-        guard !didLogInvalidBypass else { return }
-        didLogInvalidBypass = true
-        FileLogger.log(
-            category: "TranscriptStore",
-            message: "Ignoring OVERHEAR_INSECURE_NO_KEYCHAIN outside trusted CI/test context; Keychain remains required"
-        )
+        bypassWarningLock.withLock { didLogInvalidBypass in
+            guard !didLogInvalidBypass else { return }
+            didLogInvalidBypass = true
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "Ignoring OVERHEAR_INSECURE_NO_KEYCHAIN outside trusted CI/test context; Keychain remains required"
+            )
+        }
     }
 
     nonisolated private static func isCIEnvironment(_ environment: [String: String]) -> Bool {
@@ -404,17 +403,12 @@ actor TranscriptStore {
     }
 
     nonisolated internal static func resetBypassLogStateForTests() {
-        bypassWarningLock.lock()
-        didLogInvalidBypass = false
-        bypassWarningLock.unlock()
+        bypassWarningLock.withLock { $0 = false }
         KeyStorage.resetLogsForTests()
     }
 
     nonisolated internal static func didLogInvalidBypassForTests() -> Bool {
-        bypassWarningLock.lock()
-        let value = didLogInvalidBypass
-        bypassWarningLock.unlock()
-        return value
+        bypassWarningLock.withLock { $0 }
     }
 
     nonisolated internal static func didLogEphemeralFallbackForTests() -> Bool {
@@ -434,41 +428,43 @@ actor TranscriptStore {
     private enum KeyStorage {
         static let ephemeralKeyBox = EphemeralKeyBox(key: SymmetricKey(size: .bits256))
         private static let insecureKeyDefaultsKey = "overhear.insecureTranscriptKey"
-        // Accesses guarded by logLock; marked unsafe to keep lightweight global counters.
-        nonisolated(unsafe) private static var didLogBypass = false
-        nonisolated(unsafe) private static var didLogEphemeralFallback = false
-        private static let logLock = NSLock()
+        private struct LogFlags {
+            var didLogBypass = false
+            var didLogEphemeralFallback = false
+        }
+        // Lightweight global lock to guard logging flags without relying on actor isolation.
+        private static let logLock = OSAllocatedUnfairLock(initialState: LogFlags())
 
         static func shouldLogBypass() -> Bool {
-            logLock.lock()
-            defer { logLock.unlock() }
-            if didLogBypass { return false }
-            didLogBypass = true
-            return true
+            logLock.withLock { flags in
+                if flags.didLogBypass { return false }
+                flags.didLogBypass = true
+                return true
+            }
         }
 
         static func shouldLogEphemeralFallback() -> Bool {
-            logLock.lock()
-            defer { logLock.unlock() }
-            if didLogEphemeralFallback { return false }
-            didLogEphemeralFallback = true
-            return true
+            logLock.withLock { flags in
+                if flags.didLogEphemeralFallback { return false }
+                flags.didLogEphemeralFallback = true
+                return true
+            }
         }
 
         // Testing helpers
         static func resetLogsForTests() {
-            logLock.lock()
-            didLogBypass = false
-            didLogEphemeralFallback = false
-            logLock.unlock()
+            logLock.withLock { flags in
+                flags.didLogBypass = false
+                flags.didLogEphemeralFallback = false
+            }
         }
 
         static func didLogBypassForTests() -> Bool {
-            didLogBypass
+            logLock.withLock { $0.didLogBypass }
         }
 
         static func didLogEphemeralFallbackForTests() -> Bool {
-            didLogEphemeralFallback
+            logLock.withLock { $0.didLogEphemeralFallback }
         }
 
         /// Persists an insecure key outside the Keychain so transcripts remain readable across restarts

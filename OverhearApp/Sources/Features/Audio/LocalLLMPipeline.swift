@@ -115,8 +115,12 @@ actor LocalLLMPipeline {
     /// Warms the local model (best-effort). Safe to call multiple times.
     func warmup() async {
         if let task = warmupTask {
-            await task.value
-            return
+            let didComplete = await waitForWarmup(task: task, timeout: warmupTimeout)
+            if didComplete { return }
+            logger.error("Existing warmup task exceeded timeout; cancelling and restarting")
+            FileLogger.log(category: logCategory, message: "Existing warmup task timed out; restarting warmup")
+            task.cancel()
+            warmupTask = nil
         }
         downloadWatchTask?.cancel()
         await downloadWatchTask?.value
@@ -136,6 +140,22 @@ actor LocalLLMPipeline {
         await task.value
         if warmupGeneration == generation {
             warmupTask = nil
+        }
+    }
+
+    private func waitForWarmup(task: Task<Void, Never>, timeout: TimeInterval) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                await task.value
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                return false
+            }
+            let completed = await group.next() ?? false
+            group.cancelAll()
+            return completed
         }
     }
 

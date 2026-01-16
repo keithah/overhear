@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 import os.log
 
 /// Captures microphone audio locally using AVAudioEngine.
@@ -42,7 +43,7 @@ actor AVAudioCaptureService {
     private var isRecording = false
     private var durationTask: Task<Void, Never>?
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
-    private var bufferLogState = BufferLogState()
+    private let bufferLogLock = OSAllocatedUnfairLock(initialState: BufferLogState())
     // Updated per capture start so late buffers from a prior session are ignored.
     private var observerSessionID = UUID()
     private enum LogConstants {
@@ -234,15 +235,13 @@ actor AVAudioCaptureService {
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
         guard !observersSnapshot.isEmpty else { return }
 
-        var decisionState = bufferLogState
-        let decision = Self.advanceLoggingDecision(state: &decisionState)
-        bufferLogState = decisionState
+        // Track counters under a lock to defend against overlapping callbacks before actor serialization.
+        let decision = bufferLogLock.withLock { state in
+            Self.advanceLoggingDecision(state: &state)
+        }
 
         if decision.shouldLog {
-            FileLogger.log(
-                category: "AVAudioCaptureService",
-                message: "notifyBufferObservers total=\(decision.total) recent=\(decision.recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
-            )
+            await log("notifyBufferObservers total=\(decision.total) recent=\(decision.recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)")
         }
         for observer in observersSnapshot {
             guard let copy = buffer.cloned() else { continue }
@@ -251,7 +250,9 @@ actor AVAudioCaptureService {
     }
 
     private func resetBufferLogState() {
-        bufferLogState = BufferLogState()
+        bufferLogLock.withLock { state in
+            state = BufferLogState()
+        }
     }
 
     private func log(_ message: String) async {

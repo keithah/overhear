@@ -8,19 +8,21 @@ final class MeetingRecordingManagerStreamingMonitorTests: XCTestCase {
         let start = Date(timeIntervalSinceReferenceDate: 0)
         let snapshot = MeetingRecordingManager.StreamingMonitorSnapshot(
             startDate: start,
+            monitorStartDate: start,
             lastUpdate: nil,
             loggedFirstStreamingToken: false,
             preTokenStallLogged: false,
             currentHealth: .init(state: .connecting, lastUpdate: nil, firstTokenLatency: nil),
             stallThresholdSeconds: 8,
-            firstTokenGracePeriod: 30
+            firstTokenGracePeriod: 30,
+            monitorMaxElapsedSeconds: 10_000
         )
         let now = start.addingTimeInterval(40)
 
         let evaluation = MeetingRecordingManager.computeStreamingHealth(snapshot: snapshot, now: now)
 
         XCTAssertEqual(evaluation?.newHealth?.state, .stalled)
-        XCTAssertEqual(evaluation?.newHealth?.lastUpdate, now)
+        XCTAssertNil(evaluation?.newHealth?.lastUpdate)
         XCTAssertEqual(evaluation?.preTokenStallLogged, true)
         XCTAssertNotNil(evaluation?.logMessage)
     }
@@ -30,12 +32,14 @@ final class MeetingRecordingManagerStreamingMonitorTests: XCTestCase {
         let stalledEvaluation = MeetingRecordingManager.computeStreamingHealth(
             snapshot: .init(
                 startDate: start,
+                monitorStartDate: start,
                 lastUpdate: start,
                 loggedFirstStreamingToken: true,
                 preTokenStallLogged: false,
                 currentHealth: .init(state: .active, lastUpdate: start, firstTokenLatency: nil),
                 stallThresholdSeconds: 5,
-                firstTokenGracePeriod: 30
+                firstTokenGracePeriod: 30,
+                monitorMaxElapsedSeconds: 10_000
             ),
             now: start.addingTimeInterval(10)
         )
@@ -46,12 +50,14 @@ final class MeetingRecordingManagerStreamingMonitorTests: XCTestCase {
         let recoveredEvaluation = MeetingRecordingManager.computeStreamingHealth(
             snapshot: .init(
                 startDate: start,
+                monitorStartDate: start,
                 lastUpdate: start.addingTimeInterval(9),
                 loggedFirstStreamingToken: true,
                 preTokenStallLogged: false,
                 currentHealth: .init(state: .stalled, lastUpdate: start.addingTimeInterval(9), firstTokenLatency: nil),
                 stallThresholdSeconds: 5,
-                firstTokenGracePeriod: 30
+                firstTokenGracePeriod: 30,
+                monitorMaxElapsedSeconds: 10_000
             ),
             now: start.addingTimeInterval(10)
         )
@@ -65,12 +71,14 @@ final class MeetingRecordingManagerStreamingMonitorTests: XCTestCase {
         let evaluation = MeetingRecordingManager.computeStreamingHealth(
             snapshot: .init(
                 startDate: start,
+                monitorStartDate: start,
                 lastUpdate: start,
                 loggedFirstStreamingToken: true,
                 preTokenStallLogged: false,
                 currentHealth: .init(state: .active, lastUpdate: start, firstTokenLatency: nil),
                 stallThresholdSeconds: 8,
-                firstTokenGracePeriod: 30
+                firstTokenGracePeriod: 30,
+                monitorMaxElapsedSeconds: 10_000
             ),
             now: start.addingTimeInterval(2)
         )
