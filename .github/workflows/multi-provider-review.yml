@@ -91,6 +91,10 @@ jobs:
           REVIEW_PROVIDERS: ${{ vars.REVIEW_PROVIDERS || 'openrouter/google/gemini-2.0-flash-exp:free,openrouter/mistralai/devstral-2512:free,openrouter/xiaomi/mimo-v2-flash:free' }}
           SYNTHESIS_MODEL: ${{ vars.SYNTHESIS_MODEL || 'openrouter/google/gemini-2.0-flash-exp:free' }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          MIN_CHANGED_LINES: ${{ vars.MIN_CHANGED_LINES || 0 }}
+          MAX_CHANGED_FILES: ${{ vars.MAX_CHANGED_FILES || 0 }}
+          SKIP_LABELS: ${{ vars.SKIP_LABELS || 'skip-review,no-ai-review' }}
+          PROVIDER_LIMIT: ${{ vars.PROVIDER_LIMIT || 0 }}
           PR_TITLE: ${{ steps.pr.outputs.title }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           PR_BODY: ${{ steps.pr.outputs.body }}
