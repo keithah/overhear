@@ -18,6 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        guard enforceSingleInstance() else {
+            FileLogger.log(category: "App", message: "Another Overhear instance detected; exiting this instance")
+            NSApp.terminate(nil)
+            return
+        }
+
         UNUserNotificationCenter.current().delegate = self
         bootstrapFileLoggingFlag()
 
@@ -149,6 +155,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var isRunningTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
+    private func enforceSingleInstance() -> Bool {
+        let identifier = Bundle.main.bundleIdentifier
+        let instances = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == identifier }
+        return instances.count <= 1
     }
 }
 
