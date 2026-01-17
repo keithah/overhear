@@ -251,7 +251,10 @@ actor TranscriptStore {
            let transcript = try? decoder.decode(StoredTranscript.self, from: decrypted) {
             return transcript
         }
-        
+        FileLogger.log(
+            category: "TranscriptStore",
+            message: "Decrypting transcript failed; attempting plaintext fallback"
+        )
         // Fallback to plaintext legacy JSON
         if let transcript = try? decoder.decode(StoredTranscript.self, from: data) {
             FileLogger.log(

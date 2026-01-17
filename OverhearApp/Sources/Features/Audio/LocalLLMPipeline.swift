@@ -162,6 +162,7 @@ actor LocalLLMPipeline {
             FileLogger.log(category: logCategory, message: "Warmup timed out after \(Int(warmupTimeout))s; cancelling")
             logger.error("Warmup timed out after \(self.warmupTimeout, privacy: .public)s; cancelling")
             task.cancel()
+            downloadWatchTask?.cancel()
             await task.value
             if warmupGeneration == generation {
                 warmupTask = nil

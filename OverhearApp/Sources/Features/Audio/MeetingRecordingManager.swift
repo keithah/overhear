@@ -1281,6 +1281,8 @@ private extension MeetingRecordingManager {
     func rebuildSpeakerSegmentBuckets() {
         speakerSegmentBuckets.removeAll()
         guard !speakerSegments.isEmpty else { return }
+        var dropped = 0
+        var droppedWide = 0
         for segment in speakerSegments {
             guard segment.start >= 0,
                   segment.end >= segment.start,
@@ -1289,10 +1291,17 @@ private extension MeetingRecordingManager {
                     category: "MeetingRecordingManager",
                     message: "Skipping out-of-bounds diarization segment start=\(segment.start) end=\(segment.end)"
                 )
+                dropped += 1
                 continue
             }
             let startBucket = Int(floor(segment.start / speakerBucketWidthSeconds))
             let endBucket = Int(floor(segment.end / speakerBucketWidthSeconds))
+            let span = endBucket - startBucket
+            let maxSpanBuckets = 10_000 // ~14 hours at 5s buckets; defensive cap to avoid runaway spans.
+            guard span <= maxSpanBuckets else {
+                droppedWide += 1
+                continue
+            }
             for bucket in startBucket...endBucket {
                 speakerSegmentBuckets[bucket, default: []].append(segment)
             }
@@ -1300,5 +1309,11 @@ private extension MeetingRecordingManager {
         // Defensive cleanup: drop any buckets beyond the maximum window to avoid long-run growth.
         let maxBucket = Int(floor(SpeakerConstraints.maxWindowSeconds / speakerBucketWidthSeconds))
         speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= 0 && $0.key <= maxBucket }
+        if dropped > 0 || droppedWide > 0 {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Dropped \(dropped) out-of-window and \(droppedWide) overly-wide diarization segments"
+            )
+        }
     }
 }

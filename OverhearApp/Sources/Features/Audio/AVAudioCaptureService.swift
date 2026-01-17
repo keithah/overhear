@@ -129,6 +129,7 @@ actor AVAudioCaptureService {
         try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let sessionID = observerSessionID
         let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
+        self.file = file
 
         // Use a smaller buffer to reduce latency for streaming transcripts.
         engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
@@ -145,7 +146,7 @@ actor AVAudioCaptureService {
             // Hop off the audio callback thread before any disk I/O or actor work.
             Task.detached(priority: .userInitiated) { [weak self] in
                 guard let self else { return }
-                await self.processIncomingBuffer(bufferCopy, sessionID: sessionID, file: file)
+                await self.processIncomingBuffer(bufferCopy, sessionID: sessionID)
             }
         }
 
@@ -262,9 +263,10 @@ actor AVAudioCaptureService {
 
     private func resetBufferLogState() {
         bufferLogState = BufferLogState()
+        pendingBufferNotifications = 0
     }
 
-    private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID, file: AVAudioFile) async {
+    private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID) async {
         guard Self.shouldProcessBuffer(isRecording: isRecording, observerSessionID: observerSessionID, bufferSessionID: sessionID) else {
             return
         }
@@ -278,6 +280,10 @@ actor AVAudioCaptureService {
 #if DEBUG
             assert(pendingBufferNotifications >= 0, "pendingBufferNotifications underflowed; check backpressure logic")
 #endif
+        }
+        guard let file else {
+            await log("Tap write failed: missing file handle")
+            return
         }
         do {
             try file.write(from: buffer)
