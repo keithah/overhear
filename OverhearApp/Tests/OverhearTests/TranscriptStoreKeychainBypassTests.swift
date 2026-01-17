@@ -69,5 +69,18 @@ final class TranscriptStoreKeychainBypassTests: XCTestCase {
             TranscriptStore.keychainBypassReason(environment: flagOnlyEnv),
             "Without a trusted context, bypass should not be enabled"
         )
+
+        // When both CI and test markers are present, test context should win.
+        let bothEnv = [
+            "OVERHEAR_INSECURE_NO_KEYCHAIN": "true",
+            "XCTestConfigurationFilePath": "/tmp/config",
+            "CI": "true",
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_RUNNER_NAME": "runner"
+        ]
+        XCTAssertEqual(
+            TranscriptStore.keychainBypassReason(environment: bothEnv),
+            "XCTestConfigurationFilePath"
+        )
     }
 }

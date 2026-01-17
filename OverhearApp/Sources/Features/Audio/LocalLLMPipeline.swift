@@ -121,19 +121,21 @@ actor LocalLLMPipeline {
     /// Warms the local model (best-effort). Safe to call multiple times.
     @discardableResult
     func warmup() async -> WarmupOutcome {
-        var encounteredTimeout = false
+        // Reuse in-flight warmup if one exists.
         if let task = warmupTask {
             switch await waitForWarmup(task: task, timeout: warmupTimeout) {
             case .completed:
                 return .completed
             case .timeout:
-                encounteredTimeout = true
                 logger.error("Existing warmup task exceeded timeout; cancelling and restarting")
                 FileLogger.log(category: logCategory, message: "Existing warmup task timed out; restarting warmup")
                 task.cancel()
+                await task.value
                 warmupTask = nil
             }
         }
+
+        // Clear any lingering watchdog before starting a fresh warmup.
         downloadWatchTask?.cancel()
         await downloadWatchTask?.value
         downloadWatchTask = nil
@@ -151,15 +153,19 @@ actor LocalLLMPipeline {
         warmupTask = task
         let waitResult = await waitForWarmup(task: task, timeout: warmupTimeout)
         if waitResult == .timeout {
-            encounteredTimeout = true
             FileLogger.log(category: logCategory, message: "Warmup timed out after \(Int(warmupTimeout))s; cancelling")
             logger.error("Warmup timed out after \(self.warmupTimeout, privacy: .public)s; cancelling")
             task.cancel()
+            await task.value
+            if warmupGeneration == generation {
+                warmupTask = nil
+            }
+            return .timedOut
         }
         if warmupGeneration == generation {
             warmupTask = nil
         }
-        return encounteredTimeout ? .timedOut : .completed
+        return .completed
     }
 
     private enum WarmupWaitResult {

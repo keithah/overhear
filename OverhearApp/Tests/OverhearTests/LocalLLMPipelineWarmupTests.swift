@@ -20,6 +20,26 @@ final class LocalLLMPipelineWarmupTests: XCTestCase {
         }
     }
 
+    actor CountingMLXClient: MLXClient {
+        private(set) var warmupCalls = 0
+
+        func warmup(progress: @Sendable @escaping (Double) -> Void) async throws {
+            warmupCalls += 1
+            try await Task.sleep(nanoseconds: 100_000_000)
+            progress(1.0)
+        }
+
+        func summarize(transcript: String, segments: [SpeakerSegment], template: PromptTemplate?) async throws -> MeetingSummary {
+            XCTFail("summarize should not be called in warmup test")
+            throw CancellationError()
+        }
+
+        func generate(prompt: String, systemPrompt: String?, maxTokens: Int) async throws -> String {
+            XCTFail("generate should not be called in warmup test")
+            throw CancellationError()
+        }
+    }
+
     func testWarmupTimeoutTransitionsToUnavailable() async {
         let client = HangingMLXClient()
         // Short timeout to keep test fast.
@@ -39,5 +59,29 @@ final class LocalLLMPipelineWarmupTests: XCTestCase {
         default:
             XCTFail("Expected unavailable after warmup timeout, got \(state)")
         }
+    }
+
+    func testConcurrentWarmupUsesSingleTask() async {
+        let client = CountingMLXClient()
+        let pipeline = LocalLLMPipeline(
+            client: client,
+            warmupTimeout: 5,
+            failureCooldown: 1,
+            downloadWatchdogDelay: 0.1
+        )
+
+        await withTaskGroup(of: LocalLLMPipeline.WarmupOutcome.self) { group in
+            for _ in 0..<3 {
+                group.addTask {
+                    await pipeline.warmup()
+                }
+            }
+            for _ in 0..<3 {
+                _ = await group.next()
+            }
+        }
+
+        let calls = await client.warmupCalls
+        XCTAssertEqual(calls, 1, "Concurrent warmup calls should share a single warmup task")
     }
 }

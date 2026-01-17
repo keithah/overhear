@@ -557,16 +557,15 @@ final class MeetingRecordingManager: ObservableObject {
                 )
             }
             FileLogger.log(category: "MeetingRecordingManager", message: "Persisted notes for \(transcriptID)")
-            if Task.isCancelled {
-                notesRetryTask = nil
-                notesSaveState = .idle
-                return
-            }
             pendingNotes = nil
             lastNotesSavedAt = Date()
             notesRetryAttempts = 0
             notesRetryTask = nil
             lastNotesError = nil
+            if Task.isCancelled {
+                notesSaveState = .idle
+                return
+            }
             notesSaveState = .idle
         } catch {
             if Task.isCancelled {
@@ -670,7 +669,13 @@ final class MeetingRecordingManager: ObservableObject {
                     generationMatches: generation == notesHealthGeneration
                 )
             }
-            guard snapshot.generationMatches else { return }
+            guard snapshot.generationMatches else {
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Notes health check exiting due to generation mismatch (generation=\(generation))"
+                )
+                return
+            }
 
             let elapsed = Date().timeIntervalSince(healthStart)
             if elapsed > maxHealthElapsedSeconds {
@@ -1423,7 +1428,9 @@ extension MeetingRecordingManager {
     }
 
     func applySpeakerLabelsIfPossible() {
-        // Complexity note: O(n*m) where n=segments, m=diarization entries; diarization is expected sorted by start time.
+        // Complexity note: worst-case O(n*m) where n=segments, m=diarization entries.
+        // With diarization sorted by start time and the early break when diarization.start > maxTiming,
+        // the typical path is closer to O(n*k) where k is the number of overlapping diarization entries.
         guard !speakerSegments.isEmpty else { return }
         guard !streamingConfirmedSegments.isEmpty else { return }
         // speakerSegments are normalized to sorted order when assigned so the early-break optimization remains valid.
@@ -1463,10 +1470,9 @@ extension MeetingRecordingManager {
             guard index >= lastLabeledConfirmedCount else { continue }
             let segment = segmentsToLabel[index]
             guard let speaker = label(for: segment) else { continue }
-            // Guard against array size changes during labeling by writing into the local copy if in-bounds.
-            if index < updatedSegments.count {
-                updatedSegments[index] = segment.assigningSpeaker(speaker)
-            }
+            // Defensive guard: the arrays should match sizes, but keep this to avoid crashes if future refactors mutate counts.
+            guard index < updatedSegments.count else { continue }
+            updatedSegments[index] = segment.assigningSpeaker(speaker)
         }
         streamingConfirmedSegments = updatedSegments
         lastLabeledConfirmedCount = streamingConfirmedSegments.count

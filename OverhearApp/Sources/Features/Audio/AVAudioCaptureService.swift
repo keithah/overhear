@@ -121,28 +121,25 @@ actor AVAudioCaptureService {
         let format = engine.inputNode.outputFormat(forBus: 0)
         await log("Input format: \(format.sampleRate) Hz, channels: \(format.channelCount)")
         try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
         let sessionID = observerSessionID
+        let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
 
         // Use a smaller buffer to reduce latency for streaming transcripts.
         engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
             guard let self else { return }
 
             // Work with a copy so we don't share task-isolated buffers across actors.
-            guard let bufferCopy = buffer.cloned() else { return }
+            guard let bufferCopy = buffer.cloned() else {
+                Task { [weak self] in
+                    await self?.log("Tap buffer clone failed; dropping buffer")
+                }
+                return
+            }
 
-            do {
-                try file.write(from: buffer)
-                // Hop onto the capture actor so counter mutations and observer callbacks stay serialized.
-                Task { [weak self] in
-                    guard let self else { return }
-                    await self.notifyBufferObservers(buffer: bufferCopy, sessionID: sessionID)
-                }
-            } catch {
-                Task { [weak self] in
-                    await self?.log("Tap write failed: \(error.localizedDescription)")
-                    await self?.finalizeRecording(result: .failure(Error.captureFailed(error.localizedDescription)))
-                }
+            // Hop off the audio callback thread before any disk I/O or actor work.
+            Task { [weak self] in
+                guard let self else { return }
+                await self.processIncomingBuffer(bufferCopy, sessionID: sessionID, file: file)
             }
         }
 
@@ -242,7 +239,7 @@ actor AVAudioCaptureService {
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
         guard !observersSnapshot.isEmpty else { return }
 
-        // Counter updates run on the capture actor (not the audio callback thread) to avoid hot-path locking.
+        // Counter updates are scheduled onto the capture actor (not the audio callback thread) to avoid hot-path locking.
         let decision = Self.advanceLoggingDecision(state: &bufferLogState)
 
         if decision.shouldLog {
@@ -256,6 +253,18 @@ actor AVAudioCaptureService {
 
     private func resetBufferLogState() {
         bufferLogState = BufferLogState()
+    }
+
+    private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID, file: AVAudioFile) async {
+        guard Self.shouldProcessBuffer(isRecording: isRecording, observerSessionID: observerSessionID, bufferSessionID: sessionID) else { return }
+        do {
+            try file.write(from: buffer)
+        } catch {
+            await log("Tap write failed: \(error.localizedDescription)")
+            await finalizeRecording(result: .failure(Error.captureFailed(error.localizedDescription)))
+            return
+        }
+        await notifyBufferObservers(buffer: buffer, sessionID: sessionID)
     }
 
     private func log(_ message: String) async {

@@ -157,14 +157,14 @@
 		F1F5B2D71D0A4FC3A5E1C0D1 /* PromptTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplate.swift; sourceTree = "<group>"; };
 		F1F5B2D91D0A4FC3A5E1C0D1 /* PromptTemplateRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplateRunner.swift; sourceTree = "<group>"; };
 		F1F5B2DB1D0A4FC3A5E1C0D1 /* AccessibilityHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityHelper.swift; sourceTree = "<group>"; };
-		FD7D27902BBF20D900A5CB6F /* Sources/Features/Automation/AutoRecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/AutoRecordingCoordinator.swift; sourceTree = "<group>"; };
-		FD7D27922BBF20EA00A5CB6F /* Sources/Features/Automation/CallDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/CallDetectionService.swift; sourceTree = "<group>"; };
-		FD7D27942BBF20F500A5CB6F /* Sources/Features/Automation/MicUsageMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/MicUsageMonitor.swift; sourceTree = "<group>"; };
-		FD7D27962BBF20FE00A5CB6F /* Sources/Features/Automation/RecordingStateIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/RecordingStateIndicator.swift; sourceTree = "<group>"; };
-		FD7D27A02BBF210001A5CB6F /* Sources/Features/Automation/MeetingNotificationRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/MeetingNotificationRouting.swift; sourceTree = "<group>"; };
-		FD7D27A22BBF210001A5CB6F /* Sources/Features/Automation/NotificationDeduperFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/NotificationDeduperFactory.swift; sourceTree = "<group>"; };
-		FD7D27A42BBF210001A5CB6F /* Sources/Features/Automation/RecordingStateGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/RecordingStateGate.swift; sourceTree = "<group>"; };
-		FD7D27A62BBF210001A5CB6F /* Sources/Features/Automation/RecordingStateProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Features/Automation/RecordingStateProviding.swift; sourceTree = "<group>"; };
+		FD7D27902BBF20D900A5CB6F /* AutoRecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoRecordingCoordinator.swift; sourceTree = "<group>"; };
+		FD7D27922BBF20EA00A5CB6F /* CallDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDetectionService.swift; sourceTree = "<group>"; };
+		FD7D27942BBF20F500A5CB6F /* MicUsageMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicUsageMonitor.swift; sourceTree = "<group>"; };
+		FD7D27962BBF20FE00A5CB6F /* RecordingStateIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateIndicator.swift; sourceTree = "<group>"; };
+		FD7D27A02BBF210001A5CB6F /* MeetingNotificationRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNotificationRouting.swift; sourceTree = "<group>"; };
+		FD7D27A22BBF210001A5CB6F /* NotificationDeduperFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationDeduperFactory.swift; sourceTree = "<group>"; };
+		FD7D27A42BBF210001A5CB6F /* RecordingStateGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateGate.swift; sourceTree = "<group>"; };
+		FD7D27A62BBF210001A5CB6F /* RecordingStateProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateProviding.swift; sourceTree = "<group>"; };
 		AAA000000000000000000001 /* AudioModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioModelTests.swift; sourceTree = "<group>"; };
 		AAA000000000000000000002 /* AutoRecordingCoordinatorManualTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoRecordingCoordinatorManualTests.swift; sourceTree = "<group>"; };
 		AAA000000000000000000003 /* AutoRecordingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoRecordingCoordinatorTests.swift; sourceTree = "<group>"; };
@@ -312,19 +312,20 @@
 			path = MenuBar;
 			sourceTree = "<group>";
 		};
-		53EA35F12F1BAF6B00145A47 /* Recovered References */ = {
+		53EA35F12F1BAF6B00145A47 /* Automation */ = {
 			isa = PBXGroup;
 			children = (
-				FD7D27902BBF20D900A5CB6F /* Sources/Features/Automation/AutoRecordingCoordinator.swift */,
-				FD7D27922BBF20EA00A5CB6F /* Sources/Features/Automation/CallDetectionService.swift */,
-				FD7D27942BBF20F500A5CB6F /* Sources/Features/Automation/MicUsageMonitor.swift */,
-				FD7D27962BBF20FE00A5CB6F /* Sources/Features/Automation/RecordingStateIndicator.swift */,
-				FD7D27A02BBF210001A5CB6F /* Sources/Features/Automation/MeetingNotificationRouting.swift */,
-				FD7D27A22BBF210001A5CB6F /* Sources/Features/Automation/NotificationDeduperFactory.swift */,
-				FD7D27A42BBF210001A5CB6F /* Sources/Features/Automation/RecordingStateGate.swift */,
-				FD7D27A62BBF210001A5CB6F /* Sources/Features/Automation/RecordingStateProviding.swift */,
+				FD7D27902BBF20D900A5CB6F /* AutoRecordingCoordinator.swift */,
+				FD7D27922BBF20EA00A5CB6F /* CallDetectionService.swift */,
+				FD7D27942BBF20F500A5CB6F /* MicUsageMonitor.swift */,
+				FD7D27962BBF20FE00A5CB6F /* RecordingStateIndicator.swift */,
+				FD7D27A02BBF210001A5CB6F /* MeetingNotificationRouting.swift */,
+				FD7D27A22BBF210001A5CB6F /* NotificationDeduperFactory.swift */,
+				FD7D27A42BBF210001A5CB6F /* RecordingStateGate.swift */,
+				FD7D27A62BBF210001A5CB6F /* RecordingStateProviding.swift */,
 			);
-			name = "Recovered References";
+			name = Automation;
+			path = Automation;
 			sourceTree = "<group>";
 		};
 		69C6201F665875E4A8CE81A9 /* Resources */ = {
@@ -344,7 +345,6 @@
 				69C6201F665875E4A8CE81A9 /* Resources */,
 				53EA35F72F1BAFD400145A47 /* OverhearTests */,
 				D2B8E6BF76808FD739F37E61 /* Products */,
-				53EA35F12F1BAF6B00145A47 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -391,6 +391,7 @@
 				B11DC2DCA910211818176E12 /* Audio */,
 				91D16B06DEA86C9B36D95D3E /* Shared */,
 				1131C6A76F3E0B6371D1BE44 /* Transcription */,
+				53EA35F12F1BAF6B00145A47 /* Automation */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -829,6 +830,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -857,6 +859,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
