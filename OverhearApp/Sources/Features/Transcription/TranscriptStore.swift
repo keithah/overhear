@@ -564,10 +564,6 @@ actor TranscriptStore {
 #if !DEBUG
         // Never allow bypass in release builds, even if env is spoofed.
         if bypassEnabled {
-            FileLogger.log(
-                category: "TranscriptStore",
-                message: "CRITICAL: Keychain bypass attempted in release build"
-            )
             throw Error.keyManagementFailed("Keychain bypass is not allowed in production builds")
         }
 #endif
@@ -624,6 +620,7 @@ actor TranscriptStore {
                     kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
                 ]
                 _ = SecItemAdd(addLegacy as CFDictionary, nil)
+                SecItemDelete(query as CFDictionary)
                 // Fall through to create new key
             }
         }
@@ -649,6 +646,12 @@ actor TranscriptStore {
                     let status = SecItemCopyMatching(query as CFDictionary, &existing)
                     if status == errSecSuccess, let data = existing as? Data, data.count == 32 {
                         return SymmetricKey(data: data)
+                    } else {
+                        SecItemDelete(query as CFDictionary)
+                        let retryStatus = SecItemAdd(addQuery as CFDictionary, nil)
+                        if retryStatus == errSecSuccess {
+                            return newKey
+                        }
                     }
                 }
                 if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || addStatus == errSecAuthFailed || addStatus == errSecDuplicateItem {

@@ -83,4 +83,20 @@ final class TranscriptStoreKeychainBypassTests: XCTestCase {
             "XCTestConfigurationFilePath"
         )
     }
+
+    func testFalseEnvValuesDoNotBypass() {
+        let falseEnv = [
+            "OVERHEAR_INSECURE_NO_KEYCHAIN": "false",
+            "CI": "true",
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_RUNNER_NAME": "runner"
+        ]
+        XCTAssertFalse(TranscriptStore.isKeychainBypassEnabled(environment: falseEnv))
+
+        let zeroEnv = [
+            "OVERHEAR_INSECURE_NO_KEYCHAIN": "0",
+            "XCTestConfigurationFilePath": "/tmp/config"
+        ]
+        XCTAssertFalse(TranscriptStore.isKeychainBypassEnabled(environment: zeroEnv))
+    }
 }

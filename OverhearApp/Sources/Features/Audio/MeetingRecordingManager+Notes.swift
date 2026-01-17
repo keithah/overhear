@@ -10,7 +10,6 @@ extension MeetingRecordingManager {
         pendingNotes = notes
         if let prior = notesRetryTask {
             prior.cancel()
-            await Task.detached { await prior.value }.value
             notesRetryTask = nil
         }
         notesRetryAttempts = 0

@@ -71,7 +71,7 @@ actor AVAudioCaptureService {
         if state.total >= LogConstants.bufferCountRolloverCap {
             rolledOver = true
             state.total = state.total % perLogInterval
-            state.sinceLast = state.sinceLast % perLogInterval
+            state.sinceLast = 0
             // Keep the initial-burst flag set so rollover doesn't repeat the early log flood.
             state.didFinishInitialBurst = true
         }

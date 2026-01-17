@@ -159,8 +159,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func enforceSingleInstance() -> Bool {
         let identifier = Bundle.main.bundleIdentifier
-        let instances = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == identifier }
-        return instances.count <= 1
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let instances = NSWorkspace.shared.runningApplications.filter { app in
+            app.bundleIdentifier == identifier && app.processIdentifier != currentPID
+        }
+        return instances.isEmpty
     }
 }
 

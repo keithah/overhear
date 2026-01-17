@@ -148,10 +148,19 @@ final class MeetingRecordingManager: ObservableObject {
         _ segments: [SpeakerSegment]
     ) -> (normalized: [SpeakerSegment], wasUnsorted: Bool) {
         guard segments.count > 1 else { return (segments, false) }
-        let sorted = segments.sorted { $0.start < $1.start }
-        let wasUnsorted = !segments.elementsEqual(sorted, by: { lhs, rhs in
-            lhs.start == rhs.start && lhs.end == rhs.end && lhs.speaker == rhs.speaker
-        })
+        var wasUnsorted = false
+        for idx in 1..<segments.count {
+            if segments[idx - 1].start > segments[idx].start {
+                wasUnsorted = true
+                break
+            }
+        }
+        let sorted = segments.sorted { lhs, rhs in
+            if lhs.start == rhs.start {
+                return lhs.end < rhs.end
+            }
+            return lhs.start < rhs.start
+        }
         return (sorted, wasUnsorted)
     }
 
