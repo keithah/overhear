@@ -485,6 +485,10 @@ actor TranscriptStore {
         /// Persists an insecure key outside the Keychain so transcripts remain readable across restarts
         /// when bypassing secure storage. This is intentionally insecure and only used when bypassing.
         static func insecurePersistedKey() -> SymmetricKey {
+            guard isKeychainBypassed else {
+                TranscriptStore.logger.critical("Attempted insecure key access without valid bypass")
+                preconditionFailure("Keychain bypass required before using insecure key storage")
+            }
             let defaults = UserDefaults.standard
             if let data = defaults.data(forKey: insecureKeyDefaultsKey), data.count == 32 {
                 return SymmetricKey(data: data)

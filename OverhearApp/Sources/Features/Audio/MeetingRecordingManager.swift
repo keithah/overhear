@@ -1427,6 +1427,7 @@ extension MeetingRecordingManager {
         guard !speakerSegments.isEmpty else { return }
         guard !streamingConfirmedSegments.isEmpty else { return }
         // speakerSegments are normalized to sorted order when assigned so the early-break optimization remains valid.
+        let segmentsToLabel = streamingConfirmedSegments
 
         func label(for segment: LiveTranscriptSegment) -> String? {
             let timings = segment.tokenTimings
@@ -1456,12 +1457,18 @@ extension MeetingRecordingManager {
             lastLabeledConfirmedCount = 0
         }
 
-        for index in streamingConfirmedSegments.indices {
+        var updatedSegments = streamingConfirmedSegments
+
+        for index in segmentsToLabel.indices {
             guard index >= lastLabeledConfirmedCount else { continue }
-            let segment = streamingConfirmedSegments[index]
+            let segment = segmentsToLabel[index]
             guard let speaker = label(for: segment) else { continue }
-            streamingConfirmedSegments[index] = segment.assigningSpeaker(speaker)
+            // Guard against array size changes during labeling by writing into the local copy if in-bounds.
+            if index < updatedSegments.count {
+                updatedSegments[index] = segment.assigningSpeaker(speaker)
+            }
         }
+        streamingConfirmedSegments = updatedSegments
         lastLabeledConfirmedCount = streamingConfirmedSegments.count
 
         var combined = streamingConfirmedSegments
