@@ -87,6 +87,8 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var liveSegments: [LiveTranscriptSegment] = []
     @Published private(set) var audioFileURL: URL?
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
+    private var speakerSegmentBuckets: [Int: [SpeakerSegment]] = [:]
+    private let speakerBucketWidthSeconds: TimeInterval = 5.0
     @Published private(set) var summary: MeetingSummary?
     @Published private(set) var notesSaveState: NotesSaveState = .idle
     @Published private(set) var lastNotesSavedAt: Date?
@@ -928,6 +930,7 @@ final class MeetingRecordingManager: ObservableObject {
                     }
 #endif
                     self.speakerSegments = normalization.normalized
+                    self.rebuildSpeakerSegmentBuckets()
                     self.applySpeakerLabelsIfPossible()
                     self.summary = stored.summary
                     if let path = stored.audioFilePath {
@@ -1438,6 +1441,26 @@ extension MeetingRecordingManager {
         guard !streamingConfirmedSegments.isEmpty else { return }
         // speakerSegments are normalized to sorted order when assigned so the early-break optimization remains valid.
         let segmentsToLabel = streamingConfirmedSegments
+        let diarizationSegments: [SpeakerSegment] = {
+            guard !speakerSegmentBuckets.isEmpty else { return speakerSegments }
+            var candidates: [SpeakerSegment] = []
+            var seenKeys = Set<String>()
+            // Collect buckets that overlap the current confirmed window to narrow scan range.
+            let minStart = segmentsToLabel.compactMap { $0.tokenTimings.map(\.start).min() }.min() ?? 0
+            let maxEnd = segmentsToLabel.compactMap { $0.tokenTimings.map(\.end).max() }.max() ?? 0
+            let startBucket = Int(floor(minStart / speakerBucketWidthSeconds))
+            let endBucket = Int(floor(maxEnd / speakerBucketWidthSeconds))
+            for bucket in startBucket...endBucket {
+                guard let bucketSegments = speakerSegmentBuckets[bucket] else { continue }
+                for segment in bucketSegments {
+                    let key = "\(segment.start)-\(segment.end)-\(segment.speaker)"
+                    if seenKeys.insert(key).inserted {
+                        candidates.append(segment)
+                    }
+                }
+            }
+            return candidates.isEmpty ? speakerSegments : candidates.sorted { $0.start < $1.start }
+        }()
 
         func label(for segment: LiveTranscriptSegment) -> String? {
             let timings = segment.tokenTimings
@@ -1446,7 +1469,7 @@ extension MeetingRecordingManager {
             let maxTiming = timings.map(\.end).max() ?? 0
             var overlapBySpeaker: [String: TimeInterval] = [:]
             // Assumes speakerSegments sorted by start time; break early once past the segment window to keep scans tighter.
-            for diarization in speakerSegments {
+            for diarization in diarizationSegments {
                 if diarization.end < minTiming { continue }
                 if diarization.start > maxTiming { break }
                 let diarizationRange = diarization.start...diarization.end
@@ -1530,6 +1553,18 @@ private extension MeetingRecordingManager {
         let sanitized = raw.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
         let result = String(sanitized).trimmingCharacters(in: CharacterSet(charactersIn: "._"))
         return result.isEmpty ? "meeting" : result
+    }
+
+    func rebuildSpeakerSegmentBuckets() {
+        speakerSegmentBuckets.removeAll()
+        guard !speakerSegments.isEmpty else { return }
+        for segment in speakerSegments {
+            let startBucket = Int(floor(segment.start / speakerBucketWidthSeconds))
+            let endBucket = Int(floor(segment.end / speakerBucketWidthSeconds))
+            for bucket in startBucket...endBucket {
+                speakerSegmentBuckets[bucket, default: []].append(segment)
+            }
+        }
     }
 }
 
