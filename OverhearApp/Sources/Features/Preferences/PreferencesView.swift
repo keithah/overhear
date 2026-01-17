@@ -243,7 +243,15 @@ struct PreferencesView: View {
                             .foregroundColor(llmStatusColor)
                         Spacer()
                         Button("Warm up model") {
-                            Task { await LocalLLMPipeline.shared.warmup() }
+                            Task {
+                                let outcome = await LocalLLMPipeline.shared.warmup()
+                                if outcome == .timedOut {
+                                    FileLogger.log(
+                                        category: "PreferencesView",
+                                        message: "LLM warmup timed out from preferences panel"
+                                    )
+                                }
+                            }
                         }
                         .controlSize(.small)
                     }

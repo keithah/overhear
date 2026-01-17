@@ -361,7 +361,7 @@ private let dateIdentifierFormatter: DateFormatter = {
      }
   }
 
-private extension MenuBarContentView {
+fileprivate extension MenuBarContentView {
     static func makeLLMStatusChip(for state: LocalLLMPipeline.State) -> some View {
         let (title, color, icon): (String, Color, String) = {
             switch state {
@@ -405,7 +405,7 @@ struct LiveNotesView: View {
     @State private var llmStateDescription: String = "Checking…"
     @State private var llmState: LocalLLMPipeline.State = .idle
     @State private var isWarmingLLM = false
-    @State private var warmupTask: Task<Void, Never>?
+    @State private var warmupTask: Task<LocalLLMPipeline.WarmupOutcome, Never>?
     @State private var llmStatePollTask: Task<Void, Never>?
     @State private var llmIsReady = false
     @State private var lastLoggedLLMState: String?
@@ -953,8 +953,14 @@ struct LiveNotesView: View {
             await LocalLLMPipeline.shared.warmup()
         }
         warmupTask = task
-        await task.value
+        let outcome = await task.value
         warmupTask = nil
+        if outcome == .timedOut {
+            FileLogger.log(
+                category: "MenuBarContentView",
+                message: "LLM warmup timed out; continuing with fallback polling"
+            )
+        }
         await refreshLLMState()
         if llmIsReady {
             llmStatePollTask?.cancel()
@@ -1031,32 +1037,6 @@ struct LiveNotesView: View {
         }
     }
 
-    fileprivate static func makeLLMStatusChip(for state: LocalLLMPipeline.State) -> some View {
-        let (title, color, icon): (String, Color, String) = {
-            switch state {
-            case .ready:
-                return (state.displayDescription, .green, "checkmark.circle.fill")
-            case .downloading:
-                return (state.displayDescription, .orange, "arrow.down.circle.fill")
-            case .warming:
-                return (state.displayDescription, .orange, "clock")
-            case .unavailable:
-                return (state.displayDescription, .red, "exclamationmark.triangle.fill")
-            case .idle:
-                return (state.displayDescription, .secondary, "bolt.horizontal.circle")
-            }
-        }()
-        return HStack(spacing: 4) {
-            Image(systemName: icon)
-                .foregroundColor(color)
-            Text(title)
-                .font(.system(size: 10))
-                .foregroundColor(color)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Capsule().fill(color.opacity(0.12)))
-    }
 }
 
 struct LiveNotesManagerView: View {
@@ -1071,7 +1051,7 @@ struct LiveNotesManagerView: View {
     @State private var llmStateDescription: String = "Checking…"
     @State private var llmState: LocalLLMPipeline.State = .idle
     @State private var isWarmingLLM = false
-    @State private var warmupTask: Task<Void, Never>?
+    @State private var warmupTask: Task<LocalLLMPipeline.WarmupOutcome, Never>?
     var onHide: () -> Void
 
     private var isActiveRecording: Bool {
@@ -1516,8 +1496,14 @@ struct LiveNotesManagerView: View {
             await LocalLLMPipeline.shared.warmup()
         }
         warmupTask = task
-        await task.value
+        let outcome = await task.value
         warmupTask = nil
+        if outcome == .timedOut {
+            FileLogger.log(
+                category: "LiveNotesView",
+                message: "LLM warmup timed out; leaving fallback polling enabled"
+            )
+        }
         await refreshLLMState()
         isWarmingLLM = false
     }

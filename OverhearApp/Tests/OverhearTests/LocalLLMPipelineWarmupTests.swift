@@ -30,7 +30,8 @@ final class LocalLLMPipelineWarmupTests: XCTestCase {
             downloadWatchdogDelay: 0.1
         )
 
-        await pipeline.warmup()
+        let outcome = await pipeline.warmup()
+        XCTAssertEqual(outcome, .timedOut)
         let state = await pipeline.snapshot().state
         switch state {
         case .unavailable(let reason):

@@ -43,7 +43,8 @@ actor AVAudioCaptureService {
     private var isRecording = false
     private var durationTask: Task<Void, Never>?
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
-    private let bufferLogLock = OSAllocatedUnfairLock(initialState: BufferLogState())
+    // Actor isolation keeps buffer logging counters serialized without additional locking.
+    private var bufferLogState = BufferLogState()
     // Updated per capture start so late buffers from a prior session are ignored.
     private var observerSessionID = UUID()
     private enum LogConstants {
@@ -58,7 +59,7 @@ actor AVAudioCaptureService {
             return clamped > 0 ? clamped : 50
         }()
         // Extra defensive cap to avoid unbounded counters in long sessions.
-        static let maxBufferNotificationCount: UInt64 = 10_000_000
+        static let bufferCountRolloverCap: UInt64 = 10_000_000
     }
 
     /// Computes whether a buffer notification should be logged while updating counters in-place.
@@ -67,7 +68,7 @@ actor AVAudioCaptureService {
         state.sinceLast &+= 1
 
         // Prevent unbounded growth and avoid re-running the "first N" log burst after rollover.
-        if state.total >= LogConstants.maxBufferNotificationCount {
+        if state.total >= LogConstants.bufferCountRolloverCap {
             state.total = UInt64(LogConstants.initialBufferLogs)
             state.sinceLast = 0
             // Keep the initial-burst flag set so rollover doesn't repeat the early log flood.
@@ -101,6 +102,10 @@ actor AVAudioCaptureService {
         let shouldLog: Bool
         let total: UInt64
         let recent: UInt64
+    }
+
+    static func shouldProcessBuffer(isRecording: Bool, observerSessionID: UUID, bufferSessionID: UUID) -> Bool {
+        isRecording && observerSessionID == bufferSessionID
     }
     private var captureStartDate: Date?
     private var requestedDuration: TimeInterval = 0
@@ -231,16 +236,14 @@ actor AVAudioCaptureService {
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer, sessionID: UUID) async {
         // Snapshot flags and observers together to avoid TOCTOU during stopCapture().
         // Late buffers after stopCapture() (or from a prior session) are intentionally dropped via the isRecording/session guard.
-        guard isRecording, observerSessionID == sessionID else { return }
+        guard Self.shouldProcessBuffer(isRecording: isRecording, observerSessionID: observerSessionID, bufferSessionID: sessionID) else { return }
         // Snapshot observers once per callback; mutations are serialized by the actor.
         // If stopCapture() clears observers between the guard and the snapshot, late buffers are dropped by design.
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
         guard !observersSnapshot.isEmpty else { return }
 
-        // Track counters under a lock to defend against overlapping callbacks before actor serialization.
-        let decision = bufferLogLock.withLock { state in
-            Self.advanceLoggingDecision(state: &state)
-        }
+        // Counter updates run on the capture actor (not the audio callback thread) to avoid hot-path locking.
+        let decision = Self.advanceLoggingDecision(state: &bufferLogState)
 
         if decision.shouldLog {
             await log("notifyBufferObservers total=\(decision.total) recent=\(decision.recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)")
@@ -252,9 +255,7 @@ actor AVAudioCaptureService {
     }
 
     private func resetBufferLogState() {
-        bufferLogLock.withLock { state in
-            state = BufferLogState()
-        }
+        bufferLogState = BufferLogState()
     }
 
     private func log(_ message: String) async {

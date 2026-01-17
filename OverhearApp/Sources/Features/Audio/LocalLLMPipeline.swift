@@ -39,6 +39,11 @@ actor LocalLLMPipeline {
         }
     }
 
+    enum WarmupOutcome: Equatable {
+        case completed
+        case timedOut
+    }
+
     static let shared = LocalLLMPipeline(
         client: MLXAdapter.makeClient()
     )
@@ -52,6 +57,7 @@ actor LocalLLMPipeline {
     private let failureCooldown: TimeInterval
     private(set) var state: State
     private var downloadWatchTask: Task<Void, Never>?
+    // Wrapping generation guard; &+= avoids traps on extremely long runtimes.
     private var warmupGeneration: Int = 0
     private var lastProgressLogBucket: Int = -1
     private var consecutiveFailures = 0
@@ -113,14 +119,20 @@ actor LocalLLMPipeline {
     }
 
     /// Warms the local model (best-effort). Safe to call multiple times.
-    func warmup() async {
+    @discardableResult
+    func warmup() async -> WarmupOutcome {
+        var encounteredTimeout = false
         if let task = warmupTask {
-            let didComplete = await waitForWarmup(task: task, timeout: warmupTimeout)
-            if didComplete { return }
-            logger.error("Existing warmup task exceeded timeout; cancelling and restarting")
-            FileLogger.log(category: logCategory, message: "Existing warmup task timed out; restarting warmup")
-            task.cancel()
-            warmupTask = nil
+            switch await waitForWarmup(task: task, timeout: warmupTimeout) {
+            case .completed:
+                return .completed
+            case .timeout:
+                encounteredTimeout = true
+                logger.error("Existing warmup task exceeded timeout; cancelling and restarting")
+                FileLogger.log(category: logCategory, message: "Existing warmup task timed out; restarting warmup")
+                task.cancel()
+                warmupTask = nil
+            }
         }
         downloadWatchTask?.cancel()
         await downloadWatchTask?.value
@@ -137,23 +149,35 @@ actor LocalLLMPipeline {
             await self.warmupInternal(generation: generation, maxAttempts: 3, timeout: self.warmupTimeout)
         }
         warmupTask = task
-        await task.value
+        let waitResult = await waitForWarmup(task: task, timeout: warmupTimeout)
+        if waitResult == .timeout {
+            encounteredTimeout = true
+            FileLogger.log(category: logCategory, message: "Warmup timed out after \(Int(warmupTimeout))s; cancelling")
+            logger.error("Warmup timed out after \(self.warmupTimeout, privacy: .public)s; cancelling")
+            task.cancel()
+        }
         if warmupGeneration == generation {
             warmupTask = nil
         }
+        return encounteredTimeout ? .timedOut : .completed
     }
 
-    private func waitForWarmup(task: Task<Void, Never>, timeout: TimeInterval) async -> Bool {
-        await withTaskGroup(of: Bool.self) { group in
+    private enum WarmupWaitResult {
+        case completed
+        case timeout
+    }
+
+    private func waitForWarmup(task: Task<Void, Never>, timeout: TimeInterval) async -> WarmupWaitResult {
+        await withTaskGroup(of: WarmupWaitResult.self) { group in
             group.addTask {
                 await task.value
-                return true
+                return .completed
             }
             group.addTask {
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                return false
+                return .timeout
             }
-            let completed = await group.next() ?? false
+            let completed = await group.next() ?? .timeout
             group.cancelAll()
             return completed
         }

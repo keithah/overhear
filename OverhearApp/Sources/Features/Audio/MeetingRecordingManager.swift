@@ -67,6 +67,10 @@ final class MeetingRecordingManager: ObservableObject {
         return min(base * pow(2.0, exponent), 60)
     }
 
+    private enum StreamingLimits {
+        static let maxLiveSegments = 1_000
+    }
+
     enum NotesSaveState: Equatable {
         case idle
         case saving
@@ -89,6 +93,7 @@ final class MeetingRecordingManager: ObservableObject {
     private(set) var transcriptID: String?
     private var pendingNotes: String?
     private var isNotesSaveRunning = false
+    // Generation counters wrap via &+= so extremely long uptimes do not trap on overflow; comparisons only rely on equality.
     private var notesHealthGeneration: Int = 0
     private var originalFileLogSetting: Bool?
     private var fileLogTemporarilyEnabled = false
@@ -128,6 +133,23 @@ final class MeetingRecordingManager: ObservableObject {
         default:
             return false
         }
+    }
+
+    nonisolated static func normalizeSpeakerSegments(
+        _ segments: [SpeakerSegment]
+    ) -> (normalized: [SpeakerSegment], wasUnsorted: Bool) {
+        guard segments.count > 1 else { return (segments, false) }
+        let wasUnsorted = segments.enumerated().dropFirst().contains { idx, segment in
+            let previous = segments[segments.index(before: idx)]
+            return previous.start > segment.start
+        }
+        let normalized = wasUnsorted ? segments.sorted { $0.start < $1.start } : segments
+        return (normalized, wasUnsorted)
+    }
+
+    nonisolated static func trimToLiveSegmentLimit(_ segments: [LiveTranscriptSegment]) -> [LiveTranscriptSegment] {
+        guard segments.count > StreamingLimits.maxLiveSegments else { return segments }
+        return Array(segments.suffix(StreamingLimits.maxLiveSegments))
     }
 
     private let captureService: AVAudioCaptureService
@@ -235,6 +257,7 @@ final class MeetingRecordingManager: ObservableObject {
 
     @Published private(set) var streamingHealth: StreamingHealth = .init(state: .idle)
     private var streamingMonitorTask: Task<Void, Never>?
+    // Wrap-on-overflow to avoid traps during extremely long runtimes; equality checks gate task generations.
     private var streamingMonitorGeneration: Int = 0
     private var streamingMonitorStartDate: Date?
     private var streamingLastUpdate: Date?
@@ -592,7 +615,13 @@ final class MeetingRecordingManager: ObservableObject {
         let generation = notesHealthGeneration
 
         let task = Task.detached(priority: .utility) { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Notes health check cancelled: recording manager deallocated"
+                )
+                return
+            }
             await self.runNotesHealthCheck(generation: generation, intervalSeconds: intervalSeconds)
             await MainActor.run { [weak self] in
                 guard let self, generation == self.notesHealthGeneration else { return }
@@ -767,8 +796,9 @@ final class MeetingRecordingManager: ObservableObject {
     // MARK: - Private
     @MainActor
     private func trimStreamingConfirmedSegmentsIfNeeded() async {
-        guard streamingConfirmedSegments.count > 1000 else { return }
-        streamingConfirmedSegments = Array(streamingConfirmedSegments.suffix(1000))
+        let trimmed = Self.trimToLiveSegmentLimit(streamingConfirmedSegments)
+        guard trimmed.count != streamingConfirmedSegments.count else { return }
+        streamingConfirmedSegments = trimmed
         if lastLabeledConfirmedCount > streamingConfirmedSegments.count {
             lastLabeledConfirmedCount = streamingConfirmedSegments.count
         }
@@ -874,7 +904,22 @@ final class MeetingRecordingManager: ObservableObject {
                         self.liveSegments = self.streamingConfirmedSegments
                         self.liveTranscript = self.streamingConfirmedSegments.map(\.text).joined(separator: "\n")
                     }
-                    self.speakerSegments = stored.segments
+                    let normalization = Self.normalizeSpeakerSegments(stored.segments)
+                    if normalization.wasUnsorted {
+                        FileLogger.log(
+                            category: "MeetingRecordingManager",
+                            message: "Speaker segments not sorted; normalizing order for overlap checks"
+                        )
+                    }
+#if DEBUG
+                    if normalization.normalized.count > 1 {
+                        assert(normalization.normalized.enumerated().dropFirst().allSatisfy { idx, segment in
+                            let previous = normalization.normalized[normalization.normalized.index(before: idx)]
+                            return previous.start <= segment.start
+                        }, "speakerSegments should be sorted by start time")
+                    }
+#endif
+                    self.speakerSegments = normalization.normalized
                     self.applySpeakerLabelsIfPossible()
                     self.summary = stored.summary
                     if let path = stored.audioFilePath {
@@ -1105,7 +1150,13 @@ extension MeetingRecordingManager {
             await previous?.value
             if Task.isCancelled { return }
             while !Task.isCancelled {
-                guard let self else { return }
+                guard let self else {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Streaming monitor cancelled: recording manager deallocated"
+                    )
+                    return
+                }
                 let isCurrent = await MainActor.run { [weak self] in
                     guard let self else { return false }
                     return self.streamingMonitorGeneration == generation
@@ -1120,6 +1171,7 @@ extension MeetingRecordingManager {
         streamingMonitorTask = task
     }
 
+    /// Adaptive intervals trade faster stall detection for lower steady-state wakeups once streaming is healthy.
     nonisolated private func nextStreamingMonitorInterval() async -> TimeInterval {
         await MainActor.run { [weak self] in
             guard let self else { return 2 }
@@ -1346,12 +1398,8 @@ extension MeetingRecordingManager {
         if let hyp = streamingHypothesis {
             segments.append(hyp)
         }
-        // Trim live segments to avoid unbounded growth during very long sessions; keep the most recent 1000 entries.
-        if segments.count > 1000 {
-            liveSegments = Array(segments.suffix(1000))
-        } else {
-            liveSegments = segments
-        }
+        // Trim live segments to avoid unbounded growth during very long sessions; keep the most recent N entries.
+        liveSegments = Self.trimToLiveSegmentLimit(segments)
 
         let transcript = segments
             .map(\.text)
@@ -1378,13 +1426,7 @@ extension MeetingRecordingManager {
         // Complexity note: O(n*m) where n=segments, m=diarization entries; diarization is expected sorted by start time.
         guard !speakerSegments.isEmpty else { return }
         guard !streamingConfirmedSegments.isEmpty else { return }
-
-        // Enforce sort to keep early-break optimization correct even if upstream order changes.
-        if !speakerSegments.enumerated().dropFirst().allSatisfy({ idx, seg in
-            speakerSegments[speakerSegments.index(before: idx)].start <= seg.start
-        }) {
-            speakerSegments.sort { $0.start < $1.start }
-        }
+        // speakerSegments are normalized to sorted order when assigned so the early-break optimization remains valid.
 
         func label(for segment: LiveTranscriptSegment) -> String? {
             let timings = segment.tokenTimings

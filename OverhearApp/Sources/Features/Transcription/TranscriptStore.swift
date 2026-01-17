@@ -73,6 +73,7 @@ actor TranscriptStore {
     private let decoder = JSONDecoder()
     private let encryptionKey: SymmetricKey
     private let persistenceEnabled: Bool
+    private static let logger = Logger(subsystem: "com.overhear.app", category: "TranscriptStore")
 
     private static let meetingIDDelimiter = "__"
     
@@ -433,6 +434,7 @@ actor TranscriptStore {
         private struct LogFlags {
             var didLogBypass = false
             var didLogEphemeralFallback = false
+            var isUsingEphemeralKey = false
         }
         // Lightweight global lock to guard logging flags without relying on actor isolation.
         private static let logLock = OSAllocatedUnfairLock(initialState: LogFlags())
@@ -453,11 +455,22 @@ actor TranscriptStore {
             }
         }
 
+        static func markEphemeralInUse() {
+            logLock.withLock { flags in
+                flags.isUsingEphemeralKey = true
+            }
+        }
+
+        static func isEphemeralInUse() -> Bool {
+            logLock.withLock { $0.isUsingEphemeralKey }
+        }
+
         // Testing helpers
         static func resetLogsForTests() {
             logLock.withLock { flags in
                 flags.didLogBypass = false
                 flags.didLogEphemeralFallback = false
+                flags.isUsingEphemeralKey = false
             }
         }
 
@@ -571,6 +584,8 @@ actor TranscriptStore {
                             message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix). Transcripts may be unreadable after restart"
                         )
                     }
+                    KeyStorage.markEphemeralInUse()
+                    logger.fault("Using ephemeral transcript key due to Keychain failure (status \(addStatus, privacy: .public)); data will be unreadable after restart")
                     return KeyStorage.ephemeralKeyBox.key
 #else
                     throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)) and bypass is not permitted in production")
