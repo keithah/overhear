@@ -135,16 +135,16 @@ actor LocalLLMPipeline {
             }
         }
 
-        // Clear any lingering watchdog before starting a fresh warmup.
-        downloadWatchTask?.cancel()
-        await downloadWatchTask?.value
-        downloadWatchTask = nil
-
         warmupGeneration &+= 1
         if warmupGeneration == 0 {
             FileLogger.log(category: logCategory, message: "Warmup generation counter wrapped; continuing with generation=\(warmupGeneration)")
         }
         let generation = warmupGeneration
+
+        // Clear any lingering watchdog before starting a fresh warmup; use the current generation for bookkeeping.
+        downloadWatchTask?.cancel()
+        await downloadWatchTask?.value
+        downloadWatchTask = nil
         if downloadStartAt == nil {
             downloadStartAt = Date()
         }

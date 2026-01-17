@@ -517,6 +517,8 @@ final class MeetingRecordingManager: ObservableObject {
         // Always remember the latest notes in case the transcript ID is not yet assigned.
         pendingNotes = notes
         notesRetryTask?.cancel()
+        await notesRetryTask?.value
+        notesRetryTask = nil
         notesRetryAttempts = 0
         lastNotesError = nil
         await startNotesHealthCheck()
@@ -539,6 +541,7 @@ final class MeetingRecordingManager: ObservableObject {
         if Task.isCancelled { return }
         guard let transcriptID = transcriptID else {
             FileLogger.log(category: "MeetingRecordingManager", message: "Deferring notes persist until transcriptID is available")
+            notesSaveState = .queued(0)
             return
         }
         do {
@@ -641,6 +644,31 @@ final class MeetingRecordingManager: ObservableObject {
         let verboseNotesLogging = await MainActor.run { [weak self] in
             self?.isNotesHealthVerboseLoggingEnabled ?? false
         }
+        struct NotesHealthBounds {
+            let maxElapsed: TimeInterval
+            let maxIterations: Int
+            let waitLogIntervalCount: Int
+            let maxWaits: Int
+            let maxRetries: Int
+        }
+        let bounds = await MainActor.run { [weak self] () -> NotesHealthBounds in
+            guard let self else {
+                return NotesHealthBounds(
+                    maxElapsed: 0,
+                    maxIterations: 0,
+                    waitLogIntervalCount: 1,
+                    maxWaits: 0,
+                    maxRetries: 0
+                )
+            }
+            return NotesHealthBounds(
+                maxElapsed: self.maxHealthElapsedSeconds,
+                maxIterations: self.maxHealthIterations,
+                waitLogIntervalCount: self.transcriptWaitLogIntervalCount,
+                maxWaits: self.maxTranscriptWaits,
+                maxRetries: self.maxHealthRetries
+            )
+        }
         struct NotesHealthSnapshot {
             let status: Status
             let transcriptID: String?
@@ -654,11 +682,17 @@ final class MeetingRecordingManager: ObservableObject {
         var healthRetries = 0
         var iterations = 0
 
-        func shouldContinueHealthCheck(snapshot: NotesHealthSnapshot, elapsed: TimeInterval, iterations: Int) -> (Bool, String?) {
-            if elapsed > maxHealthElapsedSeconds {
+        func shouldContinueHealthCheck(
+            snapshot: NotesHealthSnapshot,
+            elapsed: TimeInterval,
+            iterations: Int,
+            maxElapsedSeconds: TimeInterval,
+            maxIterations: Int
+        ) -> (Bool, String?) {
+            if elapsed > maxElapsedSeconds {
                 return (false, snapshot.pendingNotes != nil ? "Notes health check exceeded maximum duration" : nil)
             }
-            if iterations > maxHealthIterations {
+            if iterations > maxIterations {
                 return (false, snapshot.pendingNotes != nil ? "Notes health check exceeded max iterations" : nil)
             }
             return (true, nil)
@@ -695,7 +729,13 @@ final class MeetingRecordingManager: ObservableObject {
             }
 
             let elapsed = Date().timeIntervalSince(healthStart)
-            let (shouldContinue, failureReason) = shouldContinueHealthCheck(snapshot: snapshot, elapsed: elapsed, iterations: iterations)
+            let (shouldContinue, failureReason) = shouldContinueHealthCheck(
+                snapshot: snapshot,
+                elapsed: elapsed,
+                iterations: iterations,
+                maxElapsedSeconds: bounds.maxElapsed,
+                maxIterations: bounds.maxIterations
+            )
             if !shouldContinue {
                 if let reason = failureReason, snapshot.pendingNotes != nil {
                     await MainActor.run { [weak self] in
@@ -727,13 +767,13 @@ final class MeetingRecordingManager: ObservableObject {
             if Task.isCancelled { return }
             guard snapshot.transcriptID != nil else {
                 transcriptWaits += 1
-                if verboseNotesLogging, transcriptWaits.isMultiple(of: transcriptWaitLogIntervalCount) {
+                if verboseNotesLogging, transcriptWaits.isMultiple(of: bounds.waitLogIntervalCount) {
                     FileLogger.log(
                         category: "MeetingRecordingManager",
                         message: "Notes health check still waiting for transcriptID; skipping retries"
                     )
                 }
-                if transcriptWaits >= maxTranscriptWaits {
+                if transcriptWaits >= bounds.maxWaits {
                     await MainActor.run { [weak self] in
                         guard let self, generation == self.notesHealthGeneration else { return }
                         notesSaveState = .failed("Transcript ID unavailable")
@@ -767,7 +807,7 @@ final class MeetingRecordingManager: ObservableObject {
 
             if retryPlan.shouldRetry {
                 healthRetries += 1
-                if healthRetries > maxHealthRetries {
+                if healthRetries > bounds.maxRetries {
                     await MainActor.run { [weak self] in
                         guard let self, generation == self.notesHealthGeneration else { return }
                         notesSaveState = .failed("Health check retry limit exceeded")
