@@ -13,6 +13,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !isRunningTests else {
+            FileLogger.log(category: "App", message: "Skipping app bootstrap because XCTest is active")
+            return
+        }
+
         UNUserNotificationCenter.current().delegate = self
         bootstrapFileLoggingFlag()
 
@@ -140,6 +145,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if defaults.object(forKey: "overhear.enableFileLogs") == nil {
             defaults.set(false, forKey: "overhear.enableFileLogs")
         }
+    }
+
+    private var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 }
 
