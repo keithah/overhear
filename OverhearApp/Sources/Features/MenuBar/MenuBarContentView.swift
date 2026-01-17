@@ -29,7 +29,7 @@ final class Debouncer: ObservableObject {
 struct StatusChip: View {
     let title: String
     let color: Color
-    var icon: String? = nil
+    var icon: String?
 
     var body: some View {
         HStack(spacing: 4) {
@@ -739,6 +739,7 @@ struct LiveNotesView: View {
                     }
                     .onDisappear {
                         coordinator.cancelPendingNotesSave()
+                        Task { await coordinator.flushPendingNotesSave(coordinator.liveNotes) }
                     }
             }
         }

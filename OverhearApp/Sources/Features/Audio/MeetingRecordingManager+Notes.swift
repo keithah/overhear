@@ -154,22 +154,6 @@ extension MeetingRecordingManager {
         var healthRetries = 0
         var iterations = 0
 
-        func shouldContinueHealthCheck(
-            snapshot: NotesHealthSnapshot,
-            elapsed: TimeInterval,
-            iterations: Int,
-            maxElapsedSeconds: TimeInterval,
-            maxIterations: Int
-        ) -> (Bool, String?) {
-            if elapsed > maxElapsedSeconds {
-                return (false, snapshot.pendingNotes != nil ? "Notes health check exceeded maximum duration" : nil)
-            }
-            if iterations > maxIterations {
-                return (false, snapshot.pendingNotes != nil ? "Notes health check exceeded max iterations" : nil)
-            }
-            return (true, nil)
-        }
-
         while !Task.isCancelled {
             iterations += 1
             if Task.isCancelled { return }

@@ -560,12 +560,10 @@ actor TranscriptStore {
 
         // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
         if bypassEnabled {
-            if !isCIEnvironment(environment) && !isTestEnvironment(environment) {
-                FileLogger.log(
-                    category: "TranscriptStore",
-                    message: "WARNING: Keychain bypass active outside CI/test (\(environment)); transcripts are not securely stored"
-                )
-            }
+            assert(
+                isCIEnvironment(environment) || isTestEnvironment(environment),
+                "Keychain bypass should only be enabled in CI or test environments"
+            )
             let insecureKey = try KeyStorage.insecureBypassKey()
             let reasonSuffix = bypassReason.map { ": \($0)" } ?? ""
             if KeyStorage.shouldLogBypass() {

@@ -222,6 +222,11 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
         notesDebouncer.cancel()
     }
 
+    func flushPendingNotesSave(_ notes: String) async {
+        notesDebouncer.cancel()
+        await saveNotes(notes)
+    }
+
     private func cleanupAfterRecordingIfNeeded() {
         recordingManager = nil
         recordingTask = nil

@@ -273,7 +273,12 @@ actor AVAudioCaptureService {
             return
         }
         pendingBufferNotifications += 1
-        defer { pendingBufferNotifications = max(0, pendingBufferNotifications - 1) }
+        defer {
+            pendingBufferNotifications = max(0, pendingBufferNotifications - 1)
+#if DEBUG
+            assert(pendingBufferNotifications >= 0, "pendingBufferNotifications underflowed; check backpressure logic")
+#endif
+        }
         do {
             try file.write(from: buffer)
         } catch {
