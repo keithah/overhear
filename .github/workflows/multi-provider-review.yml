@@ -92,6 +92,8 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           PR_BODY: ${{ steps.pr.outputs.body }}
           HAS_AGENTS: ${{ steps.agents.outputs.exists }}
+          SYNTHESIS_MODEL: ${{ vars.SYNTHESIS_MODEL || '' }}
+          DIFF_MAX_BYTES: ${{ vars.DIFF_MAX_BYTES || '' }}
 
 # To disable auto-run on every PR change, remove the pull_request block.
 # To disable manual triggers, remove the issue_comment block or the IF filter.
