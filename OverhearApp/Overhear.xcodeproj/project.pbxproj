@@ -63,37 +63,37 @@
 		FD7D27A32BBF210001A5CB6F /* Sources/Features/Automation/NotificationDeduperFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27A22BBF210001A5CB6F /* Sources/Features/Automation/NotificationDeduperFactory.swift */; };
 		FD7D27A52BBF210001A5CB6F /* Sources/Features/Automation/RecordingStateGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27A42BBF210001A5CB6F /* Sources/Features/Automation/RecordingStateGate.swift */; };
 		FD7D27A72BBF210001A5CB6F /* Sources/Features/Automation/RecordingStateProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7D27A62BBF210001A5CB6F /* Sources/Features/Automation/RecordingStateProviding.swift */; };
-		BBB000000000000000000001 /* AudioModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000001 /* AudioModelTests.swift */; };
-		BBB000000000000000000002 /* AutoRecordingCoordinatorManualTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000002 /* AutoRecordingCoordinatorManualTests.swift */; };
-		BBB000000000000000000003 /* AutoRecordingCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000003 /* AutoRecordingCoordinatorTests.swift */; };
-		BBB000000000000000000004 /* AVAudioCaptureServiceSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000004 /* AVAudioCaptureServiceSessionTests.swift */; };
-		BBB000000000000000000005 /* BufferLoggingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000005 /* BufferLoggingTests.swift */; };
-		BBB000000000000000000006 /* CalendarAccessHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000006 /* CalendarAccessHelperTests.swift */; };
-		BBB000000000000000000007 /* CallDetectionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000007 /* CallDetectionServiceTests.swift */; };
-		BBB000000000000000000008 /* DebouncerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000008 /* DebouncerTests.swift */; };
-		BBB000000000000000000009 /* FluidAudioConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000009 /* FluidAudioConfigurationTests.swift */; };
-		BBB00000000000000000000A /* HotkeyBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000000A /* HotkeyBindingTests.swift */; };
-		BBB00000000000000000000B /* LocalLLMPipelineFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000000B /* LocalLLMPipelineFallbackTests.swift */; };
-		BBB00000000000000000000C /* LocalLLMPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000000C /* LocalLLMPipelineTests.swift */; };
-		BBB00000000000000000000D /* LocalLLMPipelineWarmupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000000D /* LocalLLMPipelineWarmupTests.swift */; };
-		BBB00000000000000000000E /* MeetingPlatformTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000000E /* MeetingPlatformTests.swift */; };
-		BBB00000000000000000000F /* MeetingRecordingManagerNotesLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000000F /* MeetingRecordingManagerNotesLogicTests.swift */; };
-		BBB000000000000000000010 /* MeetingRecordingManagerSegmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000010 /* MeetingRecordingManagerSegmentTests.swift */; };
-		BBB000000000000000000011 /* MeetingRecordingManagerStreamingMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000011 /* MeetingRecordingManagerStreamingMonitorTests.swift */; };
-		BBB000000000000000000012 /* MicUsageMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000012 /* MicUsageMonitorTests.swift */; };
-		BBB000000000000000000013 /* MLXPreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000013 /* MLXPreferencesTests.swift */; };
-		BBB000000000000000000014 /* NotificationDeduperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000014 /* NotificationDeduperTests.swift */; };
-		BBB000000000000000000015 /* NotificationHelperAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000015 /* NotificationHelperAdapterTests.swift */; };
-		BBB000000000000000000016 /* NotificationHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000016 /* NotificationHelperTests.swift */; };
-		BBB000000000000000000017 /* PlatformIconProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000017 /* PlatformIconProviderTests.swift */; };
-		BBB000000000000000000018 /* PreferencesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000018 /* PreferencesServiceTests.swift */; };
-		BBB000000000000000000019 /* PromptTemplateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000000000000000000019 /* PromptTemplateTests.swift */; };
-		BBB00000000000000000001A /* RecordingStateGateActorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000001A /* RecordingStateGateActorTests.swift */; };
-		BBB00000000000000000001B /* RecordingStateGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000001B /* RecordingStateGateTests.swift */; };
-		BBB00000000000000000001C /* TranscriptStoreBypassLoggingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000001C /* TranscriptStoreBypassLoggingTests.swift */; };
-		BBB00000000000000000001D /* TranscriptStoreKeychainBypassTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000001D /* TranscriptStoreKeychainBypassTests.swift */; };
-		BBB00000000000000000001E /* TranscriptStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000001E /* TranscriptStoreTests.swift */; };
-		BBB00000000000000000001F /* TranscriptStoreUpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA00000000000000000001F /* TranscriptStoreUpdateTests.swift */; };
+		6D63E4CD667544949F91C0FC /* AudioModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8E1E7D44D64EDA84BF6663 /* AudioModelTests.swift */; };
+		615BC92EBCD2486486AD1726 /* AutoRecordingCoordinatorManualTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4542DC064F5F46259E604EF0 /* AutoRecordingCoordinatorManualTests.swift */; };
+		DF88D9B1E2E0418D990522D6 /* AutoRecordingCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1DC0E3DF5B4FFD9CB66364 /* AutoRecordingCoordinatorTests.swift */; };
+		5D03603253A74D7A8DF67E17 /* AVAudioCaptureServiceSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C043979345543C8924DE8EB /* AVAudioCaptureServiceSessionTests.swift */; };
+		9F812DC08E2F49F5A47CA603 /* BufferLoggingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5954996F624914980F7232 /* BufferLoggingTests.swift */; };
+		F2DCA94C4982488284AED453 /* CalendarAccessHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8046A0513D64FEDA0E2B941 /* CalendarAccessHelperTests.swift */; };
+		9FCCC07FD82B431A85013A24 /* CallDetectionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1968EA57B9754A829D25D649 /* CallDetectionServiceTests.swift */; };
+		6A4771FD7BD7417595ACD193 /* DebouncerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C34792AC27AD4A968F44B112 /* DebouncerTests.swift */; };
+		06F6C982DDCE49DAB34BAC67 /* FluidAudioConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7AA8813CAD64EF6B8284392 /* FluidAudioConfigurationTests.swift */; };
+		EDC757C7238D462EAEF5B389 /* HotkeyBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83D2DF21C9A54C68A8A37669 /* HotkeyBindingTests.swift */; };
+		C728E95AF0E54F27A422A2B0 /* LocalLLMPipelineFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B78B8BFDD4EA47A59ABF3A2D /* LocalLLMPipelineFallbackTests.swift */; };
+		192FBF6D989F4E98B38D5BAB /* LocalLLMPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5575CB6BCCB4D678B04A7A8 /* LocalLLMPipelineTests.swift */; };
+		14CFAF2622DF464EBE34F58D /* LocalLLMPipelineWarmupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EDED4C11CD3482C9D8035A3 /* LocalLLMPipelineWarmupTests.swift */; };
+		E6107A2D9B714C8DB8DA3830 /* MeetingPlatformTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B28E3C44090641149751CEAE /* MeetingPlatformTests.swift */; };
+		9A77A7EA6C64434B9FB9E3F4 /* MeetingRecordingManagerNotesLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9673055C063046FC87E71DC5 /* MeetingRecordingManagerNotesLogicTests.swift */; };
+		8F2FCF90F3EE419BA50A6982 /* MeetingRecordingManagerSegmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70550638786040B4A418787D /* MeetingRecordingManagerSegmentTests.swift */; };
+		AFB15BE79CF24D5BA1B19855 /* MeetingRecordingManagerStreamingMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A05C6AB40AC4C59AE67AF0D /* MeetingRecordingManagerStreamingMonitorTests.swift */; };
+		0257D6831990478E990A45A3 /* MicUsageMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C3783BFCB0D4CF19D2D4CD7 /* MicUsageMonitorTests.swift */; };
+		C7FC8630055E41EF821B2F3D /* MLXPreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85660D6592F248C08E4A05F7 /* MLXPreferencesTests.swift */; };
+		B6639FBA2ACA454893EB0791 /* NotificationDeduperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B20D735AA7546DA903EB84C /* NotificationDeduperTests.swift */; };
+		091B0C669F264EA780555A92 /* NotificationHelperAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4871452EE0433F81587952 /* NotificationHelperAdapterTests.swift */; };
+		6E16DEAA686A484EB8D88E0A /* NotificationHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 939623C33288464998FDB4BC /* NotificationHelperTests.swift */; };
+		057F88BCF1734B059F98E8D4 /* PlatformIconProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74028039971445BEA55E2BFE /* PlatformIconProviderTests.swift */; };
+		A99EDDC195ED492DBEA41238 /* PreferencesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A39CB77D524CAE9F105CD7 /* PreferencesServiceTests.swift */; };
+		FF8151D12AF04732A8E4466B /* PromptTemplateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1EB89DBEFA408689A5F63E /* PromptTemplateTests.swift */; };
+		26F06C29258647CFB8E5F1B4 /* RecordingStateGateActorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DDC408B454048B8B33515A0 /* RecordingStateGateActorTests.swift */; };
+		557D8BDD650642088B8E2AE5 /* RecordingStateGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C071B2781D94B77A9041557 /* RecordingStateGateTests.swift */; };
+		AB2D8CF8E96144E99AB4A4DC /* TranscriptStoreBypassLoggingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7984B4E4C2994D7E971A0F66 /* TranscriptStoreBypassLoggingTests.swift */; };
+		165DCE661CBA4213834AE14D /* TranscriptStoreKeychainBypassTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D652989DA1A1456985ADA416 /* TranscriptStoreKeychainBypassTests.swift */; };
+		4493578F1234446C8E3D0B07 /* TranscriptStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47710E8EA5CD491B8ED916E2 /* TranscriptStoreTests.swift */; };
+		486F3723BF90415AB122A2E2 /* TranscriptStoreUpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C16FC6CFA97442EAA5F899E /* TranscriptStoreUpdateTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -165,74 +165,74 @@
 		FD7D27A22BBF210001A5CB6F /* NotificationDeduperFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationDeduperFactory.swift; sourceTree = "<group>"; };
 		FD7D27A42BBF210001A5CB6F /* RecordingStateGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateGate.swift; sourceTree = "<group>"; };
 		FD7D27A62BBF210001A5CB6F /* RecordingStateProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateProviding.swift; sourceTree = "<group>"; };
-		AAA000000000000000000001 /* AudioModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioModelTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000002 /* AutoRecordingCoordinatorManualTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoRecordingCoordinatorManualTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000003 /* AutoRecordingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoRecordingCoordinatorTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000004 /* AVAudioCaptureServiceSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVAudioCaptureServiceSessionTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000005 /* BufferLoggingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BufferLoggingTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000006 /* CalendarAccessHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarAccessHelperTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000007 /* CallDetectionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDetectionServiceTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000008 /* DebouncerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebouncerTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000009 /* FluidAudioConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidAudioConfigurationTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000000A /* HotkeyBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyBindingTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000000B /* LocalLLMPipelineFallbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMPipelineFallbackTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000000C /* LocalLLMPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMPipelineTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000000D /* LocalLLMPipelineWarmupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMPipelineWarmupTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000000E /* MeetingPlatformTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingPlatformTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000000F /* MeetingRecordingManagerNotesLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingManagerNotesLogicTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000010 /* MeetingRecordingManagerSegmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingManagerSegmentTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000011 /* MeetingRecordingManagerStreamingMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingManagerStreamingMonitorTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000012 /* MicUsageMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicUsageMonitorTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000013 /* MLXPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXPreferencesTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000014 /* NotificationDeduperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationDeduperTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000015 /* NotificationHelperAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationHelperAdapterTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000016 /* NotificationHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationHelperTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000017 /* PlatformIconProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformIconProviderTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000018 /* PreferencesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesServiceTests.swift; sourceTree = "<group>"; };
-		AAA000000000000000000019 /* PromptTemplateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplateTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000001A /* RecordingStateGateActorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateGateActorTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000001B /* RecordingStateGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateGateTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000001C /* TranscriptStoreBypassLoggingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStoreBypassLoggingTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000001D /* TranscriptStoreKeychainBypassTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStoreKeychainBypassTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000001E /* TranscriptStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStoreTests.swift; sourceTree = "<group>"; };
-		AAA00000000000000000001F /* TranscriptStoreUpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStoreUpdateTests.swift; sourceTree = "<group>"; };
+		7A8E1E7D44D64EDA84BF6663 /* AudioModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioModelTests.swift; sourceTree = "<group>"; };
+		4542DC064F5F46259E604EF0 /* AutoRecordingCoordinatorManualTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoRecordingCoordinatorManualTests.swift; sourceTree = "<group>"; };
+		7D1DC0E3DF5B4FFD9CB66364 /* AutoRecordingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoRecordingCoordinatorTests.swift; sourceTree = "<group>"; };
+		4C043979345543C8924DE8EB /* AVAudioCaptureServiceSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVAudioCaptureServiceSessionTests.swift; sourceTree = "<group>"; };
+		CB5954996F624914980F7232 /* BufferLoggingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BufferLoggingTests.swift; sourceTree = "<group>"; };
+		E8046A0513D64FEDA0E2B941 /* CalendarAccessHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarAccessHelperTests.swift; sourceTree = "<group>"; };
+		1968EA57B9754A829D25D649 /* CallDetectionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDetectionServiceTests.swift; sourceTree = "<group>"; };
+		C34792AC27AD4A968F44B112 /* DebouncerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebouncerTests.swift; sourceTree = "<group>"; };
+		B7AA8813CAD64EF6B8284392 /* FluidAudioConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidAudioConfigurationTests.swift; sourceTree = "<group>"; };
+		83D2DF21C9A54C68A8A37669 /* HotkeyBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyBindingTests.swift; sourceTree = "<group>"; };
+		B78B8BFDD4EA47A59ABF3A2D /* LocalLLMPipelineFallbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMPipelineFallbackTests.swift; sourceTree = "<group>"; };
+		E5575CB6BCCB4D678B04A7A8 /* LocalLLMPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMPipelineTests.swift; sourceTree = "<group>"; };
+		6EDED4C11CD3482C9D8035A3 /* LocalLLMPipelineWarmupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMPipelineWarmupTests.swift; sourceTree = "<group>"; };
+		B28E3C44090641149751CEAE /* MeetingPlatformTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingPlatformTests.swift; sourceTree = "<group>"; };
+		9673055C063046FC87E71DC5 /* MeetingRecordingManagerNotesLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingManagerNotesLogicTests.swift; sourceTree = "<group>"; };
+		70550638786040B4A418787D /* MeetingRecordingManagerSegmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingManagerSegmentTests.swift; sourceTree = "<group>"; };
+		7A05C6AB40AC4C59AE67AF0D /* MeetingRecordingManagerStreamingMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecordingManagerStreamingMonitorTests.swift; sourceTree = "<group>"; };
+		0C3783BFCB0D4CF19D2D4CD7 /* MicUsageMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicUsageMonitorTests.swift; sourceTree = "<group>"; };
+		85660D6592F248C08E4A05F7 /* MLXPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXPreferencesTests.swift; sourceTree = "<group>"; };
+		0B20D735AA7546DA903EB84C /* NotificationDeduperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationDeduperTests.swift; sourceTree = "<group>"; };
+		3A4871452EE0433F81587952 /* NotificationHelperAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationHelperAdapterTests.swift; sourceTree = "<group>"; };
+		939623C33288464998FDB4BC /* NotificationHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationHelperTests.swift; sourceTree = "<group>"; };
+		74028039971445BEA55E2BFE /* PlatformIconProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformIconProviderTests.swift; sourceTree = "<group>"; };
+		35A39CB77D524CAE9F105CD7 /* PreferencesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesServiceTests.swift; sourceTree = "<group>"; };
+		2C1EB89DBEFA408689A5F63E /* PromptTemplateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplateTests.swift; sourceTree = "<group>"; };
+		8DDC408B454048B8B33515A0 /* RecordingStateGateActorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateGateActorTests.swift; sourceTree = "<group>"; };
+		6C071B2781D94B77A9041557 /* RecordingStateGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStateGateTests.swift; sourceTree = "<group>"; };
+		7984B4E4C2994D7E971A0F66 /* TranscriptStoreBypassLoggingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStoreBypassLoggingTests.swift; sourceTree = "<group>"; };
+		D652989DA1A1456985ADA416 /* TranscriptStoreKeychainBypassTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStoreKeychainBypassTests.swift; sourceTree = "<group>"; };
+		47710E8EA5CD491B8ED916E2 /* TranscriptStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStoreTests.swift; sourceTree = "<group>"; };
+		4C16FC6CFA97442EAA5F899E /* TranscriptStoreUpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStoreUpdateTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		53EA35F72F1BAFD400145A47 /* OverhearTests */ = {
 			isa = PBXGroup;
 			children = (
-				AAA000000000000000000001 /* AudioModelTests.swift */,
-				AAA000000000000000000002 /* AutoRecordingCoordinatorManualTests.swift */,
-				AAA000000000000000000003 /* AutoRecordingCoordinatorTests.swift */,
-				AAA000000000000000000004 /* AVAudioCaptureServiceSessionTests.swift */,
-				AAA000000000000000000005 /* BufferLoggingTests.swift */,
-				AAA000000000000000000006 /* CalendarAccessHelperTests.swift */,
-				AAA000000000000000000007 /* CallDetectionServiceTests.swift */,
-				AAA000000000000000000008 /* DebouncerTests.swift */,
-				AAA000000000000000000009 /* FluidAudioConfigurationTests.swift */,
-				AAA00000000000000000000A /* HotkeyBindingTests.swift */,
-				AAA00000000000000000000B /* LocalLLMPipelineFallbackTests.swift */,
-				AAA00000000000000000000C /* LocalLLMPipelineTests.swift */,
-				AAA00000000000000000000D /* LocalLLMPipelineWarmupTests.swift */,
-				AAA00000000000000000000E /* MeetingPlatformTests.swift */,
-				AAA00000000000000000000F /* MeetingRecordingManagerNotesLogicTests.swift */,
-				AAA000000000000000000010 /* MeetingRecordingManagerSegmentTests.swift */,
-				AAA000000000000000000011 /* MeetingRecordingManagerStreamingMonitorTests.swift */,
-				AAA000000000000000000012 /* MicUsageMonitorTests.swift */,
-				AAA000000000000000000013 /* MLXPreferencesTests.swift */,
-				AAA000000000000000000014 /* NotificationDeduperTests.swift */,
-				AAA000000000000000000015 /* NotificationHelperAdapterTests.swift */,
-				AAA000000000000000000016 /* NotificationHelperTests.swift */,
-				AAA000000000000000000017 /* PlatformIconProviderTests.swift */,
-				AAA000000000000000000018 /* PreferencesServiceTests.swift */,
-				AAA000000000000000000019 /* PromptTemplateTests.swift */,
-				AAA00000000000000000001A /* RecordingStateGateActorTests.swift */,
-				AAA00000000000000000001B /* RecordingStateGateTests.swift */,
-				AAA00000000000000000001C /* TranscriptStoreBypassLoggingTests.swift */,
-				AAA00000000000000000001D /* TranscriptStoreKeychainBypassTests.swift */,
-				AAA00000000000000000001E /* TranscriptStoreTests.swift */,
-				AAA00000000000000000001F /* TranscriptStoreUpdateTests.swift */,
+				7A8E1E7D44D64EDA84BF6663 /* AudioModelTests.swift */,
+				4542DC064F5F46259E604EF0 /* AutoRecordingCoordinatorManualTests.swift */,
+				7D1DC0E3DF5B4FFD9CB66364 /* AutoRecordingCoordinatorTests.swift */,
+				4C043979345543C8924DE8EB /* AVAudioCaptureServiceSessionTests.swift */,
+				CB5954996F624914980F7232 /* BufferLoggingTests.swift */,
+				E8046A0513D64FEDA0E2B941 /* CalendarAccessHelperTests.swift */,
+				1968EA57B9754A829D25D649 /* CallDetectionServiceTests.swift */,
+				C34792AC27AD4A968F44B112 /* DebouncerTests.swift */,
+				B7AA8813CAD64EF6B8284392 /* FluidAudioConfigurationTests.swift */,
+				83D2DF21C9A54C68A8A37669 /* HotkeyBindingTests.swift */,
+				B78B8BFDD4EA47A59ABF3A2D /* LocalLLMPipelineFallbackTests.swift */,
+				E5575CB6BCCB4D678B04A7A8 /* LocalLLMPipelineTests.swift */,
+				6EDED4C11CD3482C9D8035A3 /* LocalLLMPipelineWarmupTests.swift */,
+				B28E3C44090641149751CEAE /* MeetingPlatformTests.swift */,
+				9673055C063046FC87E71DC5 /* MeetingRecordingManagerNotesLogicTests.swift */,
+				70550638786040B4A418787D /* MeetingRecordingManagerSegmentTests.swift */,
+				7A05C6AB40AC4C59AE67AF0D /* MeetingRecordingManagerStreamingMonitorTests.swift */,
+				0C3783BFCB0D4CF19D2D4CD7 /* MicUsageMonitorTests.swift */,
+				85660D6592F248C08E4A05F7 /* MLXPreferencesTests.swift */,
+				0B20D735AA7546DA903EB84C /* NotificationDeduperTests.swift */,
+				3A4871452EE0433F81587952 /* NotificationHelperAdapterTests.swift */,
+				939623C33288464998FDB4BC /* NotificationHelperTests.swift */,
+				74028039971445BEA55E2BFE /* PlatformIconProviderTests.swift */,
+				35A39CB77D524CAE9F105CD7 /* PreferencesServiceTests.swift */,
+				2C1EB89DBEFA408689A5F63E /* PromptTemplateTests.swift */,
+				8DDC408B454048B8B33515A0 /* RecordingStateGateActorTests.swift */,
+				6C071B2781D94B77A9041557 /* RecordingStateGateTests.swift */,
+				7984B4E4C2994D7E971A0F66 /* TranscriptStoreBypassLoggingTests.swift */,
+				D652989DA1A1456985ADA416 /* TranscriptStoreKeychainBypassTests.swift */,
+				47710E8EA5CD491B8ED916E2 /* TranscriptStoreTests.swift */,
+				4C16FC6CFA97442EAA5F899E /* TranscriptStoreUpdateTests.swift */,
 			);
 			path = "Tests/OverhearTests";
 			sourceTree = "<group>";
@@ -540,37 +540,37 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BBB000000000000000000001 /* AudioModelTests.swift in Sources */,
-				BBB000000000000000000002 /* AutoRecordingCoordinatorManualTests.swift in Sources */,
-				BBB000000000000000000003 /* AutoRecordingCoordinatorTests.swift in Sources */,
-				BBB000000000000000000004 /* AVAudioCaptureServiceSessionTests.swift in Sources */,
-				BBB000000000000000000005 /* BufferLoggingTests.swift in Sources */,
-				BBB000000000000000000006 /* CalendarAccessHelperTests.swift in Sources */,
-				BBB000000000000000000007 /* CallDetectionServiceTests.swift in Sources */,
-				BBB000000000000000000008 /* DebouncerTests.swift in Sources */,
-				BBB000000000000000000009 /* FluidAudioConfigurationTests.swift in Sources */,
-				BBB00000000000000000000A /* HotkeyBindingTests.swift in Sources */,
-				BBB00000000000000000000B /* LocalLLMPipelineFallbackTests.swift in Sources */,
-				BBB00000000000000000000C /* LocalLLMPipelineTests.swift in Sources */,
-				BBB00000000000000000000D /* LocalLLMPipelineWarmupTests.swift in Sources */,
-				BBB00000000000000000000E /* MeetingPlatformTests.swift in Sources */,
-				BBB00000000000000000000F /* MeetingRecordingManagerNotesLogicTests.swift in Sources */,
-				BBB000000000000000000010 /* MeetingRecordingManagerSegmentTests.swift in Sources */,
-				BBB000000000000000000011 /* MeetingRecordingManagerStreamingMonitorTests.swift in Sources */,
-				BBB000000000000000000012 /* MicUsageMonitorTests.swift in Sources */,
-				BBB000000000000000000013 /* MLXPreferencesTests.swift in Sources */,
-				BBB000000000000000000014 /* NotificationDeduperTests.swift in Sources */,
-				BBB000000000000000000015 /* NotificationHelperAdapterTests.swift in Sources */,
-				BBB000000000000000000016 /* NotificationHelperTests.swift in Sources */,
-				BBB000000000000000000017 /* PlatformIconProviderTests.swift in Sources */,
-				BBB000000000000000000018 /* PreferencesServiceTests.swift in Sources */,
-				BBB000000000000000000019 /* PromptTemplateTests.swift in Sources */,
-				BBB00000000000000000001A /* RecordingStateGateActorTests.swift in Sources */,
-				BBB00000000000000000001B /* RecordingStateGateTests.swift in Sources */,
-				BBB00000000000000000001C /* TranscriptStoreBypassLoggingTests.swift in Sources */,
-				BBB00000000000000000001D /* TranscriptStoreKeychainBypassTests.swift in Sources */,
-				BBB00000000000000000001E /* TranscriptStoreTests.swift in Sources */,
-				BBB00000000000000000001F /* TranscriptStoreUpdateTests.swift in Sources */,
+				6D63E4CD667544949F91C0FC /* AudioModelTests.swift in Sources */,
+				615BC92EBCD2486486AD1726 /* AutoRecordingCoordinatorManualTests.swift in Sources */,
+				DF88D9B1E2E0418D990522D6 /* AutoRecordingCoordinatorTests.swift in Sources */,
+				5D03603253A74D7A8DF67E17 /* AVAudioCaptureServiceSessionTests.swift in Sources */,
+				9F812DC08E2F49F5A47CA603 /* BufferLoggingTests.swift in Sources */,
+				F2DCA94C4982488284AED453 /* CalendarAccessHelperTests.swift in Sources */,
+				9FCCC07FD82B431A85013A24 /* CallDetectionServiceTests.swift in Sources */,
+				6A4771FD7BD7417595ACD193 /* DebouncerTests.swift in Sources */,
+				06F6C982DDCE49DAB34BAC67 /* FluidAudioConfigurationTests.swift in Sources */,
+				EDC757C7238D462EAEF5B389 /* HotkeyBindingTests.swift in Sources */,
+				C728E95AF0E54F27A422A2B0 /* LocalLLMPipelineFallbackTests.swift in Sources */,
+				192FBF6D989F4E98B38D5BAB /* LocalLLMPipelineTests.swift in Sources */,
+				14CFAF2622DF464EBE34F58D /* LocalLLMPipelineWarmupTests.swift in Sources */,
+				E6107A2D9B714C8DB8DA3830 /* MeetingPlatformTests.swift in Sources */,
+				9A77A7EA6C64434B9FB9E3F4 /* MeetingRecordingManagerNotesLogicTests.swift in Sources */,
+				8F2FCF90F3EE419BA50A6982 /* MeetingRecordingManagerSegmentTests.swift in Sources */,
+				AFB15BE79CF24D5BA1B19855 /* MeetingRecordingManagerStreamingMonitorTests.swift in Sources */,
+				0257D6831990478E990A45A3 /* MicUsageMonitorTests.swift in Sources */,
+				C7FC8630055E41EF821B2F3D /* MLXPreferencesTests.swift in Sources */,
+				B6639FBA2ACA454893EB0791 /* NotificationDeduperTests.swift in Sources */,
+				091B0C669F264EA780555A92 /* NotificationHelperAdapterTests.swift in Sources */,
+				6E16DEAA686A484EB8D88E0A /* NotificationHelperTests.swift in Sources */,
+				057F88BCF1734B059F98E8D4 /* PlatformIconProviderTests.swift in Sources */,
+				A99EDDC195ED492DBEA41238 /* PreferencesServiceTests.swift in Sources */,
+				FF8151D12AF04732A8E4466B /* PromptTemplateTests.swift in Sources */,
+				26F06C29258647CFB8E5F1B4 /* RecordingStateGateActorTests.swift in Sources */,
+				557D8BDD650642088B8E2AE5 /* RecordingStateGateTests.swift in Sources */,
+				AB2D8CF8E96144E99AB4A4DC /* TranscriptStoreBypassLoggingTests.swift in Sources */,
+				165DCE661CBA4213834AE14D /* TranscriptStoreKeychainBypassTests.swift in Sources */,
+				4493578F1234446C8E3D0B07 /* TranscriptStoreTests.swift in Sources */,
+				486F3723BF90415AB122A2E2 /* TranscriptStoreUpdateTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
