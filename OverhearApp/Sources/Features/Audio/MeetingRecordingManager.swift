@@ -359,15 +359,13 @@ final class MeetingRecordingManager: ObservableObject {
             break
         }
 
-        // Enable file logging for this session only if no preference is set.
+        // Respect the user's logging preference; do not auto-enable by default.
         let defaults = UserDefaults.standard
         let fileLogsKey = "overhear.enableFileLogs"
         var restoreLogsOnExit = false
         if defaults.object(forKey: fileLogsKey) == nil {
             originalFileLogSetting = nil
-            fileLogTemporarilyEnabled = true
-            defaults.set(true, forKey: fileLogsKey)
-            FileLogger.log(category: "MeetingRecordingManager", message: "File logging enabled for this session (no prior preference set)")
+            fileLogTemporarilyEnabled = false
         } else {
             originalFileLogSetting = defaults.bool(forKey: fileLogsKey)
         }
@@ -877,7 +875,11 @@ extension MeetingRecordingManager {
         let task = Task.detached(priority: .utility) { [weak self] in
             await previous?.value
             if Task.isCancelled { return }
+            var iterations = 0
+            let maxIterations = 20_000 // safety cap to avoid unbounded loops in pathological cases.
             while true {
+                iterations += 1
+                if iterations > maxIterations { return }
                 if Task.isCancelled { return }
                 guard let self else {
                     FileLogger.log(

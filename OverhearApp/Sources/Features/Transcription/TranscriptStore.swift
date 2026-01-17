@@ -572,9 +572,9 @@ actor TranscriptStore {
             if KeyStorage.shouldLogBypass() {
                 FileLogger.log(
                     category: "TranscriptStore",
-                    message: "Using insecure persisted encryption key (Keychain bypass active\(reasonSuffix)); transcripts are NOT encrypted at rest"
+                    message: "Using insecure in-memory encryption key (Keychain bypass active\(reasonSuffix)); transcripts are NOT encrypted at rest and may be lost on restart"
                 )
-                logger.error("Using insecure persisted encryption key (Keychain bypass active\(reasonSuffix)); transcripts are NOT encrypted at rest")
+                logger.error("Using insecure in-memory encryption key (Keychain bypass active\(reasonSuffix)); transcripts are NOT encrypted at rest and may be lost on restart")
             }
             FileLogger.log(
                 category: "TranscriptStore",

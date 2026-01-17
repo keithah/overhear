@@ -7,12 +7,6 @@ import OSLog
 /// so isolation boundaries stay clear.
 actor AVAudioCaptureService {
     private let logger = Logger(subsystem: "com.overhear.app", category: "AVAudioCaptureService")
-    private var isLoggingEnabled: Bool {
-        if ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1" {
-            return true
-        }
-        return UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
-    }
 
     enum Error: LocalizedError {
         case alreadyRecording
