@@ -528,6 +528,7 @@ actor TranscriptStore {
                     category: "TranscriptStore",
                     message: "Using insecure persisted encryption key (Keychain bypass active\(reasonSuffix)); transcripts are NOT encrypted at rest"
                 )
+                logger.error("Using insecure persisted encryption key (Keychain bypass active\(reasonSuffix)); transcripts are NOT encrypted at rest")
             }
             return insecureKey
         }

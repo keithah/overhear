@@ -22,7 +22,7 @@ final class TranscriptStoreBypassLoggingTests: XCTestCase {
         XCTAssertTrue(TranscriptStore.didLogInvalidBypassForTests())
     }
 
-    func testBypassAndFallbackLogCountersReset() {
+    func testBypassLogCountersReset() {
         XCTAssertFalse(TranscriptStore.didLogInvalidBypassForTests())
         TranscriptStore.logInvalidBypassIfNeededForTests(environment: ["OVERHEAR_INSECURE_NO_KEYCHAIN": "1"])
         XCTAssertTrue(TranscriptStore.didLogInvalidBypassForTests())

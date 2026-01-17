@@ -971,7 +971,10 @@ struct LiveNotesView: View {
     }
 
     private var isLLMFallbackPollingEnabled: Bool {
-        UserDefaults.standard.bool(forKey: "overhear.llm.enableFallbackPolling")
+        let defaults = UserDefaults.standard
+        // Default to true so polling stays on as a safety net unless explicitly disabled.
+        guard defaults.object(forKey: "overhear.llm.enableFallbackPolling") != nil else { return true }
+        return defaults.bool(forKey: "overhear.llm.enableFallbackPolling")
     }
 
     private func startLLMStatePolling() {

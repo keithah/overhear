@@ -3,7 +3,9 @@ import Foundation
 import os
 import os.log
 
-/// Captures microphone audio locally using AVAudioEngine.
+/// Captures microphone audio locally using AVAudioEngine. All mutable state lives on this actor;
+/// the tap callback immediately hops to the actor before touching counters, observers, or disk
+/// so isolation boundaries stay clear.
 actor AVAudioCaptureService {
     private let logger = Logger(subsystem: "com.overhear.app", category: "AVAudioCaptureService")
     private var isLoggingEnabled: Bool {
@@ -45,6 +47,8 @@ actor AVAudioCaptureService {
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
     // Actor isolation keeps buffer logging counters serialized without additional locking.
     private var bufferLogState = BufferLogState()
+    private var pendingBufferNotifications = 0
+    private let maxPendingBufferNotifications = 64
     // Updated per capture start so late buffers from a prior session are ignored.
     private var observerSessionID = UUID()
     private enum LogConstants {
@@ -262,7 +266,13 @@ actor AVAudioCaptureService {
     }
 
     private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID, file: AVAudioFile) async {
+        if pendingBufferNotifications >= maxPendingBufferNotifications {
+            await log("Dropping buffer due to observer backlog (\(pendingBufferNotifications) pending)")
+            return
+        }
         guard Self.shouldProcessBuffer(isRecording: isRecording, observerSessionID: observerSessionID, bufferSessionID: sessionID) else { return }
+        pendingBufferNotifications += 1
+        defer { pendingBufferNotifications = max(0, pendingBufferNotifications - 1) }
         do {
             try file.write(from: buffer)
         } catch {
