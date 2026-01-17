@@ -43,9 +43,11 @@ final class BufferLoggingTests: XCTestCase {
 
         let decision = AVAudioCaptureService.advanceLoggingDecision(state: &state)
 
-        // After rollover we should start counting from the initial burst cap and mark initial burst finished.
-        XCTAssertEqual(state.total, 5)
+        // After rollover we should start counting from zero but keep the initial burst marked finished.
+        XCTAssertEqual(state.total, 0)
+        XCTAssertEqual(state.sinceLast, 0)
         XCTAssertTrue(state.didFinishInitialBurst)
+        XCTAssertTrue(decision.rolledOver)
         // Decision should not log immediately because the initial burst was already considered completed.
         XCTAssertFalse(decision.shouldLog)
     }

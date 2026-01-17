@@ -139,12 +139,11 @@ final class MeetingRecordingManager: ObservableObject {
         _ segments: [SpeakerSegment]
     ) -> (normalized: [SpeakerSegment], wasUnsorted: Bool) {
         guard segments.count > 1 else { return (segments, false) }
-        let wasUnsorted = segments.enumerated().dropFirst().contains { idx, segment in
-            let previous = segments[segments.index(before: idx)]
-            return previous.start > segment.start
-        }
-        let normalized = wasUnsorted ? segments.sorted { $0.start < $1.start } : segments
-        return (normalized, wasUnsorted)
+        let sorted = segments.sorted { $0.start < $1.start }
+        let wasUnsorted = !segments.elementsEqual(sorted, by: { lhs, rhs in
+            lhs.start == rhs.start && lhs.end == rhs.end && lhs.speaker == rhs.speaker
+        })
+        return (sorted, wasUnsorted)
     }
 
     nonisolated static func trimToLiveSegmentLimit(_ segments: [LiveTranscriptSegment]) -> [LiveTranscriptSegment] {
@@ -611,6 +610,12 @@ final class MeetingRecordingManager: ObservableObject {
         if Task.isCancelled { return }
 
         notesHealthGeneration &+= 1
+        if notesHealthGeneration == 0 {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Notes health generation counter wrapped; continuing with generation=\(notesHealthGeneration)"
+            )
+        }
         let generation = notesHealthGeneration
 
         let task = Task.detached(priority: .utility) { [weak self] in
@@ -647,6 +652,16 @@ final class MeetingRecordingManager: ObservableObject {
         var healthRetries = 0
         var iterations = 0
 
+        func shouldContinueHealthCheck(snapshot: NotesHealthSnapshot, elapsed: TimeInterval, iterations: Int) -> (Bool, String?) {
+            if elapsed > maxHealthElapsedSeconds {
+                return (false, snapshot.pendingNotes != nil ? "Notes health check exceeded maximum duration" : nil)
+            }
+            if iterations > maxHealthIterations {
+                return (false, snapshot.pendingNotes != nil ? "Notes health check exceeded max iterations" : nil)
+            }
+            return (true, nil)
+        }
+
         while !Task.isCancelled {
             iterations += 1
             if Task.isCancelled { return }
@@ -678,24 +693,12 @@ final class MeetingRecordingManager: ObservableObject {
             }
 
             let elapsed = Date().timeIntervalSince(healthStart)
-            if elapsed > maxHealthElapsedSeconds {
-                if snapshot.pendingNotes != nil {
+            let (shouldContinue, failureReason) = shouldContinueHealthCheck(snapshot: snapshot, elapsed: elapsed, iterations: iterations)
+            if !shouldContinue {
+                if let reason = failureReason, snapshot.pendingNotes != nil {
                     await MainActor.run { [weak self] in
                         guard let self, generation == self.notesHealthGeneration else { return }
-                        notesSaveState = .failed("Notes health check exceeded maximum duration")
-                    }
-                }
-                return
-            }
-            if iterations > maxHealthIterations {
-                FileLogger.log(
-                    category: "MeetingRecordingManager",
-                    message: "Notes health check exceeded max iterations (\(maxHealthIterations)); exiting to avoid infinite loop"
-                )
-                if snapshot.pendingNotes != nil {
-                    await MainActor.run { [weak self] in
-                        guard let self, generation == self.notesHealthGeneration else { return }
-                        notesSaveState = .failed("Notes health check exceeded max iterations")
+                        notesSaveState = .failed(reason)
                     }
                 }
                 return
@@ -741,14 +744,14 @@ final class MeetingRecordingManager: ObservableObject {
             }
             if Task.isCancelled { return }
 
+            if snapshot.saveState == .idle, snapshot.pendingNotes != nil {
+                healthRetries = 0
+            }
             let retryPlan: (shouldRetry: Bool, notes: String?) = await MainActor.run { [weak self] in
                 guard let self, generation == self.notesHealthGeneration else {
                     return (false, nil as String?)
                 }
                 guard pendingNotes != nil else { return (false, nil) }
-                if notesSaveState == .idle {
-                    healthRetries = 0
-                }
                 guard Self.shouldRetryNotes(
                     pendingNotes: pendingNotes,
                     state: notesSaveState,
@@ -1531,17 +1534,19 @@ private extension MeetingRecordingManager {
 }
 
 private actor NotesSaveQueue {
-    private var lastTask: Task<Void, Never>?
+    private var pendingOperation: (@MainActor () async -> Void)?
+    private var isDraining = false
 
-    /// Serializes note save operations. The call awaits completion to keep callers
-    /// aware of persistence failures rather than fire-and-forget.
+    /// Serializes note save operations with basic coalescing: only the most recent
+    /// operation queued during an in-flight run will execute next.
     func enqueue(_ operation: @escaping @MainActor () async -> Void) async {
-        let previous = lastTask
-        let task = Task {
-            await previous?.value
-            await operation()
+        pendingOperation = operation
+        guard !isDraining else { return }
+        isDraining = true
+        while let current = pendingOperation {
+            pendingOperation = nil
+            await current()
         }
-        lastTask = task
-        await task.value
+        isDraining = false
     }
 }

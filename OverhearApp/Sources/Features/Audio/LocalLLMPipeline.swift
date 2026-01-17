@@ -141,6 +141,9 @@ actor LocalLLMPipeline {
         downloadWatchTask = nil
 
         warmupGeneration &+= 1
+        if warmupGeneration == 0 {
+            FileLogger.log(category: logCategory, message: "Warmup generation counter wrapped; continuing with generation=\(warmupGeneration)")
+        }
         let generation = warmupGeneration
         if downloadStartAt == nil {
             downloadStartAt = Date()
@@ -371,6 +374,12 @@ actor LocalLLMPipeline {
         case timeout
     }
 
+    private enum WarmupStrategy {
+        case clearCache
+        case switchModel(String)
+        case giveUp(String)
+    }
+
     private func warmupInternal(generation: Int, maxAttempts: Int = 3, timeout: TimeInterval = 600) async {
         ensureModelObserver()
         guard let client else { return }
@@ -477,7 +486,14 @@ actor LocalLLMPipeline {
                 FileLogger.log(category: logCategory, message: "MLX warmup failed after \(durationString)s: \(error.localizedDescription)")
                 consecutiveFailures += 1
 
-                if allowCacheRetry, shouldRetryByClearingCache(error: error) {
+                switch nextWarmupStrategy(
+                    error: error,
+                    attempt: attempts,
+                    allowCacheRetry: allowCacheRetry,
+                    attemptedFallback: attemptedFallback,
+                    currentModel: modelInUse
+                ) {
+                case .clearCache:
                     allowCacheRetry = false
                     logger.info("MLX warmup retry after clearing cache (error: \(error.localizedDescription, privacy: .public))")
                     FileLogger.log(category: logCategory, message: "Clearing MLX cache and retrying warmup")
@@ -485,9 +501,7 @@ actor LocalLLMPipeline {
                     state = .idle
                     notifyStateChanged()
                     continue
-                }
-
-                if !attemptedFallback, let fallback = fallbackModelID(for: modelInUse) {
+                case .switchModel(let fallback):
                     attemptedFallback = true
                     modelInUse = fallback
                     FileLogger.log(category: logCategory, message: "Warmup failed; switching model to fallback \(fallback)")
@@ -496,11 +510,11 @@ actor LocalLLMPipeline {
                     state = .idle
                     notifyStateChanged()
                     continue
+                case .giveUp(let reason):
+                    state = .unavailable(reason)
+                    notifyStateChanged()
+                    return
                 }
-
-                state = .unavailable("Warmup failed: \(error.localizedDescription)")
-                notifyStateChanged()
-                return
             }
         }
 
@@ -509,6 +523,23 @@ actor LocalLLMPipeline {
             cooldownUntil = Date().addingTimeInterval(failureCooldown)
         }
         notifyStateChanged()
+    }
+
+    private func nextWarmupStrategy(
+        error: Error,
+        attempt: Int,
+        allowCacheRetry: Bool,
+        attemptedFallback: Bool,
+        currentModel: String
+    ) -> WarmupStrategy {
+        if allowCacheRetry, shouldRetryByClearingCache(error: error) {
+            return .clearCache
+        }
+        if !attemptedFallback, let fallback = fallbackModelID(for: currentModel) {
+            return .switchModel(fallback)
+        }
+        let reason = "Warmup failed after attempt \(attempt): \(error.localizedDescription)"
+        return .giveUp(reason)
     }
 
     private func shouldRetryByClearingCache(error: Error) -> Bool {

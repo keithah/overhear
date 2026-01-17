@@ -68,8 +68,10 @@ actor AVAudioCaptureService {
         state.sinceLast &+= 1
 
         // Prevent unbounded growth and avoid re-running the "first N" log burst after rollover.
+        var rolledOver = false
         if state.total >= LogConstants.bufferCountRolloverCap {
-            state.total = UInt64(LogConstants.initialBufferLogs)
+            rolledOver = true
+            state.total = 0
             state.sinceLast = 0
             // Keep the initial-burst flag set so rollover doesn't repeat the early log flood.
             state.didFinishInitialBurst = true
@@ -79,10 +81,10 @@ actor AVAudioCaptureService {
         let perLogInterval = UInt64(LogConstants.buffersPerLog)
 
         let shouldLogInitial = !state.didFinishInitialBurst && state.total <= initialLimit
-        let shouldLogPeriodic = state.total % perLogInterval == 0
+        let shouldLogPeriodic = state.total > 0 && state.total % perLogInterval == 0
         let shouldLog = shouldLogInitial || shouldLogPeriodic
 
-        let decision = BufferLogDecision(shouldLog: shouldLog, total: state.total, recent: state.sinceLast)
+        let decision = BufferLogDecision(shouldLog: shouldLog, total: state.total, recent: state.sinceLast, rolledOver: rolledOver)
 
         if shouldLog {
             state.sinceLast = 0
@@ -102,6 +104,7 @@ actor AVAudioCaptureService {
         let shouldLog: Bool
         let total: UInt64
         let recent: UInt64
+        let rolledOver: Bool
     }
 
     static func shouldProcessBuffer(isRecording: Bool, observerSessionID: UUID, bufferSessionID: UUID) -> Bool {
@@ -242,6 +245,9 @@ actor AVAudioCaptureService {
         // Counter updates are scheduled onto the capture actor (not the audio callback thread) to avoid hot-path locking.
         let decision = Self.advanceLoggingDecision(state: &bufferLogState)
 
+        if decision.rolledOver {
+            await log("Buffer log counters rolled over at \(LogConstants.bufferCountRolloverCap); continuing periodic logging without repeating initial burst")
+        }
         if decision.shouldLog {
             await log("notifyBufferObservers total=\(decision.total) recent=\(decision.recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)")
         }
@@ -283,7 +289,9 @@ actor AVAudioCaptureService {
 // stored and passed between actors inside the capture pipeline. This is safe
 // because buffers are never shared mutably across actors: every observer
 // receives a freshly cloned buffer (`notifyBufferObservers`), and the capture
-// actor owns the original buffer lifetime.
+// actor owns the original buffer lifetime. If the standard library gains a
+// native Sendable conformance for audio buffers, this retroactive annotation
+// should be removed.
 extension AVAudioPCMBuffer: @retroactive @unchecked Sendable {}
 
 extension AVAudioPCMBuffer {
