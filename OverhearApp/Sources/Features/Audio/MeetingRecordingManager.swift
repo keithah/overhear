@@ -73,8 +73,9 @@ final class MeetingRecordingManager: ObservableObject {
         static let maxLiveSegments = 1_000
     }
 
+    // Diarization/spoken timeline is bounded to a 12-hour window to keep bucket maps from growing unbounded.
     private enum SpeakerConstraints {
-        static let maxWindowSeconds: TimeInterval = 12 * 60 * 60 // defensive upper bound for diarization spans
+        static let maxWindowSeconds: TimeInterval = 12 * 60 * 60
     }
 
     enum NotesSaveState: Equatable {
@@ -1296,5 +1297,8 @@ private extension MeetingRecordingManager {
                 speakerSegmentBuckets[bucket, default: []].append(segment)
             }
         }
+        // Defensive cleanup: drop any buckets beyond the maximum window to avoid long-run growth.
+        let maxBucket = Int(floor(SpeakerConstraints.maxWindowSeconds / speakerBucketWidthSeconds))
+        speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= 0 && $0.key <= maxBucket }
     }
 }

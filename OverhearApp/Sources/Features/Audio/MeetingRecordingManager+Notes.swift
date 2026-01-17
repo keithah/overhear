@@ -1,7 +1,9 @@
 import Foundation
 
 // Notes persistence and health-check logic is split into this extension to keep the main
-// recording manager leaner and make the state machine testable in isolation.
+// recording manager leaner and make the state machine testable in isolation. This file uses
+// a nonisolated health loop that snapshots MainActor state once per iteration to avoid
+// excessive actor hops while still respecting mutable UI state.
 extension MeetingRecordingManager {
     func saveNotes(_ notes: String) async {
         // Always remember the latest notes in case the transcript ID is not yet assigned.

@@ -73,6 +73,9 @@ actor LocalLLMPipeline {
     private var modelID: String {
         MLXPreferences.modelID()
     }
+
+    // Generation counters wrap with &+= to avoid overflow traps during extremely long runtimes;
+    // equality checks remain safe because a wrapped value must still match the current generation.
     private func runIfCurrentGeneration<T: Sendable>(_ generation: Int, operation: @escaping @Sendable () async -> T) async -> T? {
         guard generation == warmupGeneration else { return nil }
         return await operation()
