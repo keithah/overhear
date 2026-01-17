@@ -227,6 +227,7 @@ if viewModel.isLoading {
             .padding(.vertical, 6)
         }
         .frame(width: preferences.viewMode == .minimalist ? 360 : 360, height: calculateHeight())
+        .onAppear { refreshGroupedMeetingsCache() }
         .onChange(of: recordingCoordinator.isRecording) { _, newValue in
             if newValue && preferences.autoShowLiveNotes && !didAutoShowLiveNotes {
                 LiveNotesWindowController.shared.show(with: recordingCoordinator)
@@ -236,6 +237,8 @@ if viewModel.isLoading {
                 didAutoShowLiveNotes = false
             }
         }
+        .onChange(of: viewModel.pastSections) { _ in refreshGroupedMeetingsCache() }
+        .onChange(of: viewModel.upcomingSections) { _ in refreshGroupedMeetingsCache() }
     }
     
     private var allMeetings: [Meeting] {
@@ -243,14 +246,7 @@ if viewModel.isLoading {
             .flatMap { $0.meetings }
     }
     
-    private var groupedMeetings: [(date: Date, meetings: [Meeting])] {
-        let key = meetingsHash(allMeetings)
-        if key != groupedCacheKey {
-            groupedCacheKey = key
-            groupedCache = computeGroupedMeetings(allMeetings)
-        }
-        return groupedCache
-    }
+    private var groupedMeetings: [(date: Date, meetings: [Meeting])] { groupedCache }
     
     private var todayDate: Date {
         Calendar.current.startOfDay(for: Date())
@@ -279,6 +275,13 @@ private let dateIdentifierFormatter: DateFormatter = {
         let past = mapped.filter { $0.date < today }
         let todayAndFuture = mapped.filter { $0.date >= today }
         return past + todayAndFuture
+    }
+
+    private func refreshGroupedMeetingsCache() {
+        let key = meetingsHash(allMeetings)
+        guard key != groupedCacheKey else { return }
+        groupedCacheKey = key
+        groupedCache = computeGroupedMeetings(allMeetings)
     }
 
     private func meetingsHash(_ meetings: [Meeting]) -> Int {

@@ -430,14 +430,15 @@ actor TranscriptStore {
 
     private enum KeyStorage {
         static let ephemeralKeyBox = EphemeralKeyBox(key: SymmetricKey(size: .bits256))
-        private static let insecureKeyDefaultsKey = "overhear.insecureTranscriptKey"
         private struct LogFlags {
             var didLogBypass = false
             var didLogEphemeralFallback = false
             var isUsingEphemeralKey = false
         }
-        // Lightweight global lock to guard logging flags without relying on actor isolation.
+        private struct InsecureKeyBox { var key: SymmetricKey? }
+        // Lightweight global locks to guard shared logging flags and insecure bypass key.
         private static let logLock = OSAllocatedUnfairLock(initialState: LogFlags())
+        private static let insecureKeyLock = OSAllocatedUnfairLock(initialState: InsecureKeyBox(key: nil))
 
         static func shouldLogBypass() -> Bool {
             logLock.withLock { flags in
@@ -472,6 +473,9 @@ actor TranscriptStore {
                 flags.didLogEphemeralFallback = false
                 flags.isUsingEphemeralKey = false
             }
+            insecureKeyLock.withLock { box in
+                box.key = nil
+            }
         }
 
         static func didLogBypassForTests() -> Bool {
@@ -482,9 +486,9 @@ actor TranscriptStore {
             logLock.withLock { $0.didLogEphemeralFallback }
         }
 
-        /// Persists an insecure key outside the Keychain so transcripts remain readable across restarts
-        /// when bypassing secure storage. This is intentionally insecure and only used when bypassing.
-        static func insecurePersistedKey() throws -> SymmetricKey {
+        /// Returns a process-scoped insecure key when bypassing secure storage (CI/tests).
+        /// This key is in-memory only and intentionally not persisted.
+        static func insecureBypassKey() throws -> SymmetricKey {
             guard isKeychainBypassed else {
                 TranscriptStore.logger.critical("Attempted insecure key access without valid bypass")
                 FileLogger.log(
@@ -493,14 +497,12 @@ actor TranscriptStore {
                 )
                 throw Error.keyManagementFailed("Keychain bypass required before using insecure key storage")
             }
-            let defaults = UserDefaults.standard
-            if let data = defaults.data(forKey: insecureKeyDefaultsKey), data.count == 32 {
-                return SymmetricKey(data: data)
+            return insecureKeyLock.withLock { box in
+                if let key = box.key { return key }
+                let key = SymmetricKey(size: .bits256)
+                box.key = key
+                return key
             }
-            let key = SymmetricKey(size: .bits256)
-            let keyData = key.withUnsafeBytes { Data($0) }
-            defaults.set(keyData, forKey: insecureKeyDefaultsKey)
-            return key
         }
     }
     
@@ -531,7 +533,7 @@ actor TranscriptStore {
                     message: "WARNING: Keychain bypass active outside CI/test (\(environment)); transcripts are not securely stored"
                 )
             }
-            let insecureKey = try KeyStorage.insecurePersistedKey()
+            let insecureKey = try KeyStorage.insecureBypassKey()
             let reasonSuffix = bypassReason.map { ": \($0)" } ?? ""
             if KeyStorage.shouldLogBypass() {
                 FileLogger.log(

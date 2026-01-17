@@ -138,37 +138,14 @@ extension MeetingRecordingManager {
         let verboseNotesLogging = await MainActor.run { [weak self] in
             self?.isNotesHealthVerboseLoggingEnabled ?? false
         }
-        struct NotesHealthSnapshot {
-            let status: Status
-            let transcriptID: String?
-            let pendingNotes: String?
-            let saveState: NotesSaveState
-            let generationMatches: Bool
-        }
 
-        struct NotesHealthBounds {
-            let maxElapsed: TimeInterval
-            let maxIterations: Int
-            let waitLogIntervalCount: Int
-            let maxWaits: Int
-            let maxRetries: Int
-        }
-        let bounds = await MainActor.run { [weak self] () -> NotesHealthBounds in
-            guard let self else {
-                return NotesHealthBounds(
-                    maxElapsed: 0,
-                    maxIterations: 0,
-                    waitLogIntervalCount: 1,
-                    maxWaits: 0,
-                    maxRetries: 0
-                )
-            }
-            return NotesHealthBounds(
-                maxElapsed: self.maxHealthElapsedSeconds,
-                maxIterations: self.maxHealthIterations,
-                waitLogIntervalCount: self.transcriptWaitLogIntervalCount,
-                maxWaits: self.maxTranscriptWaits,
-                maxRetries: self.maxHealthRetries
+        let bounds = await MainActor.run { [weak self] in
+            NotesHealthBounds(
+                maxElapsed: self?.maxHealthElapsedSeconds ?? 0,
+                maxIterations: self?.maxHealthIterations ?? 0,
+                waitLogIntervalCount: self?.transcriptWaitLogIntervalCount ?? 1,
+                maxWaits: self?.maxTranscriptWaits ?? 0,
+                maxRetries: self?.maxHealthRetries ?? 0
             )
         }
 
@@ -197,24 +174,7 @@ extension MeetingRecordingManager {
             iterations += 1
             if Task.isCancelled { return }
 
-            let snapshot = await MainActor.run { [weak self] in
-                guard let self else {
-                    return NotesHealthSnapshot(
-                        status: .idle,
-                        transcriptID: nil,
-                        pendingNotes: nil,
-                        saveState: NotesSaveState.idle,
-                        generationMatches: false
-                    )
-                }
-                return NotesHealthSnapshot(
-                    status: status,
-                    transcriptID: transcriptID,
-                    pendingNotes: pendingNotes,
-                    saveState: notesSaveState,
-                    generationMatches: generation == notesHealthGeneration
-                )
-            }
+            let snapshot = await captureNotesHealthSnapshot(generation: generation)
             guard snapshot.generationMatches else {
                 FileLogger.log(
                     category: "MeetingRecordingManager",
@@ -224,7 +184,7 @@ extension MeetingRecordingManager {
             }
 
             let elapsed = Date().timeIntervalSince(healthStart)
-            let (shouldContinue, failureReason) = shouldContinueHealthCheck(
+            let (shouldContinue, failureReason) = MeetingRecordingManager.shouldContinueHealthCheck(
                 snapshot: snapshot,
                 elapsed: elapsed,
                 iterations: iterations,
@@ -284,21 +244,7 @@ extension MeetingRecordingManager {
             if snapshot.saveState == NotesSaveState.idle, snapshot.pendingNotes != nil {
                 healthRetries = 0
             }
-            let retryPlan: (shouldRetry: Bool, notes: String?) = await MainActor.run { [weak self] in
-                guard let self, generation == self.notesHealthGeneration else {
-                    return (false, nil as String?)
-                }
-                guard pendingNotes != nil else { return (false, nil) }
-                guard Self.shouldRetryNotes(
-                    pendingNotes: pendingNotes,
-                    state: notesSaveState,
-                    hasRetryTask: notesRetryTask != nil,
-                    hasSaveTask: isNotesSaveRunning
-                ) else {
-                    return (false, nil)
-                }
-                return (true, pendingNotes ?? "")
-            }
+            let retryPlan = await planNotesRetryIfNeeded(generation: generation)
 
             if retryPlan.shouldRetry {
                 healthRetries += 1
@@ -335,6 +281,81 @@ extension MeetingRecordingManager {
             let delaySeconds = Self.healthRetryDelay(base: intervalSeconds, retries: healthRetries)
             try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
             if Task.isCancelled { return }
+        }
+    }
+}
+
+// MARK: - Notes health helpers
+
+private struct NotesHealthSnapshot {
+    let status: MeetingRecordingManager.Status
+    let transcriptID: String?
+    let pendingNotes: String?
+    let saveState: MeetingRecordingManager.NotesSaveState
+    let generationMatches: Bool
+}
+
+private struct NotesHealthBounds {
+    let maxElapsed: TimeInterval
+    let maxIterations: Int
+    let waitLogIntervalCount: Int
+    let maxWaits: Int
+    let maxRetries: Int
+}
+
+private extension MeetingRecordingManager {
+    nonisolated func captureNotesHealthSnapshot(generation: Int) async -> NotesHealthSnapshot {
+        await MainActor.run { [weak self] in
+            guard let self else {
+                return NotesHealthSnapshot(
+                    status: .idle,
+                    transcriptID: nil,
+                    pendingNotes: nil,
+                    saveState: NotesSaveState.idle,
+                    generationMatches: false
+                )
+            }
+            return NotesHealthSnapshot(
+                status: status,
+                transcriptID: transcriptID,
+                pendingNotes: pendingNotes,
+                saveState: notesSaveState,
+                generationMatches: generation == notesHealthGeneration
+            )
+        }
+    }
+
+    static func shouldContinueHealthCheck(
+        snapshot: NotesHealthSnapshot,
+        elapsed: TimeInterval,
+        iterations: Int,
+        maxElapsedSeconds: TimeInterval,
+        maxIterations: Int
+    ) -> (Bool, String?) {
+        if elapsed > maxElapsedSeconds {
+            return (false, snapshot.pendingNotes != nil ? "Notes health check exceeded maximum duration" : nil)
+        }
+        if iterations > maxIterations {
+            return (false, snapshot.pendingNotes != nil ? "Notes health check exceeded max iterations" : nil)
+        }
+        return (true, nil)
+    }
+
+    nonisolated func planNotesRetryIfNeeded(generation: Int) async -> (shouldRetry: Bool, notes: String?) {
+        await MainActor.run { [weak self] in
+            guard let self, generation == self.notesHealthGeneration else {
+                return (false, nil as String?)
+            }
+            guard pendingNotes != nil else { return (false, nil) }
+            guard Self.shouldRetryNotes(
+                pendingNotes: pendingNotes,
+                state: notesSaveState,
+                hasRetryTask: notesRetryTask != nil,
+                hasSaveTask: isNotesSaveRunning
+            ) else {
+                return (false, nil)
+            }
+            return (true, pendingNotes ?? "")
         }
     }
 }
