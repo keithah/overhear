@@ -22,6 +22,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      security-events: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,14 +85,29 @@ jobs:
           fi
 
       - name: Run Multi-Provider Review
-        uses: keithah/multi-provider-code-review@2771e99fadbfc42160abf8da2ddca300188cf079
+        uses: keithah/multi-provider-code-review@dev
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REVIEW_PROVIDERS: ${{ vars.REVIEW_PROVIDERS || 'opencode/big-pickle,opencode/grok-code,opencode/minimax-m2.1-free,opencode/glm-4.7-free' }}
+          REVIEW_PROVIDERS: ${{ vars.REVIEW_PROVIDERS || 'openrouter/google/gemini-2.0-flash-exp:free,openrouter/mistralai/devstral-2512:free,openrouter/xiaomi/mimo-v2-flash:free' }}
+          SYNTHESIS_MODEL: ${{ vars.SYNTHESIS_MODEL || 'openrouter/google/gemini-2.0-flash-exp:free' }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           PR_TITLE: ${{ steps.pr.outputs.title }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           PR_BODY: ${{ steps.pr.outputs.body }}
           HAS_AGENTS: ${{ steps.agents.outputs.exists }}
+
+      - name: Upload review artifacts
+        if: always() && hashFiles('multi-provider-report/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-reports
+          path: multi-provider-report/*
+
+      - name: Upload SARIF to code scanning
+        if: always() && hashFiles('multi-provider-report/*.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: multi-provider-report/multi-provider-review.sarif
 
 # To disable auto-run on every PR change, remove the pull_request block.
 # To disable manual triggers, remove the issue_comment block or the IF filter.
