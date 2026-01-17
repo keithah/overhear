@@ -455,12 +455,11 @@ actor LocalLLMPipeline {
                 state = .ready(modelInUse)
                 notifyStateChanged()
                 let duration = Date().timeIntervalSince(warmupStart)
-                let durationString = String(format: "%.2f", duration)
                 logger.info("MLX warmup completed (model=\(modelInUse, privacy: .public)) in \(duration, format: .fixed(precision: 2))s")
-                FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse)) in \(durationString)s")
+                FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse)) in \(String(format: "%.2f", duration))s")
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
-                if let downloadStartAt {
+                if let downloadStartAt = downloadStartAt {
                     let downloadDuration = Date().timeIntervalSince(downloadStartAt)
                     FileLogger.log(
                         category: logCategory,
@@ -475,7 +474,6 @@ actor LocalLLMPipeline {
                 return
             } catch {
                 let duration = Date().timeIntervalSince(warmupStart)
-                let durationString = String(format: "%.2f", duration)
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
                 guard generation == warmupGeneration else { return }
@@ -483,7 +481,7 @@ actor LocalLLMPipeline {
                     FileLogger.log(category: logCategory, message: "MLX warmup timeout after \(timeout)s")
                 }
                 logger.error("MLX warmup failed after \(duration, format: .fixed(precision: 2))s: \(error.localizedDescription, privacy: .public)")
-                FileLogger.log(category: logCategory, message: "MLX warmup failed after \(durationString)s: \(error.localizedDescription)")
+                FileLogger.log(category: logCategory, message: "MLX warmup failed after \(String(format: "%.2f", duration))s: \(error.localizedDescription)")
                 consecutiveFailures += 1
 
                 switch nextWarmupStrategy(

@@ -16,6 +16,7 @@
 		41F4A9477D1C4FA381E8935A8D269DDF /* MeetingRecordingPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B63EE76EDA4773903755A3F251FCA5 /* MeetingRecordingPipeline.swift */; };
 		4262CBB0E3604C7FA59F4AE320DC239C /* LiveNotesComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE9734EA47344D0AADB9A29CEB2593A /* LiveNotesComponents.swift */; };
 		4C460327A9D08F6F394261F2 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9643B3F6CF09183E7E9EE4A /* MenuBarController.swift */; };
+		4F3B5AF84C3E45B0A08C34E7 /* AISectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAD6B3F4B8C7410FB8F582C1 /* AISectionView.swift */; };
 		553ADF43BEB23110DAFF4EBC /* CalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C7FE5C6BFB9491A6568F7C /* CalendarService.swift */; };
 		5B3C1D4E6A9845A4B7F8C2DB /* TranscriptWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B3C1D4E6A9845A4B7F8C2DA /* TranscriptWindowController.swift */; };
 		672895B9E03830086B5E32E1 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0467AC2803809ABEE6368BF8 /* PreferencesService.swift */; };
@@ -155,6 +156,7 @@
 		DF48982FAB834055A2AC3FAE79109395 /* FluidAudioAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidAudioAdapter.swift; sourceTree = "<group>"; };
 		E591C5A0CD919B0CBADE2347 /* MeetingListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingListViewModel.swift; sourceTree = "<group>"; };
 		E6760441C0977FD19F2B6838 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
+		EAD6B3F4B8C7410FB8F582C1 /* AISectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISectionView.swift; sourceTree = "<group>"; };
 		F1F5B2D11D0A4FC3A5E1C0D1 /* LocalLLMPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLMPipeline.swift; sourceTree = "<group>"; };
 		F1F5B2D51D0A4FC3A5E1C0D1 /* MLXPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXPreferences.swift; sourceTree = "<group>"; };
 		F1F5B2D71D0A4FC3A5E1C0D1 /* PromptTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplate.swift; sourceTree = "<group>"; };
@@ -311,6 +313,7 @@
 				B9643B3F6CF09183E7E9EE4A /* MenuBarController.swift */,
 				D12220410D1DBBF18A9BA1D0 /* MenuBarContentView.swift */,
 				4BE9734EA47344D0AADB9A29CEB2593A /* LiveNotesComponents.swift */,
+				EAD6B3F4B8C7410FB8F582C1 /* AISectionView.swift */,
 				A1F0D0C1F1E201000000000C /* MenuBarIconProvider.swift */,
 				82CEE38B64F60141EA6DE7EE /* MeetingRowView.swift */,
 			);
@@ -590,6 +593,7 @@
 				016A546E4C2C7638A8013832 /* AppContext.swift in Sources */,
 				4C460327A9D08F6F394261F2 /* MenuBarController.swift in Sources */,
 				C2D5E6CE6C1B18A934FB6917 /* MenuBarContentView.swift in Sources */,
+				4F3B5AF84C3E45B0A08C34E7 /* AISectionView.swift in Sources */,
 				0E7293B8D630456E9682C251 /* MeetingRowView.swift in Sources */,
 				C3BAC7E2A8CDBF78BAB8A332 /* Meeting.swift in Sources */,
 				B1F0D0C1F1E201000000001B /* MeetingPlatform.swift in Sources */,

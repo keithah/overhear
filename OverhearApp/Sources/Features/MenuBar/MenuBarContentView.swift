@@ -357,11 +357,11 @@ private let dateIdentifierFormatter: DateFormatter = {
         totalHeight += 8
         
         // Minimum height, maximum around 700 to accommodate most scenarios
-        return min(max(totalHeight, 150), 700)
-     }
+        return max(150, min(totalHeight, 700))
+    }
   }
 
-fileprivate extension MenuBarContentView {
+extension MenuBarContentView {
     static func makeLLMStatusChip(for state: LocalLLMPipeline.State) -> some View {
         let (title, color, icon): (String, Color, String) = {
             switch state {
@@ -742,127 +742,19 @@ struct LiveNotesView: View {
     }
 
     private var aiSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("AI-enhanced bullets")
-                    .font(.system(size: 12, weight: .semibold))
-                Spacer()
-                if coordinator.summary != nil {
-                    Text("Ready")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.green)
-                } else {
-                Text("Generates after recording")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-            Text(llmStateDescription)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-                if llmIsReady {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text("LLM ready")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.green)
-                    }
-                } else {
-                    Button {
-                        Task { await warmLLM() }
-                    } label: {
-                        Text(isWarmingLLM ? "Warming…" : "Warm up LLM")
-                    }
-                    .disabled(isWarmingLLM)
-                    .controlSize(.mini)
-                }
-                Menu {
-                    Button("Regenerate (default prompt)") {
-                        Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
-                    }
-                    Divider()
-                    ForEach(PromptTemplate.allTemplates, id: \.id) { template in
-                        Button("Regenerate with \(template.title)") {
-                            Task { await regenerateSummary(template: template) }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .foregroundColor(.secondary)
-                }
-                .menuStyle(.borderlessButton)
-                .disabled(isRegenerating || coordinator.liveTranscript.isEmpty)
-                Button {
-                    copySummary()
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Copy AI bullets")
-                Button {
-                    exportSummary()
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Export summary/notes")
-            }
-            if let summary = coordinator.summary {
-                VStack(alignment: .leading, spacing: 10) {
-                    if !summary.summary.isEmpty {
-                        Text(summary.summary)
-                            .font(.system(size: 12))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if !summary.highlights.isEmpty {
-                        Divider()
-                        Text("Highlights")
-                            .font(.system(size: 12, weight: .semibold))
-                        ForEach(summary.highlights, id: \.self) { highlight in
-                            HStack(alignment: .top, spacing: 6) {
-                                Image(systemName: "circle.fill")
-                                    .font(.system(size: 6))
-                                    .foregroundColor(.secondary)
-                                    .padding(.top, 4)
-                                Text(highlight)
-                                    .font(.system(size: 12))
-                            }
-                        }
-                    }
-                    if !summary.actionItems.isEmpty {
-                        Divider()
-                        Text("Action items")
-                            .font(.system(size: 12, weight: .semibold))
-                        ForEach(summary.actionItems, id: \.self) { item in
-                            HStack(alignment: .top, spacing: 6) {
-                                Image(systemName: "checkmark.circle")
-                                    .foregroundColor(.green)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.description)
-                                        .font(.system(size: 12))
-                                    if let owner = item.owner, !owner.isEmpty {
-                                        Text("Owner: \(owner)")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-            } else {
-                Text("AI-enhanced bullets will appear here once the note finishes processing.")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-            }
-        }
+        AISectionView(
+            summary: coordinator.summary,
+            liveTranscriptIsEmpty: coordinator.liveTranscript.isEmpty,
+            llmState: llmState,
+            llmIsReady: llmIsReady,
+            isWarmingLLM: isWarmingLLM,
+            isRegenerating: isRegenerating,
+            llmStateDescription: llmStateDescription,
+            warmLLM: { await warmLLM() },
+            regenerateSummary: { template in await regenerateSummary(template: template) },
+            copySummary: { copySummary() },
+            exportSummary: { exportSummary() }
+        )
     }
 
     private func prependBullet() {
@@ -984,7 +876,7 @@ struct LiveNotesView: View {
             // Fallback polling in case a state-changed notification is missed.
             // Use a conservative interval to avoid needless wakeups; most updates arrive via notifications.
             let pollIntervalSeconds: TimeInterval = 60.0
-            let maxAttempts = 5 // ~5 minutes of fallback polling
+            let maxAttempts = 15 // ~15 minutes of fallback polling to match warmup timeout safety net
             var attempts = 0
             defer { llmStatePollTask = nil }
             while !Task.isCancelled && !llmIsReady && attempts < maxAttempts {
@@ -1270,108 +1162,19 @@ struct LiveNotesManagerView: View {
     }
 
     private var aiSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("AI-enhanced bullets")
-                    .font(.system(size: 12, weight: .semibold))
-                Spacer()
-                if manager.summary != nil {
-                    Text("Ready")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.green)
-                } else {
-                    Text("Generates after recording")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                MenuBarContentView.makeLLMStatusChip(for: llmState)
-                Menu {
-                    Button("Regenerate (default prompt)") {
-                        Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
-                    }
-                    Divider()
-                    ForEach(PromptTemplate.allTemplates, id: \.id) { template in
-                        Button("Regenerate with \(template.title)") {
-                            Task { await regenerateSummary(template: template) }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .foregroundColor(.secondary)
-                }
-                .menuStyle(.borderlessButton)
-                .disabled(isRegenerating || manager.liveTranscript.isEmpty)
-                Button {
-                    copySummary()
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Copy AI bullets")
-                Button {
-                    exportSummary()
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Export summary/notes")
-            }
-            if let summary = manager.summary {
-                VStack(alignment: .leading, spacing: 10) {
-                    if !summary.summary.isEmpty {
-                        Text(summary.summary)
-                            .font(.system(size: 12))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if !summary.highlights.isEmpty {
-                        Divider()
-                        Text("Highlights")
-                            .font(.system(size: 12, weight: .semibold))
-                        ForEach(summary.highlights, id: \.self) { highlight in
-                            HStack(alignment: .top, spacing: 6) {
-                                Image(systemName: "circle.fill")
-                                    .font(.system(size: 6))
-                                    .foregroundColor(.secondary)
-                                    .padding(.top, 4)
-                                Text(highlight)
-                                    .font(.system(size: 12))
-                            }
-                        }
-                    }
-                    if !summary.actionItems.isEmpty {
-                        Divider()
-                        Text("Action items")
-                            .font(.system(size: 12, weight: .semibold))
-                        ForEach(summary.actionItems, id: \.self) { item in
-                            HStack(alignment: .top, spacing: 6) {
-                                Image(systemName: "checkmark.circle")
-                                    .foregroundColor(.green)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.description)
-                                        .font(.system(size: 12))
-                                    if let owner = item.owner, !owner.isEmpty {
-                                        Text("Owner: \(owner)")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-            } else {
-                Text("AI-enhanced bullets will appear here once the note finishes processing.")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-            }
-        }
+        AISectionView(
+            summary: manager.summary,
+            liveTranscriptIsEmpty: manager.liveTranscript.isEmpty,
+            llmState: llmState,
+            llmIsReady: llmState.isReady,
+            isWarmingLLM: isWarmingLLM,
+            isRegenerating: isRegenerating,
+            llmStateDescription: llmStateDescription,
+            warmLLM: { await warmLLM() },
+            regenerateSummary: { template in await regenerateSummary(template: template) },
+            copySummary: { copySummary() },
+            exportSummary: { exportSummary() }
+        )
     }
 
     private func prependBullet() {

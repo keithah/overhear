@@ -1,7 +1,6 @@
 import AVFoundation
 import Foundation
-import os
-import os.log
+import OSLog
 
 /// Captures microphone audio locally using AVAudioEngine. All mutable state lives on this actor;
 /// the tap callback immediately hops to the actor before touching counters, observers, or disk
@@ -144,7 +143,7 @@ actor AVAudioCaptureService {
             }
 
             // Hop off the audio callback thread before any disk I/O or actor work.
-            Task { [weak self] in
+            Task.detached(priority: .userInitiated) { [weak self] in
                 guard let self else { return }
                 await self.processIncomingBuffer(bufferCopy, sessionID: sessionID, file: file)
             }
@@ -266,11 +265,13 @@ actor AVAudioCaptureService {
     }
 
     private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID, file: AVAudioFile) async {
-        if pendingBufferNotifications >= maxPendingBufferNotifications {
+        guard Self.shouldProcessBuffer(isRecording: isRecording, observerSessionID: observerSessionID, bufferSessionID: sessionID) else {
+            return
+        }
+        guard pendingBufferNotifications < maxPendingBufferNotifications else {
             await log("Dropping buffer due to observer backlog (\(pendingBufferNotifications) pending)")
             return
         }
-        guard Self.shouldProcessBuffer(isRecording: isRecording, observerSessionID: observerSessionID, bufferSessionID: sessionID) else { return }
         pendingBufferNotifications += 1
         defer { pendingBufferNotifications = max(0, pendingBufferNotifications - 1) }
         do {

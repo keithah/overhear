@@ -8,19 +8,38 @@ final class NotesSaveQueueTests: XCTestCase {
         func values() -> [Int] { executions }
     }
 
+    actor Gate {
+        private var isOpen = false
+        func open() { isOpen = true }
+        func wait() async {
+            while !isOpen {
+                try? await Task.sleep(nanoseconds: 10_000)
+            }
+        }
+    }
+
     func testConcurrentEnqueueCoalescesToLatest() async throws {
         let queue = NotesSaveQueue()
         let recorder = Recorder()
+        let gate = Gate()
 
-        await withTaskGroup(of: Void.self) { group in
-            for i in 0..<5 {
-                group.addTask {
-                    await queue.enqueue {
-                        await recorder.record(i)
-                    }
-                }
+        // First task blocks on gate to ensure it runs before coalesced enqueues.
+        let first = Task {
+            await queue.enqueue {
+                await gate.wait()
+                await recorder.record(0)
             }
         }
+
+        // Queue several updates while the first is waiting; they should coalesce to the latest.
+        for i in 1..<5 {
+            await queue.enqueue {
+                await recorder.record(i)
+            }
+        }
+
+        await gate.open()
+        await first.value
 
         let values = await recorder.values()
         XCTAssertEqual(values.first, 0)

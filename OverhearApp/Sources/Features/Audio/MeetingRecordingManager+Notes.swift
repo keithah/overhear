@@ -6,9 +6,11 @@ extension MeetingRecordingManager {
     func saveNotes(_ notes: String) async {
         // Always remember the latest notes in case the transcript ID is not yet assigned.
         pendingNotes = notes
-        notesRetryTask?.cancel()
-        await notesRetryTask?.value
-        notesRetryTask = nil
+        if let prior = notesRetryTask {
+            prior.cancel()
+            await Task.detached { await prior.value }.value
+            notesRetryTask = nil
+        }
         notesRetryAttempts = 0
         lastNotesError = nil
         await startNotesHealthCheck()
@@ -130,6 +132,8 @@ extension MeetingRecordingManager {
         }
     }
 
+    // Captures all MainActor-isolated bounds up front to keep this nonisolated loop from repeatedly
+    // hopping to the main thread for static values while still using MainActor.run for mutable state.
     nonisolated private func runNotesHealthCheck(generation: Int, intervalSeconds: TimeInterval) async {
         let verboseNotesLogging = await MainActor.run { [weak self] in
             self?.isNotesHealthVerboseLoggingEnabled ?? false

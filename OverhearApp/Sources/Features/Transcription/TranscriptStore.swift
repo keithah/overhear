@@ -484,10 +484,14 @@ actor TranscriptStore {
 
         /// Persists an insecure key outside the Keychain so transcripts remain readable across restarts
         /// when bypassing secure storage. This is intentionally insecure and only used when bypassing.
-        static func insecurePersistedKey() -> SymmetricKey {
+        static func insecurePersistedKey() throws -> SymmetricKey {
             guard isKeychainBypassed else {
                 TranscriptStore.logger.critical("Attempted insecure key access without valid bypass")
-                preconditionFailure("Keychain bypass required before using insecure key storage")
+                FileLogger.log(
+                    category: "TranscriptStore",
+                    message: "CRITICAL: Insecure key storage requested without Keychain bypass"
+                )
+                throw Error.keyManagementFailed("Keychain bypass required before using insecure key storage")
             }
             let defaults = UserDefaults.standard
             if let data = defaults.data(forKey: insecureKeyDefaultsKey), data.count == 32 {
@@ -521,7 +525,13 @@ actor TranscriptStore {
 
         // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
         if bypassEnabled {
-            let insecureKey = KeyStorage.insecurePersistedKey()
+            if !isCIEnvironment(environment) && !isTestEnvironment(environment) {
+                FileLogger.log(
+                    category: "TranscriptStore",
+                    message: "WARNING: Keychain bypass active outside CI/test (\(environment)); transcripts are not securely stored"
+                )
+            }
+            let insecureKey = try KeyStorage.insecurePersistedKey()
             let reasonSuffix = bypassReason.map { ": \($0)" } ?? ""
             if KeyStorage.shouldLogBypass() {
                 FileLogger.log(

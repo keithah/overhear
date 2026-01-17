@@ -73,6 +73,10 @@ final class MeetingRecordingManager: ObservableObject {
         static let maxLiveSegments = 1_000
     }
 
+    private enum SpeakerConstraints {
+        static let maxWindowSeconds: TimeInterval = 12 * 60 * 60 // defensive upper bound for diarization spans
+    }
+
     enum NotesSaveState: Equatable {
         case idle
         case saving
@@ -1277,6 +1281,15 @@ private extension MeetingRecordingManager {
         speakerSegmentBuckets.removeAll()
         guard !speakerSegments.isEmpty else { return }
         for segment in speakerSegments {
+            guard segment.start >= 0,
+                  segment.end >= segment.start,
+                  segment.end <= SpeakerConstraints.maxWindowSeconds else {
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Skipping out-of-bounds diarization segment start=\(segment.start) end=\(segment.end)"
+                )
+                continue
+            }
             let startBucket = Int(floor(segment.start / speakerBucketWidthSeconds))
             let endBucket = Int(floor(segment.end / speakerBucketWidthSeconds))
             for bucket in startBucket...endBucket {
