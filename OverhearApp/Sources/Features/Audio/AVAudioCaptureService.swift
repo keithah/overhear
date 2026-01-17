@@ -43,7 +43,7 @@ actor AVAudioCaptureService {
     private var bufferLogState = BufferLogState()
     private var pendingBufferNotifications = 0
     private let maxPendingBufferNotifications = 64
-    // Updated per capture start so late buffers from a prior session are ignored.
+    // Updated per capture start so late buffers from a prior session are ignored; guards TOCTOU on stopCapture.
     private var observerSessionID = UUID()
     private enum LogConstants {
         static let initialBufferLogs: Int = {
@@ -62,6 +62,7 @@ actor AVAudioCaptureService {
 
     /// Computes whether a buffer notification should be logged while updating counters in-place.
     static func advanceLoggingDecision(state: inout BufferLogState) -> BufferLogDecision {
+        let perLogInterval = UInt64(LogConstants.buffersPerLog)
         state.total &+= 1
         state.sinceLast &+= 1
 
@@ -76,7 +77,6 @@ actor AVAudioCaptureService {
         }
 
         let initialLimit = UInt64(LogConstants.initialBufferLogs)
-        let perLogInterval = UInt64(LogConstants.buffersPerLog)
 
         let shouldLogInitial = !state.didFinishInitialBurst && state.total <= initialLimit
         let shouldLogPeriodic = state.total > 0 && state.total % perLogInterval == 0
@@ -282,11 +282,6 @@ actor AVAudioCaptureService {
             pendingBufferNotifications = max(0, pendingBufferNotifications - 1)
 #if DEBUG
             assert(pendingBufferNotifications >= 0, "pendingBufferNotifications underflowed; check backpressure logic")
-#else
-            if pendingBufferNotifications < 0 {
-                pendingBufferNotifications = 0
-                await log("Buffer counter underflow detected; resetting to 0")
-            }
 #endif
         }
         guard let file else {

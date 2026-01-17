@@ -220,11 +220,9 @@ actor LocalLLMPipeline {
         // Watchdog: if we reach 100% download but never transition to ready, auto-promote after a short delay.
         if progress >= 0.999 {
             // Only arm one watchdog per generation.
-            if downloadWatchGeneration != generation {
-                downloadWatchTask?.cancel()
-                downloadWatchTask = nil
-            }
-            guard downloadWatchTask == nil else { return }
+            guard downloadWatchGeneration != generation else { return }
+            downloadWatchTask?.cancel()
+            downloadWatchTask = nil
             downloadWatchGeneration = generation
             downloadWatchTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64((self?.downloadWatchdogDelay ?? 2) * 1_000_000_000))

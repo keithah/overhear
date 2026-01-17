@@ -90,6 +90,7 @@ actor TranscriptStore {
             }
             self.storageDirectory = appSupport.appendingPathComponent("com.overhear.app/Transcripts")
         }
+        KeyStorage.markEphemeralRiskFlag(false)
         
         // Ensure storage directory exists (create if missing) and is not shadowed by a file
         var isDirectory: ObjCBool = false

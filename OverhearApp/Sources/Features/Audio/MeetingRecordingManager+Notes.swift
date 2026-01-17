@@ -357,7 +357,7 @@ actor NotesSaveQueue {
         isDraining = true
         while let current = pendingOperation {
             pendingOperation = nil
-            await current()
+            await Task { @MainActor in await current() }.value
         }
         isDraining = false
     }

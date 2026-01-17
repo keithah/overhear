@@ -873,6 +873,7 @@ extension MeetingRecordingManager {
         let previous = streamingMonitorTask
         streamingMonitorStartDate = Date()
         let task = Task.detached(priority: .utility) { [weak self] in
+            previous?.cancel()
             await previous?.value
             if Task.isCancelled { return }
             var iterations = 0
@@ -1144,8 +1145,10 @@ extension MeetingRecordingManager {
 
         liveTranscript = transcript
         streamingUpdateCount += 1
+        applySpeakerLabelsIfPossible()
         // Keep logs lightweight: log the first few updates and then every 200th when verbose logging is enabled.
-        if isStreamingVerboseLoggingEnabled && (streamingUpdateCount <= 3 || streamingUpdateCount.isMultiple(of: 200)) {
+        guard isStreamingVerboseLoggingEnabled else { return }
+        if streamingUpdateCount <= 3 || streamingUpdateCount.isMultiple(of: 200) {
             let status = update.isConfirmed ? "confirmed" : "hypothesis"
             let charCount = update.text.count
             let tokenCount = update.tokenIds.count
@@ -1155,7 +1158,6 @@ extension MeetingRecordingManager {
             )
             logger.debug("Streaming update (\(status)): [chars=\(charCount) tokens=\(tokenCount)]")
         }
-        applySpeakerLabelsIfPossible()
     }
 
     func applySpeakerLabelsIfPossible() {
@@ -1164,6 +1166,7 @@ extension MeetingRecordingManager {
         // the typical path is closer to O(n*k) where k is the number of overlapping diarization entries.
         guard !speakerSegments.isEmpty else { return }
         guard !streamingConfirmedSegments.isEmpty else { return }
+        assert(streamingConfirmedSegments.count == segmentsToLabel.count, "Segment arrays must match")
         // speakerSegments are normalized to sorted order when assigned so the early-break optimization remains valid.
         let segmentsToLabel = streamingConfirmedSegments
         let diarizationSegments: [SpeakerSegment] = {
@@ -1302,7 +1305,7 @@ private extension MeetingRecordingManager {
             let startBucket = Int(floor(segment.start / speakerBucketWidthSeconds))
             let endBucket = Int(floor(segment.end / speakerBucketWidthSeconds))
             let span = endBucket - startBucket
-            let maxSpanBuckets = 10_000 // ~14 hours at 5s buckets; defensive cap to avoid runaway spans.
+            let maxSpanBuckets = Int(SpeakerConstraints.maxWindowSeconds / speakerBucketWidthSeconds) + 1
             guard span <= maxSpanBuckets else {
                 droppedWide += 1
                 continue
