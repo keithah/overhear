@@ -257,13 +257,15 @@ actor TranscriptStore {
         )
         // Fallback to plaintext legacy JSON
         if let transcript = try? decoder.decode(StoredTranscript.self, from: data) {
-            FileLogger.log(
-                category: "TranscriptStore",
-                message: "Loaded plaintext transcript fallback (legacy/unencrypted data)"
-            )
+            if KeyStorage.shouldLogPlaintextFallback() {
+                FileLogger.log(
+                    category: "TranscriptStore",
+                    message: "Loaded plaintext transcript fallback (legacy/unencrypted data)"
+                )
+            }
             return transcript
         }
-        
+
         throw Error.decodingFailed("Unable to decode transcript data (encrypted or plaintext)")
     }
     
@@ -438,6 +440,7 @@ actor TranscriptStore {
             var didLogEphemeralFallback = false
             var isUsingEphemeralKey = false
             var didCleanLegacyInsecureKey = false
+            var didLogPlaintextFallback = false
         }
         private struct InsecureKeyBox { var key: SymmetricKey? }
         // Lightweight global locks to guard shared logging flags and insecure bypass key.
@@ -489,6 +492,13 @@ actor TranscriptStore {
 
         static func didLogEphemeralFallbackForTests() -> Bool {
             logLock.withLock { $0.didLogEphemeralFallback }
+        }
+        static func shouldLogPlaintextFallback() -> Bool {
+            logLock.withLock { flags in
+                if flags.didLogPlaintextFallback { return false }
+                flags.didLogPlaintextFallback = true
+                return true
+            }
         }
 
         /// Returns a process-scoped insecure key when bypassing secure storage (CI/tests).

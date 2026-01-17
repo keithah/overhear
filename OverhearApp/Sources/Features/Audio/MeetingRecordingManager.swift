@@ -1285,6 +1285,9 @@ private extension MeetingRecordingManager {
         guard !speakerSegments.isEmpty else { return }
         var dropped = 0
         var droppedWide = 0
+        let newestEnd = speakerSegments.compactMap { $0.end }.max() ?? 0
+        let minWindowStart = max(0, newestEnd - SpeakerConstraints.maxWindowSeconds)
+        let minBucket = Int(floor(minWindowStart / speakerBucketWidthSeconds))
         for segment in speakerSegments {
             guard segment.start >= 0,
                   segment.end >= segment.start,
@@ -1310,7 +1313,7 @@ private extension MeetingRecordingManager {
         }
         // Defensive cleanup: drop any buckets beyond the maximum window to avoid long-run growth.
         let maxBucket = Int(floor(SpeakerConstraints.maxWindowSeconds / speakerBucketWidthSeconds))
-        speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= 0 && $0.key <= maxBucket }
+        speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= minBucket && $0.key <= maxBucket }
         if dropped > 0 || droppedWide > 0 {
             FileLogger.log(
                 category: "MeetingRecordingManager",

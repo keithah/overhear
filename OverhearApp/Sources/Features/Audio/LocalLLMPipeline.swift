@@ -52,6 +52,8 @@ actor LocalLLMPipeline {
     private var warmupTask: Task<Void, Never>?
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
     private let logCategory = "LocalLLMPipeline"
+    // Timeouts and cooldowns are intentionally conservative to avoid hammering downloads and to
+    // allow long-running warmups on slower machines. They can be tuned via UserDefaults.
     private let warmupTimeout: TimeInterval
     private let downloadWatchdogDelay: TimeInterval
     private let failureCooldown: TimeInterval

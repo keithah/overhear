@@ -254,12 +254,11 @@ extension MeetingRecordingManager {
                         await performNotesSave(notes: notes)
                     }
                 }
-                let resetRetries = await MainActor.run { [weak self] in
-                    guard let self, generation == self.notesHealthGeneration else { return false }
-                    return pendingNotes == nil && notesSaveState == NotesSaveState.idle
-                }
-                if resetRetries {
-                    healthRetries = 0
+                await MainActor.run { [weak self] in
+                    guard let self, generation == self.notesHealthGeneration else { return }
+                    if pendingNotes == nil && notesSaveState == NotesSaveState.idle {
+                        healthRetries = 0
+                    }
                 }
             }
 

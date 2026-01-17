@@ -24,4 +24,23 @@ final class MeetingRecordingManagerNotesLogicTests: XCTestCase {
         XCTAssertEqual(MeetingRecordingManager.healthRetryDelay(base: 5, retries: 4), 60)
         XCTAssertEqual(MeetingRecordingManager.healthRetryDelay(base: 5, retries: 10), 60)
     }
+
+    func testHealthCheckStopsAfterMaxIterations() {
+        let snapshot = NotesHealthSnapshot(
+            status: .capturing,
+            transcriptID: "id",
+            pendingNotes: "draft",
+            saveState: .idle,
+            generationMatches: true
+        )
+        let result = MeetingRecordingManager.shouldContinueHealthCheck(
+            snapshot: snapshot,
+            elapsed: 10,
+            iterations: 1001,
+            maxElapsedSeconds: 100,
+            maxIterations: 1000
+        )
+        XCTAssertFalse(result.0)
+        XCTAssertNotNil(result.1)
+    }
 }

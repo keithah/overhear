@@ -33,6 +33,7 @@ actor AVAudioCaptureService {
 
     private let engine = AVAudioEngine()
     private var file: AVAudioFile?
+    private let isLoggingEnabled: Bool
     private var outputURL: URL?
     private var continuation: CheckedContinuation<CaptureResult, Swift.Error>?
     private var isRecording = false
@@ -68,8 +69,8 @@ actor AVAudioCaptureService {
         var rolledOver = false
         if state.total >= LogConstants.bufferCountRolloverCap {
             rolledOver = true
-            state.total = 0
-            state.sinceLast = 0
+            state.total = state.total % perLogInterval
+            state.sinceLast = state.sinceLast % perLogInterval
             // Keep the initial-burst flag set so rollover doesn't repeat the early log flood.
             state.didFinishInitialBurst = true
         }
@@ -111,6 +112,14 @@ actor AVAudioCaptureService {
     private var requestedDuration: TimeInterval = 0
    
     typealias AudioBufferObserver = @Sendable (AVAudioPCMBuffer) -> Void
+
+    init() {
+        if ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1" {
+            self.isLoggingEnabled = true
+        } else {
+            self.isLoggingEnabled = UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
+        }
+    }
 
     func startCapture(duration: TimeInterval, outputURL: URL) async throws -> CaptureResult {
         guard !isRecording else { throw Error.alreadyRecording }
@@ -273,6 +282,11 @@ actor AVAudioCaptureService {
             pendingBufferNotifications = max(0, pendingBufferNotifications - 1)
 #if DEBUG
             assert(pendingBufferNotifications >= 0, "pendingBufferNotifications underflowed; check backpressure logic")
+#else
+            if pendingBufferNotifications < 0 {
+                pendingBufferNotifications = 0
+                await log("Buffer counter underflow detected; resetting to 0")
+            }
 #endif
         }
         guard let file else {
@@ -291,7 +305,9 @@ actor AVAudioCaptureService {
 
     private func log(_ message: String) async {
         logger.info("\(message, privacy: .public)")
-        FileLogger.log(category: "AVAudioCaptureService", message: message)
+        if isLoggingEnabled {
+            FileLogger.log(category: "AVAudioCaptureService", message: message)
+        }
     }
 
     private func makeCaptureResult(url: URL, stoppedEarly: Bool) -> CaptureResult {

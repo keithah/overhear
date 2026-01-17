@@ -85,5 +85,27 @@ final class MeetingRecordingManagerStreamingMonitorTests: XCTestCase {
 
         XCTAssertNil(evaluation, "No transition should be emitted when state remains active within threshold")
     }
+
+    func testMonitorStopsAfterMaxElapsed() {
+        let start = Date(timeIntervalSinceReferenceDate: 0)
+        let evaluation = MeetingRecordingManager.computeStreamingHealth(
+            snapshot: .init(
+                startDate: start,
+                monitorStartDate: start,
+                lastUpdate: start,
+                loggedFirstStreamingToken: true,
+                preTokenStallLogged: false,
+                currentHealth: .init(state: .active, lastUpdate: start, firstTokenLatency: nil),
+                stallThresholdSeconds: 5,
+                firstTokenGracePeriod: 30,
+                monitorMaxElapsedSeconds: 10
+            ),
+            now: start.addingTimeInterval(20)
+        )
+
+        XCTAssertNotNil(evaluation)
+        XCTAssertFalse(evaluation?.shouldContinueMonitoring ?? true)
+        XCTAssertEqual(evaluation?.logMessage, "Streaming monitor exceeded max duration (10s); stopping monitor")
+    }
 }
 #endif
