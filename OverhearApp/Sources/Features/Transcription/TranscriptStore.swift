@@ -434,6 +434,7 @@ actor TranscriptStore {
             var didLogBypass = false
             var didLogEphemeralFallback = false
             var isUsingEphemeralKey = false
+            var didCleanLegacyInsecureKey = false
         }
         private struct InsecureKeyBox { var key: SymmetricKey? }
         // Lightweight global locks to guard shared logging flags and insecure bypass key.
@@ -472,6 +473,7 @@ actor TranscriptStore {
                 flags.didLogBypass = false
                 flags.didLogEphemeralFallback = false
                 flags.isUsingEphemeralKey = false
+                flags.didCleanLegacyInsecureKey = false
             }
             insecureKeyLock.withLock { box in
                 box.key = nil
@@ -497,11 +499,42 @@ actor TranscriptStore {
                 )
                 throw Error.keyManagementFailed("Keychain bypass required before using insecure key storage")
             }
+            if !isCIEnvironment(ProcessInfo.processInfo.environment) && !isTestEnvironment(ProcessInfo.processInfo.environment) {
+                FileLogger.log(
+                    category: "TranscriptStore",
+                    message: "CRITICAL: Insecure bypass active outside CI/test; transcripts are not secure and may be lost on restart"
+                )
+            }
             return insecureKeyLock.withLock { box in
                 if let key = box.key { return key }
                 let key = SymmetricKey(size: .bits256)
                 box.key = key
                 return key
+            }
+        }
+
+        static func markEphemeralRiskFlag(_ isActive: Bool) {
+            let defaults = UserDefaults.standard
+            if isActive {
+                defaults.set(true, forKey: "overhear.ephemeralKeyWarning")
+            } else {
+                defaults.removeObject(forKey: "overhear.ephemeralKeyWarning")
+            }
+        }
+
+        static func cleanupLegacyPersistedKeyIfNeeded() {
+            logLock.withLock { flags in
+                guard !flags.didCleanLegacyInsecureKey else { return }
+                flags.didCleanLegacyInsecureKey = true
+                let defaults = UserDefaults.standard
+                let key = "overhear.insecureTranscriptKey"
+                if defaults.object(forKey: key) != nil {
+                    defaults.removeObject(forKey: key)
+                    FileLogger.log(
+                        category: "TranscriptStore",
+                        message: "Removed legacy insecure persisted key after bypass disabled"
+                    )
+                }
             }
         }
     }
@@ -542,8 +575,15 @@ actor TranscriptStore {
                 )
                 logger.error("Using insecure persisted encryption key (Keychain bypass active\(reasonSuffix)); transcripts are NOT encrypted at rest")
             }
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "Ephemeral encryption key in use; transcripts may be unreadable after crash/restart"
+            )
+            KeyStorage.markEphemeralRiskFlag(true)
             return insecureKey
         }
+        KeyStorage.markEphemeralRiskFlag(false)
+        KeyStorage.cleanupLegacyPersistedKeyIfNeeded()
 
         let keyTag = "com.overhear.app.transcripts.key"
         
