@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import Overhear
 
@@ -5,6 +6,7 @@ import XCTest
 final class AutoRecordingCoordinatorTests: XCTestCase {
     @MainActor
     final class FakeManager: RecordingManagerType {
+        let objectWillChange = ObservableObjectPublisher()
         enum ResultState {
             case success
             case fail

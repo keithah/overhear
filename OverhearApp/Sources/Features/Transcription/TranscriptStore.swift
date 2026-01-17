@@ -504,10 +504,13 @@ actor TranscriptStore {
     /// In CI/debug bypass scenarios the Keychain is unavailable, so we use a process-scoped
     /// ephemeral key instead. In production this persists to the Keychain.
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
-        logInvalidBypassIfNeeded(environment: ProcessInfo.processInfo.environment)
+        let environment = ProcessInfo.processInfo.environment
+        let bypassEnabled = isKeychainBypassEnabled(environment: environment)
+        let bypassReason = keychainBypassReason(environment: environment)
+        logInvalidBypassIfNeeded(environment: environment)
 #if !DEBUG
         // Never allow bypass in release builds, even if env is spoofed.
-        if isKeychainBypassed {
+        if bypassEnabled {
             FileLogger.log(
                 category: "TranscriptStore",
                 message: "CRITICAL: Keychain bypass attempted in release build"
@@ -517,9 +520,9 @@ actor TranscriptStore {
 #endif
 
         // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
-        if isKeychainBypassed {
+        if bypassEnabled {
             let insecureKey = KeyStorage.insecurePersistedKey()
-            let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
+            let reasonSuffix = bypassReason.map { ": \($0)" } ?? ""
             if KeyStorage.shouldLogBypass() {
                 FileLogger.log(
                     category: "TranscriptStore",
@@ -576,13 +579,29 @@ actor TranscriptStore {
             if addStatus == errSecSuccess {
                 return newKey
             } else {
-                if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || addStatus == errSecAuthFailed {
-#if DEBUG
-                    guard isKeychainBypassed else {
-                        throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)); explicit bypass + CI/test required even in debug")
+                if addStatus == errSecDuplicateItem {
+                    var existing: AnyObject?
+                    let status = SecItemCopyMatching(query as CFDictionary, &existing)
+                    if status == errSecSuccess, let data = existing as? Data, data.count == 32 {
+                        return SymmetricKey(data: data)
                     }
-                    let reasonSuffix = keychainBypassReason.map { ": \($0)" } ?? ""
+                }
+                if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || addStatus == errSecAuthFailed || addStatus == errSecDuplicateItem {
+#if DEBUG
+                    let runningTests = isTestEnvironment(environment)
+                    let allowEphemeralFallback = bypassEnabled || runningTests
+                    guard allowEphemeralFallback else {
+                        throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)); set OVERHEAR_INSECURE_NO_KEYCHAIN=1 when running in CI/test without Keychain access")
+                    }
                     if KeyStorage.shouldLogEphemeralFallback() {
+                        let reasonSuffix: String
+                        if bypassEnabled {
+                            reasonSuffix = bypassReason.map { ": \($0)" } ?? ""
+                        } else if runningTests {
+                            reasonSuffix = ": XCTest"
+                        } else {
+                            reasonSuffix = ""
+                        }
                         FileLogger.log(
                             category: "TranscriptStore",
                             message: "Keychain unavailable (status \(addStatus)); falling back to ephemeral key\(reasonSuffix). Transcripts may be unreadable after restart"
