@@ -211,7 +211,7 @@ final class MeetingRecordingCoordinator: ObservableObject, RecordingStateProvidi
         await manager.saveNotes(notes)
     }
 
-    func scheduleDebouncedNotesSave(_ notes: String, delayNanoseconds: UInt64 = 500_000_000) {
+    func scheduleDebouncedNotesSave(_ notes: String, delayNanoseconds: UInt64 = Debouncer.Delay.notesSaveNanoseconds) {
         notesDebouncer.schedule(delayNanoseconds: delayNanoseconds) { @MainActor [weak self] in
             guard let self else { return }
             await self.recordingManager?.saveNotes(notes)

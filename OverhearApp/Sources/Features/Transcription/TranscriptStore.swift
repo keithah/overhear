@@ -362,7 +362,9 @@ actor TranscriptStore {
 
     nonisolated internal static func isKeychainBypassEnabled(environment: [String: String]) -> Bool {
         let truthy: Set<String> = ["1", "true", "TRUE", "True"]
-        guard truthy.contains(environment["OVERHEAR_INSECURE_NO_KEYCHAIN"] ?? "") else { return false }
+        let value = environment["OVERHEAR_INSECURE_NO_KEYCHAIN"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard truthy.contains(value) else { return false }
         return isCIEnvironment(environment) || isTestEnvironment(environment)
     }
 

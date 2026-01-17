@@ -539,11 +539,6 @@ final class MeetingRecordingManager: ObservableObject {
                 notesSaveState = .idle
                 return
             }
-            if Task.isCancelled {
-                notesRetryTask = nil
-                notesSaveState = .idle
-                return
-            }
             pendingNotes = nil
             lastNotesSavedAt = Date()
             notesRetryAttempts = 0

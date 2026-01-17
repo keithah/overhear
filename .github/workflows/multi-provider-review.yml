@@ -38,7 +38,7 @@ jobs:
             NPM_PREFIX="$HOME/.npm-global"
             mkdir -p "$NPM_PREFIX"
             npm config set prefix "$NPM_PREFIX"
-            npm install -g opencode-ai@latest
+            npm install -g opencode-ai@1.2.3
             echo "$NPM_PREFIX/bin" >> "$GITHUB_PATH"
           fi
 
@@ -84,7 +84,7 @@ jobs:
           fi
 
       - name: Run Multi-Provider Review
-        uses: keithah/multi-provider-code-review@main
+        uses: keithah/multi-provider-code-review@2771e99fadbfc42160abf8da2ddca300188cf079
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REVIEW_PROVIDERS: ${{ vars.REVIEW_PROVIDERS || 'opencode/big-pickle,opencode/grok-code,opencode/minimax-m2.1-free,opencode/glm-4.7-free' }}

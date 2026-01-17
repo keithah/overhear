@@ -3,6 +3,9 @@ import SwiftUI
 /// Simple async debouncer used by multiple note editors to avoid spawning a task per keystroke.
 final class Debouncer: ObservableObject {
     private var task: Task<Void, Never>?
+    enum Delay {
+        static let notesSaveNanoseconds: UInt64 = 500_000_000
+    }
 
     func schedule(delayNanoseconds: UInt64, action: @escaping @MainActor () async -> Void) {
         task?.cancel()
@@ -51,37 +54,10 @@ extension NSNotification.Name {
     static let closeMenuPopover = NSNotification.Name("CloseMenuPopover")
 }
 
-private func makeLLMStatusChip(for state: LocalLLMPipeline.State) -> some View {
-    let (title, color, icon): (String, Color, String) = {
-        switch state {
-        case .ready:
-            return (state.displayDescription, .green, "checkmark.circle.fill")
-        case .downloading:
-            return (state.displayDescription, .orange, "arrow.down.circle.fill")
-        case .warming:
-            return (state.displayDescription, .orange, "clock")
-        case .unavailable:
-            return (state.displayDescription, .red, "exclamationmark.triangle.fill")
-        case .idle:
-            return (state.displayDescription, .secondary, "bolt.horizontal.circle")
-        }
-    }()
-    return HStack(spacing: 4) {
-        Image(systemName: icon)
-            .foregroundColor(color)
-        Text(title)
-            .font(.system(size: 10))
-            .foregroundColor(color)
-    }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 4)
-    .background(Capsule().fill(color.opacity(0.12)))
-}
-
 struct MenuBarContentView: View {
      @ObservedObject var viewModel: MeetingListViewModel
-     @ObservedObject var preferences: PreferencesService
-     @ObservedObject var recordingCoordinator: MeetingRecordingCoordinator
+    @ObservedObject var preferences: PreferencesService
+    @ObservedObject var recordingCoordinator: MeetingRecordingCoordinator
     @ObservedObject var autoRecordingCoordinator: AutoRecordingCoordinator
     var openPreferences: () -> Void
     var onToggleRecording: () -> Void
@@ -385,6 +361,35 @@ private let dateIdentifierFormatter: DateFormatter = {
      }
   }
 
+private extension MenuBarContentView {
+    static func makeLLMStatusChip(for state: LocalLLMPipeline.State) -> some View {
+        let (title, color, icon): (String, Color, String) = {
+            switch state {
+            case .ready:
+                return (state.displayDescription, .green, "checkmark.circle.fill")
+            case .downloading:
+                return (state.displayDescription, .orange, "arrow.down.circle.fill")
+            case .warming:
+                return (state.displayDescription, .orange, "clock")
+            case .unavailable:
+                return (state.displayDescription, .red, "exclamationmark.triangle.fill")
+            case .idle:
+                return (state.displayDescription, .secondary, "bolt.horizontal.circle")
+            }
+        }()
+        return HStack(spacing: 4) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+            Text(title)
+                .font(.system(size: 10))
+                .foregroundColor(color)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(color.opacity(0.12)))
+    }
+}
+
 // Note: SwiftUI's ScrollView on macOS has natural deceleration.
 // The scroll behavior will naturally slow down as you scroll up into the past.
 // To further customize scroll physics on macOS would require NSScrollView wrapper,
@@ -501,7 +506,7 @@ struct LiveNotesView: View {
             HStack(spacing: 6) {
                 StatusChip(title: statusText, color: statusColor, icon: "record.circle")
                 streamingStatusChip
-                makeLLMStatusChip(for: llmState)
+                MenuBarContentView.makeLLMStatusChip(for: llmState)
             }
             Button {
                 Task { await coordinator.stopRecording() }
@@ -1025,6 +1030,33 @@ struct LiveNotesView: View {
             }
         }
     }
+
+    fileprivate static func makeLLMStatusChip(for state: LocalLLMPipeline.State) -> some View {
+        let (title, color, icon): (String, Color, String) = {
+            switch state {
+            case .ready:
+                return (state.displayDescription, .green, "checkmark.circle.fill")
+            case .downloading:
+                return (state.displayDescription, .orange, "arrow.down.circle.fill")
+            case .warming:
+                return (state.displayDescription, .orange, "clock")
+            case .unavailable:
+                return (state.displayDescription, .red, "exclamationmark.triangle.fill")
+            case .idle:
+                return (state.displayDescription, .secondary, "bolt.horizontal.circle")
+            }
+        }()
+        return HStack(spacing: 4) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+            Text(title)
+                .font(.system(size: 10))
+                .foregroundColor(color)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(color.opacity(0.12)))
+    }
 }
 
 struct LiveNotesManagerView: View {
@@ -1234,7 +1266,7 @@ struct LiveNotesManagerView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
                     .onChange(of: liveNotes) { _, newValue in
-                        managerNotesDebouncer.schedule(delayNanoseconds: 500_000_000) { [weak manager] in
+                        managerNotesDebouncer.schedule(delayNanoseconds: Debouncer.Delay.notesSaveNanoseconds) { [weak manager] in
                             guard let manager else { return }
                             await manager.saveNotes(newValue)
                         }
@@ -1269,7 +1301,7 @@ struct LiveNotesManagerView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
-                makeLLMStatusChip(for: llmState)
+                MenuBarContentView.makeLLMStatusChip(for: llmState)
                 Menu {
                     Button("Regenerate (default prompt)") {
                         Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
