@@ -320,7 +320,7 @@ extension MeetingRecordingManager {
         }
     }
 
-    static func shouldContinueHealthCheck(
+    nonisolated static func shouldContinueHealthCheck(
         snapshot: NotesHealthSnapshot,
         elapsed: TimeInterval,
         iterations: Int,
