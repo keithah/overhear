@@ -508,7 +508,7 @@ actor LocalLLMPipeline {
                     allowCacheRetry = false
                     logger.info("MLX warmup retry after clearing cache (error: \(error.localizedDescription, privacy: .public))")
                     FileLogger.log(category: logCategory, message: "Clearing MLX cache and retrying warmup")
-                    Task.detached { MLXPreferences.clearModelCache() }
+                    MLXPreferences.clearModelCache()
                     state = .idle
                     notifyStateChanged()
                     continue

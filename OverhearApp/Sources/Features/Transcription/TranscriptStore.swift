@@ -581,8 +581,7 @@ actor TranscriptStore {
     /// In CI/debug bypass scenarios the Keychain is unavailable, so we use a process-scoped
     /// ephemeral key instead. In production this persists to the Keychain.
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
-        let environment = ProcessInfo.processInfo.environment
-        logInvalidBypassIfNeeded(environment: environment)
+        // Cache bypass decision at process start to avoid TOCTOU based on later env changes.
         let decision = keychainBypassDecision
         if decision.requested && !decision.validContext {
             throw Error.keyManagementFailed("Keychain bypass is only allowed in CI or test environments")

@@ -201,10 +201,10 @@ extension MeetingRecordingManager {
             }()
             if !isActive {
                 if snapshot.pendingNotes != nil {
-                    let delay = Self.healthRetryDelay(base: intervalSeconds, retries: healthRetries)
-                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                    if Task.isCancelled { return }
-                    continue
+                    await MainActor.run { [weak self] in
+                        guard let self, generation == self.notesHealthGeneration else { return }
+                        notesSaveState = .failed("Recording stopped before notes saved")
+                    }
                 }
                 return
             }
@@ -218,7 +218,7 @@ extension MeetingRecordingManager {
                         message: "Notes health check still waiting for transcriptID; skipping retries"
                     )
                 }
-                if transcriptWaits >= bounds.maxWaits {
+                if transcriptWaits >= bounds.maxWaits || snapshot.status == .completed {
                     await MainActor.run { [weak self] in
                         guard let self, generation == self.notesHealthGeneration else { return }
                         notesSaveState = .failed("Transcript ID unavailable")
@@ -351,6 +351,7 @@ private extension MeetingRecordingManager {
 
 /// Serializes note save operations with basic coalescing: only the most recent
 /// operation queued during an in-flight run will execute next.
+@MainActor
 actor NotesSaveQueue {
     private var pendingOperation: (@MainActor () async -> Void)?
     private var isDraining = false

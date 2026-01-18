@@ -251,7 +251,9 @@ actor AVAudioCaptureService {
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer, sessionID: UUID) async {
         // Snapshot flags and observers together to avoid TOCTOU during stopCapture().
         // Late buffers after stopCapture() (or from a prior session) are intentionally dropped via the isRecording/session guard.
-        guard Self.shouldProcessBuffer(isRecording: isRecording, observerSessionID: observerSessionID, bufferSessionID: sessionID) else { return }
+        let recording = isRecording
+        let sessionSnapshot = observerSessionID
+        guard Self.shouldProcessBuffer(isRecording: recording, observerSessionID: sessionSnapshot, bufferSessionID: sessionID) else { return }
         // Snapshot observers once per callback; mutations are serialized by the actor.
         // If stopCapture() clears observers between the guard and the snapshot, late buffers are dropped by design.
         let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
@@ -266,9 +268,9 @@ actor AVAudioCaptureService {
         if decision.shouldLog {
             await log("notifyBufferObservers total=\(decision.total) recent=\(decision.recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)")
         }
+        guard let sharedCopy = buffer.cloned() else { return }
         for observer in observersSnapshot {
-            guard let copy = buffer.cloned() else { continue }
-            observer(copy)
+            observer(sharedCopy)
         }
     }
 
@@ -290,7 +292,10 @@ actor AVAudioCaptureService {
     }
 
     private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID) async {
-        guard Self.shouldProcessBuffer(isRecording: isRecording, observerSessionID: observerSessionID, bufferSessionID: sessionID) else {
+        let recording = isRecording
+        let sessionSnapshot = observerSessionID
+        let shouldProcess = Self.shouldProcessBuffer(isRecording: recording, observerSessionID: sessionSnapshot, bufferSessionID: sessionID)
+        guard shouldProcess else {
             return
         }
         guard pendingBufferNotifications < maxPendingBufferNotifications else {

@@ -70,7 +70,8 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     private enum StreamingLimits {
-        static let maxLiveSegments = 1_000
+        // Cap live segments more aggressively to limit memory for long meetings.
+        static let maxLiveSegments = 500
     }
 
     // Diarization/spoken timeline is bounded to a 12-hour window to keep bucket maps from growing unbounded.
