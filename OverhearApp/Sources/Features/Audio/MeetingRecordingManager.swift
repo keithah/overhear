@@ -1180,7 +1180,6 @@ extension MeetingRecordingManager {
         guard !speakerSegments.isEmpty else { return }
         guard !streamingConfirmedSegments.isEmpty else { return }
         let segmentsToLabel = streamingConfirmedSegments
-        assert(streamingConfirmedSegments.count == segmentsToLabel.count, "Segment arrays must match")
         // speakerSegments are normalized to sorted order when assigned so the early-break optimization remains valid.
         let diarizationSegments: [SpeakerSegment] = {
             guard !speakerSegmentBuckets.isEmpty else { return speakerSegments }

@@ -164,6 +164,11 @@ struct AISectionView: View {
                                         .font(.system(size: 10))
                                         .foregroundColor(.secondary)
                                 }
+                                if let due = item.dueDate {
+                                    Text("Due: \(Self.relativeDateFormatter.localizedString(for: due, relativeTo: Date()))")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
                     }
@@ -171,4 +176,10 @@ struct AISectionView: View {
             }
         }
     }
+
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
 }

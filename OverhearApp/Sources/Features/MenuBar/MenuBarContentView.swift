@@ -226,7 +226,7 @@ if viewModel.isLoading {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
         }
-        .frame(width: preferences.viewMode == .minimalist ? 360 : 360, height: calculateHeight())
+        .frame(width: preferences.viewMode == .minimalist ? 320 : 360, height: calculateHeight())
         .onAppear { refreshGroupedMeetingsCache() }
         .onChange(of: recordingCoordinator.isRecording) { _, newValue in
             if newValue && preferences.autoShowLiveNotes && !didAutoShowLiveNotes {

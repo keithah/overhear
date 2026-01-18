@@ -454,9 +454,6 @@
 			dependencies = (
 				53EA35FB2F1BAFD400145A47 /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				53EA35F72F1BAFD400145A47 /* OverhearTests */,
-			);
 			name = OverhearTests;
 			packageProductDependencies = (
 			);
