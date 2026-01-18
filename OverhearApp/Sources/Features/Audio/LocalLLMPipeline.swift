@@ -99,7 +99,7 @@ actor LocalLLMPipeline {
         self.failureCooldown = min(max(rawCooldown, 5.0), 900.0)
 
         let watchdogOverride = UserDefaults.standard.double(forKey: "overhear.mlxDownloadWatchdogDelay")
-        let resolvedWatchdog = watchdogOverride > 0 ? watchdogOverride : 2
+        let resolvedWatchdog = watchdogOverride > 0 ? watchdogOverride : 5
         self.downloadWatchdogDelay = min(max(resolvedWatchdog, 1.0), 60.0) // clamp to sensible bounds
 
         if client == nil {

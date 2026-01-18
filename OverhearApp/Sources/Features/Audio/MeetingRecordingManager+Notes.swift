@@ -119,14 +119,14 @@ extension MeetingRecordingManager {
                         try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
                         guard let self else { return }
                         guard !Task.isCancelled else { return }
-                        let latestNotes = pendingNotes ?? notes
+                        let latestNotes = self.pendingNotes ?? notes
                         await self.performNotesSave(notes: latestNotes)
                     } onCancel: { [weak self] in
                         Task { @MainActor [weak self] in
                             guard let self else { return }
                             FileLogger.log(category: "MeetingRecordingManager", message: "Notes retry cancelled")
-                            notesSaveState = NotesSaveState.idle
-                            notesRetryTask = nil
+                            self.notesSaveState = NotesSaveState.idle
+                            self.notesRetryTask = nil
                         }
                     }
                 }
@@ -159,6 +159,8 @@ extension MeetingRecordingManager {
         var transcriptWaits = 0
         var healthRetries = 0
         var iterations = 0
+        // Termination is guaranteed by bounds (elapsed, iterations, waits) and the interval clamp in init that
+        // enforces a minimum sleep to avoid tight spins if misconfigured.
 
         while !Task.isCancelled {
             iterations += 1

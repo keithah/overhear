@@ -178,10 +178,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let lockURL = lockDir.appendingPathComponent("instance.lock")
         let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
         guard fd != -1 else { return true }
+        var locked = false
+        defer {
+            if !locked {
+                flock(fd, LOCK_UN)
+                close(fd)
+            }
+        }
         if flock(fd, LOCK_EX | LOCK_NB) != 0 {
-            close(fd)
             return false
         }
+        locked = true
         instanceLockFD = fd
         return true
     }

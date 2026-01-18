@@ -274,12 +274,11 @@ actor TranscriptStore {
         )
         // Fallback to plaintext legacy JSON
         if let transcript = try? decoder.decode(StoredTranscript.self, from: data) {
-            if KeyStorage.shouldLogPlaintextFallback() {
-                FileLogger.log(
-                    category: "TranscriptStore",
-                    message: "Loaded plaintext transcript fallback (legacy/unencrypted data)"
-                )
-            }
+            let count = KeyStorage.recordPlaintextFallback()
+            FileLogger.log(
+                category: "TranscriptStore",
+                message: "Loaded plaintext transcript fallback (legacy/unencrypted data); count=\(count)"
+            )
             return transcript
         }
 
@@ -453,6 +452,7 @@ actor TranscriptStore {
             var isUsingEphemeralKey = false
             var didCleanLegacyInsecureKey = false
             var didLogPlaintextFallback = false
+            var plaintextFallbackCount = 0
         }
         private struct InsecureKeyBox { var key: SymmetricKey? }
         private struct EphemeralFallbackBox { var keyData: Data? }
@@ -493,6 +493,7 @@ actor TranscriptStore {
                 flags.didLogBypass = false
                 flags.didLogEphemeralFallback = false
                 flags.didLogPlaintextFallback = false
+                flags.plaintextFallbackCount = 0
                 flags.isUsingEphemeralKey = false
                 flags.didCleanLegacyInsecureKey = false
             }
@@ -508,11 +509,11 @@ actor TranscriptStore {
         static func didLogEphemeralFallbackForTests() -> Bool {
             logLock.withLock { $0.didLogEphemeralFallback }
         }
-        static func shouldLogPlaintextFallback() -> Bool {
+        static func recordPlaintextFallback() -> Int {
             logLock.withLock { flags in
-                if flags.didLogPlaintextFallback { return false }
                 flags.didLogPlaintextFallback = true
-                return true
+                flags.plaintextFallbackCount &+= 1
+                return flags.plaintextFallbackCount
             }
         }
 
@@ -526,12 +527,6 @@ actor TranscriptStore {
                     message: "CRITICAL: Insecure key storage requested without Keychain bypass"
                 )
                 throw Error.keyManagementFailed("Keychain bypass required before using insecure key storage")
-            }
-            if !isCIEnvironment(ProcessInfo.processInfo.environment) && !isTestEnvironment(ProcessInfo.processInfo.environment) {
-                FileLogger.log(
-                    category: "TranscriptStore",
-                    message: "CRITICAL: Insecure bypass active outside CI/test; transcripts are not secure and may be lost on restart"
-                )
             }
             return insecureKeyLock.withLock { box in
                 if let key = box.key { return key }

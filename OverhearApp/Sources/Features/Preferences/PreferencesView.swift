@@ -251,6 +251,7 @@ struct PreferencesView: View {
                                         message: "LLM warmup timed out from preferences panel"
                                     )
                                 }
+                                await refreshLLMSnapshot()
                             }
                         }
                         .controlSize(.small)

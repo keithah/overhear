@@ -142,7 +142,6 @@ actor AVAudioCaptureService {
         // Use a smaller buffer to reduce latency for streaming transcripts.
         engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
             guard let self else { return }
-            guard self.isRecording else { return }
 
             // Work with a copy so we don't share task-isolated buffers across actors.
             guard let bufferCopy = buffer.cloned() else {
@@ -304,16 +303,15 @@ actor AVAudioCaptureService {
         }
         pendingBufferNotifications += 1
         defer {
-            let before = pendingBufferNotifications
-            pendingBufferNotifications = max(0, pendingBufferNotifications - 1)
-            if before == 0 && pendingBufferNotifications == 0 {
+            if pendingBufferNotifications > 0 {
+                pendingBufferNotifications -= 1
+            } else {
+                assertionFailure("pendingBufferNotifications underflowed; check backpressure logic")
                 Task { [weak self] in
-                    await self?.log("pendingBufferNotifications underflow detected; resetting to 0")
+                    await self?.log("CRITICAL: pendingBufferNotifications underflow detected; resetting to 0")
                 }
+                pendingBufferNotifications = 0
             }
-#if DEBUG
-            assert(pendingBufferNotifications >= 0, "pendingBufferNotifications underflowed; check backpressure logic")
-#endif
         }
         guard let file else {
             await log("Tap write failed: missing file handle")

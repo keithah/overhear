@@ -890,7 +890,7 @@ extension MeetingRecordingManager {
         let task = Task.detached(priority: .utility) { [weak self] in
             if Task.isCancelled { return }
             var iterations = 0
-            let maxIterations = 20_000 // safety cap to avoid unbounded loops in pathological cases.
+            let maxIterations = 10_000 // safety cap to avoid unbounded loops in pathological cases.
             while true {
                 iterations += 1
                 if iterations > maxIterations { return }
@@ -1305,6 +1305,8 @@ private extension MeetingRecordingManager {
         guard !speakerSegments.isEmpty else { return }
         var dropped = 0
         var droppedWide = 0
+        var droppedOld = 0
+        var keptSegments: [SpeakerSegment] = []
         let newestEnd = speakerSegments.compactMap { $0.end }.max() ?? 0
         let minWindowStart = max(0, newestEnd - SpeakerConstraints.maxWindowSeconds)
         let minBucket = Int(floor(minWindowStart / speakerBucketWidthSeconds))
@@ -1327,6 +1329,11 @@ private extension MeetingRecordingManager {
                 droppedWide += 1
                 continue
             }
+            guard segment.end >= minWindowStart else {
+                droppedOld += 1
+                continue
+            }
+            keptSegments.append(segment)
             for bucket in startBucket...endBucket {
                 speakerSegmentBuckets[bucket, default: []].append(segment)
             }
@@ -1334,10 +1341,11 @@ private extension MeetingRecordingManager {
         // Defensive cleanup: drop any buckets beyond the maximum window to avoid long-run growth.
         let maxBucket = Int(floor(SpeakerConstraints.maxWindowSeconds / speakerBucketWidthSeconds))
         speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= minBucket && $0.key <= maxBucket }
-        if dropped > 0 || droppedWide > 0 {
+        speakerSegments = keptSegments
+        if dropped > 0 || droppedWide > 0 || droppedOld > 0 {
             FileLogger.log(
                 category: "MeetingRecordingManager",
-                message: "Dropped \(dropped) out-of-window and \(droppedWide) overly-wide diarization segments"
+                message: "Dropped \(dropped) out-of-window, \(droppedWide) overly-wide, \(droppedOld) stale diarization segments"
             )
         }
     }
