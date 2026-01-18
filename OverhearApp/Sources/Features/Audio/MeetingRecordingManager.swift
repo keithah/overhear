@@ -99,8 +99,8 @@ final class MeetingRecordingManager: ObservableObject {
     private var speakerSegmentBuckets: [Int: [SpeakerSegment]] = [:]
     private let speakerBucketWidthSeconds: TimeInterval = 5.0
     @Published private(set) var summary: MeetingSummary?
-    @Published private(set) var notesSaveState: NotesSaveState = .idle
-    @Published private(set) var lastNotesSavedAt: Date?
+    @Published var notesSaveState: NotesSaveState = .idle
+    @Published var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
     var pendingNotes: String?
     var isNotesSaveRunning = false

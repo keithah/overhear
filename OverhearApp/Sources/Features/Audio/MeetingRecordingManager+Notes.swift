@@ -174,13 +174,15 @@ extension MeetingRecordingManager {
             }
 
             let elapsed = Date().timeIntervalSince(healthStart)
-            let (shouldContinue, failureReason) = MeetingRecordingManager.shouldContinueHealthCheck(
-                snapshot: snapshot,
-                elapsed: elapsed,
-                iterations: iterations,
-                maxElapsedSeconds: bounds.maxElapsed,
-                maxIterations: bounds.maxIterations
-            )
+            let (shouldContinue, failureReason) = await MainActor.run {
+                MeetingRecordingManager.shouldContinueHealthCheck(
+                    snapshot: snapshot,
+                    elapsed: elapsed,
+                    iterations: iterations,
+                    maxElapsedSeconds: bounds.maxElapsed,
+                    maxIterations: bounds.maxIterations
+                )
+            }
             if !shouldContinue {
                 if let reason = failureReason, snapshot.pendingNotes != nil {
                     await MainActor.run { [weak self] in
@@ -218,7 +220,11 @@ extension MeetingRecordingManager {
                         message: "Notes health check still waiting for transcriptID; skipping retries"
                     )
                 }
-                if transcriptWaits >= bounds.maxWaits || snapshot.status == .completed {
+                let recordingFinished: Bool = {
+                    if case .completed = snapshot.status { return true }
+                    return false
+                }()
+                if transcriptWaits >= bounds.maxWaits || recordingFinished {
                     await MainActor.run { [weak self] in
                         guard let self, generation == self.notesHealthGeneration else { return }
                         notesSaveState = .failed("Transcript ID unavailable")
@@ -351,7 +357,6 @@ private extension MeetingRecordingManager {
 
 /// Serializes note save operations with basic coalescing: only the most recent
 /// operation queued during an in-flight run will execute next.
-@MainActor
 actor NotesSaveQueue {
     private var pendingOperation: (@MainActor () async -> Void)?
     private var isDraining = false
