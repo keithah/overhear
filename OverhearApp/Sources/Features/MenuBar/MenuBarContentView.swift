@@ -841,7 +841,7 @@ struct LiveNotesView: View {
 
     private func warmLLM() async {
         if let warmupTask {
-            await warmupTask.value
+            _ = await warmupTask.value
             return
         }
         isWarmingLLM = true
@@ -1298,7 +1298,7 @@ struct LiveNotesManagerView: View {
 
     private func warmLLM() async {
         if let warmupTask {
-            await warmupTask.value
+            _ = await warmupTask.value
             return
         }
         isWarmingLLM = true

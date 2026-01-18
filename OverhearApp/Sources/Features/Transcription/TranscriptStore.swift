@@ -492,6 +492,7 @@ actor TranscriptStore {
             logLock.withLock { flags in
                 flags.didLogBypass = false
                 flags.didLogEphemeralFallback = false
+                flags.didLogPlaintextFallback = false
                 flags.isUsingEphemeralKey = false
                 flags.didCleanLegacyInsecureKey = false
             }
