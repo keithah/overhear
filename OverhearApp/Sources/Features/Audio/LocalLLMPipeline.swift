@@ -128,7 +128,6 @@ actor LocalLLMPipeline {
     func warmup() async -> WarmupOutcome {
         // Reuse in-flight warmup if one exists.
         if let task = warmupTask {
-            let taskID = task.id
             switch await waitForWarmup(task: task, timeout: warmupTimeout) {
             case .completed:
                 return .completed
@@ -137,12 +136,7 @@ actor LocalLLMPipeline {
                 FileLogger.log(category: logCategory, message: "Existing warmup task timed out; restarting warmup")
                 task.cancel()
                 await task.value
-                // Only clear if we're still looking at the same task; otherwise another caller already restarted it.
-                if warmupTask?.id == taskID {
-                    warmupTask = nil
-                } else {
-                    return .timedOut
-                }
+                warmupTask = nil
             }
         }
 
