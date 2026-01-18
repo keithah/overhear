@@ -238,8 +238,8 @@ if viewModel.isLoading {
                 didAutoShowLiveNotes = false
             }
         }
-        .onChange(of: viewModel.pastSections) { _ in refreshGroupedMeetingsCache() }
-        .onChange(of: viewModel.upcomingSections) { _ in refreshGroupedMeetingsCache() }
+        .onReceive(viewModel.$pastSections) { _ in refreshGroupedMeetingsCache() }
+        .onReceive(viewModel.$upcomingSections) { _ in refreshGroupedMeetingsCache() }
     }
     
     private var allMeetings: [Meeting] {
