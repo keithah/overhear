@@ -282,7 +282,7 @@ extension MeetingRecordingManager {
 
 // MARK: - Notes health helpers
 
-private struct NotesHealthSnapshot {
+struct NotesHealthSnapshot {
     let status: MeetingRecordingManager.Status
     let transcriptID: String?
     let pendingNotes: String?
@@ -298,7 +298,7 @@ private struct NotesHealthBounds {
     let maxRetries: Int
 }
 
-private extension MeetingRecordingManager {
+extension MeetingRecordingManager {
     nonisolated func captureNotesHealthSnapshot(generation: Int) async -> NotesHealthSnapshot {
         await MainActor.run { [weak self] in
             guard let self else {
