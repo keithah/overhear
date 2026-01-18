@@ -187,7 +187,7 @@ actor TranscriptStore {
         
         let fileURLs = try FileManager.default.contentsOfDirectory(
             at: storageDirectory,
-            includingPropertiesForKeys: nil
+            includingPropertiesForKeys: [.contentModificationDateKey]
         ).filter { $0.pathExtension == "json" }
         
         var transcripts: [StoredTranscript] = []
@@ -227,12 +227,16 @@ actor TranscriptStore {
         var processedCount = 0
         var skippedCount = 0
         
-        // Sort file URLs to ensure consistent ordering
-        let sortedFileURLs = fileURLs.sorted { $0.path < $1.path }
+        // Sort newest-first so we can satisfy limit+offset quickly without scanning all files.
+        let sortedFileURLs = fileURLs.sorted { lhs, rhs in
+            let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return lhsDate > rhsDate
+        }
         
         for fileURL in sortedFileURLs {
-            // Early exit if we have enough results
-            if results.count >= limit {
+            // Early exit once we've accumulated the requested window (offset + limit).
+            if processedCount >= offset + limit {
                 break
             }
             
@@ -384,6 +388,11 @@ actor TranscriptStore {
 
     nonisolated internal static func isKeychainBypassEnabled(environment: [String: String]) -> Bool {
         let truthy: Set<String> = ["1", "true", "TRUE", "True"]
+        let allowBypass = truthy.contains(
+            environment["OVERHEAR_ALLOW_INSECURE_BYPASS"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        )
+        guard allowBypass else { return false }
         let value = environment["OVERHEAR_INSECURE_NO_KEYCHAIN"]?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard truthy.contains(value) else { return false }

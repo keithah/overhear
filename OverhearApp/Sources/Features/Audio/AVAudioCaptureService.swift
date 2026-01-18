@@ -106,6 +106,10 @@ actor AVAudioCaptureService {
         let rolledOver: Bool
     }
 
+    nonisolated static func backpressureDropDecision(pending: Int, max: Int) -> Bool {
+        pending >= max
+    }
+
     static func shouldProcessBuffer(isRecording: Bool, observerSessionID: UUID, bufferSessionID: UUID) -> Bool {
         isRecording && observerSessionID == bufferSessionID
     }
@@ -297,7 +301,7 @@ actor AVAudioCaptureService {
         guard shouldProcess else {
             return
         }
-        guard pendingBufferNotifications < maxPendingBufferNotifications else {
+        guard !Self.backpressureDropDecision(pending: pendingBufferNotifications, max: maxPendingBufferNotifications) else {
             await log("Dropping buffer due to observer backlog (\(pendingBufferNotifications) pending)")
             return
         }

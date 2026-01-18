@@ -29,4 +29,15 @@ final class AVAudioCaptureServiceSessionTests: XCTestCase {
             )
         )
     }
+
+    func testBackpressureDropDecision() {
+        XCTAssertFalse(
+            AVAudioCaptureService.backpressureDropDecision(pending: 63, max: 64),
+            "Should not drop when pending is below the limit"
+        )
+        XCTAssertTrue(
+            AVAudioCaptureService.backpressureDropDecision(pending: 64, max: 64),
+            "Should drop when pending reaches the limit"
+        )
+    }
 }

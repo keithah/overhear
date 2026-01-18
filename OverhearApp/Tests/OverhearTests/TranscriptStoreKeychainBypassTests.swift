@@ -25,6 +25,7 @@ final class TranscriptStoreKeychainBypassTests: XCTestCase {
         XCTAssertTrue(
             TranscriptStore.isKeychainBypassEnabled(
                 environment: [
+                    "OVERHEAR_ALLOW_INSECURE_BYPASS": "1",
                     "OVERHEAR_INSECURE_NO_KEYCHAIN": "true",
                     "CI": "true",
                     "GITHUB_ACTIONS": "true",
@@ -36,6 +37,7 @@ final class TranscriptStoreKeychainBypassTests: XCTestCase {
         XCTAssertTrue(
             TranscriptStore.isKeychainBypassEnabled(
                 environment: [
+                    "OVERHEAR_ALLOW_INSECURE_BYPASS": "1",
                     "OVERHEAR_INSECURE_NO_KEYCHAIN": "1",
                     "XCTestConfigurationFilePath": "/tmp/config"
                 ]
@@ -45,6 +47,7 @@ final class TranscriptStoreKeychainBypassTests: XCTestCase {
 
     func testBypassReasonPrefersTestThenCIThenExplicitFlag() {
         let testEnv = [
+            "OVERHEAR_ALLOW_INSECURE_BYPASS": "1",
             "OVERHEAR_INSECURE_NO_KEYCHAIN": "true",
             "XCTestConfigurationFilePath": "/tmp/config"
         ]
@@ -54,6 +57,7 @@ final class TranscriptStoreKeychainBypassTests: XCTestCase {
         )
 
         let ciEnv = [
+            "OVERHEAR_ALLOW_INSECURE_BYPASS": "1",
             "OVERHEAR_INSECURE_NO_KEYCHAIN": "1",
             "CI": "true",
             "GITHUB_ACTIONS": "true",
@@ -64,7 +68,10 @@ final class TranscriptStoreKeychainBypassTests: XCTestCase {
             "CI/GitHubActions"
         )
 
-        let flagOnlyEnv = ["OVERHEAR_INSECURE_NO_KEYCHAIN": "true"]
+        let flagOnlyEnv = [
+            "OVERHEAR_ALLOW_INSECURE_BYPASS": "1",
+            "OVERHEAR_INSECURE_NO_KEYCHAIN": "true"
+        ]
         XCTAssertNil(
             TranscriptStore.keychainBypassReason(environment: flagOnlyEnv),
             "Without a trusted context, bypass should not be enabled"
@@ -72,6 +79,7 @@ final class TranscriptStoreKeychainBypassTests: XCTestCase {
 
         // When both CI and test markers are present, test context should win.
         let bothEnv = [
+            "OVERHEAR_ALLOW_INSECURE_BYPASS": "1",
             "OVERHEAR_INSECURE_NO_KEYCHAIN": "true",
             "XCTestConfigurationFilePath": "/tmp/config",
             "CI": "true",
@@ -86,6 +94,7 @@ final class TranscriptStoreKeychainBypassTests: XCTestCase {
 
     func testFalseEnvValuesDoNotBypass() {
         let falseEnv = [
+            "OVERHEAR_ALLOW_INSECURE_BYPASS": "1",
             "OVERHEAR_INSECURE_NO_KEYCHAIN": "false",
             "CI": "true",
             "GITHUB_ACTIONS": "true",
@@ -94,6 +103,7 @@ final class TranscriptStoreKeychainBypassTests: XCTestCase {
         XCTAssertFalse(TranscriptStore.isKeychainBypassEnabled(environment: falseEnv))
 
         let zeroEnv = [
+            "OVERHEAR_ALLOW_INSECURE_BYPASS": "1",
             "OVERHEAR_INSECURE_NO_KEYCHAIN": "0",
             "XCTestConfigurationFilePath": "/tmp/config"
         ]

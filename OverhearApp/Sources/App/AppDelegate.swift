@@ -163,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 
-    private func enforceSingleInstance() -> Bool {
+    func enforceSingleInstance(lockDirectoryOverride: URL? = nil) -> Bool {
         let fm = FileManager.default
         guard let appSupport = try? fm.url(
             for: .applicationSupportDirectory,
@@ -173,7 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) else {
             return true
         }
-        let lockDir = appSupport.appendingPathComponent("Overhear", isDirectory: true)
+        let lockDir = lockDirectoryOverride ?? appSupport.appendingPathComponent("Overhear", isDirectory: true)
         try? fm.createDirectory(at: lockDir, withIntermediateDirectories: true)
         let lockURL = lockDir.appendingPathComponent("instance.lock")
         let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
