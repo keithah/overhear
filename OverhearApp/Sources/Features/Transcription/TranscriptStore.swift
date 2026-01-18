@@ -678,7 +678,8 @@ actor TranscriptStore {
                 }
                 if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || addStatus == errSecAuthFailed || addStatus == errSecDuplicateItem {
 #if DEBUG
-                    let runningTests = isTestEnvironment(environment)
+                    let env = ProcessInfo.processInfo.environment
+                    let runningTests = isTestEnvironment(env)
                     let allowEphemeralFallback = bypassEnabled || runningTests
                     guard allowEphemeralFallback else {
                         throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)); set OVERHEAR_INSECURE_NO_KEYCHAIN=1 when running in CI/test without Keychain access")
