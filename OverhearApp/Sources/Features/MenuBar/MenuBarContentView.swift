@@ -121,8 +121,8 @@ if viewModel.isLoading {
                                      .id(dateIdentifier(group.date))  // Anchor for scroll
                                      .frame(maxWidth: .infinity, alignment: .leading)
                                  
-                                 // Meetings for this date
-                                 ForEach(group.meetings) { meeting in
+                                // Meetings for this date
+                                ForEach(group.meetings, id: \.id) { meeting in
                                      if preferences.viewMode == .minimalist {
                                         MinimalistMeetingRowView(
                                             meeting: meeting,

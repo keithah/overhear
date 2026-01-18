@@ -10,6 +10,7 @@ extension MeetingRecordingManager {
         pendingNotes = notes
         if let prior = notesRetryTask {
             prior.cancel()
+            await prior.value
             notesRetryTask = nil
         }
         notesRetryAttempts = 0
@@ -114,16 +115,20 @@ extension MeetingRecordingManager {
                     message: "Notes persist failed (attempt \(notesRetryAttempts)/\(maxNotesRetryAttempts)); retrying in \(Int(delaySeconds))s: \(error.localizedDescription)"
                 )
                 notesRetryTask = Task { [weak self] in
-                    try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
-                    guard let self else { return }
-                    if Task.isCancelled {
-                        FileLogger.log(category: "MeetingRecordingManager", message: "Notes retry cancelled")
-                        notesSaveState = NotesSaveState.idle
-                        notesRetryTask = nil
-                        return
+                    await withTaskCancellationHandler {
+                        try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                        guard let self else { return }
+                        guard !Task.isCancelled else { return }
+                        let latestNotes = pendingNotes ?? notes
+                        await self.performNotesSave(notes: latestNotes)
+                    } onCancel: { [weak self] in
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            FileLogger.log(category: "MeetingRecordingManager", message: "Notes retry cancelled")
+                            notesSaveState = NotesSaveState.idle
+                            notesRetryTask = nil
+                        }
                     }
-                    let latestNotes = pendingNotes ?? notes
-                    await self.performNotesSave(notes: latestNotes)
                 }
             } else {
                 FileLogger.log(category: "MeetingRecordingManager", message: "Failed to persist notes after retries: \(error.localizedDescription)")
@@ -356,7 +361,7 @@ actor NotesSaveQueue {
         isDraining = true
         while let current = pendingOperation {
             pendingOperation = nil
-            await Task { @MainActor in await current() }.value
+            await current()
         }
         isDraining = false
     }

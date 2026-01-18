@@ -3,6 +3,7 @@ import UserNotifications
 import Foundation
 import SwiftUI
 import Combine
+import Darwin
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -11,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let recordingOverlay = RecordingOverlayController()
     private var notificationDeduper: NotificationDeduper!
     private var cancellables: Set<AnyCancellable> = []
+    private var instanceLockFD: Int32?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !isRunningTests else {
@@ -118,6 +120,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UNUserNotificationCenter.current().delegate = nil
         menuBarController?.tearDown()
         recordingOverlay.hide()
+        if let fd = instanceLockFD {
+            flock(fd, LOCK_UN)
+            close(fd)
+        }
     }
 
     @MainActor
@@ -158,12 +164,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func enforceSingleInstance() -> Bool {
-        let identifier = Bundle.main.bundleIdentifier
-        let currentPID = ProcessInfo.processInfo.processIdentifier
-        let instances = NSWorkspace.shared.runningApplications.filter { app in
-            app.bundleIdentifier == identifier && app.processIdentifier != currentPID
+        let fm = FileManager.default
+        guard let appSupport = try? fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ) else {
+            return true
         }
-        return instances.isEmpty
+        let lockDir = appSupport.appendingPathComponent("Overhear", isDirectory: true)
+        try? fm.createDirectory(at: lockDir, withIntermediateDirectories: true)
+        let lockURL = lockDir.appendingPathComponent("instance.lock")
+        let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
+        guard fd != -1 else { return true }
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            close(fd)
+            return false
+        }
+        instanceLockFD = fd
+        return true
     }
 }
 

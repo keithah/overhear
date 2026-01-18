@@ -77,6 +77,7 @@ final class MeetingRecordingManager: ObservableObject {
     private enum SpeakerConstraints {
         static let maxWindowSeconds: TimeInterval = 12 * 60 * 60
     }
+    private var lastSpeakerBucketRebuildAt: Date?
 
     enum NotesSaveState: Equatable {
         case idle
@@ -530,12 +531,14 @@ final class MeetingRecordingManager: ObservableObject {
     // MARK: - Private
     @MainActor
     private func trimStreamingConfirmedSegmentsIfNeeded() async {
+        guard streamingConfirmedSegments.count > StreamingLimits.maxLiveSegments else { return }
         let trimmed = Self.trimToLiveSegmentLimit(streamingConfirmedSegments)
         guard trimmed.count != streamingConfirmedSegments.count else { return }
-        streamingConfirmedSegments = trimmed
-        if lastLabeledConfirmedCount > streamingConfirmedSegments.count {
-            lastLabeledConfirmedCount = streamingConfirmedSegments.count
+        let newCount = trimmed.count
+        if lastLabeledConfirmedCount > newCount {
+            lastLabeledConfirmedCount = newCount
         }
+        streamingConfirmedSegments = trimmed
     }
     
     private func startTranscription(
@@ -808,7 +811,7 @@ extension MeetingRecordingManager {
 
             try await manager.start()
             FileLogger.log(category: "MeetingRecordingManager", message: "Streaming ASR started")
-            startStreamingMonitor()
+            await startStreamingMonitor()
         } catch {
             logger.error("Streaming ASR failed to start: \(error.localizedDescription, privacy: .public)")
             streamingHealth.state = .failed(error.localizedDescription)
@@ -876,14 +879,14 @@ extension MeetingRecordingManager {
         )
     }
 
-    func startStreamingMonitor() {
+    func startStreamingMonitor() async {
         streamingMonitorGeneration &+= 1
         let generation = streamingMonitorGeneration
         let previous = streamingMonitorTask
         streamingMonitorStartDate = Date()
+        previous?.cancel()
+        await previous?.value
         let task = Task.detached(priority: .utility) { [weak self] in
-            previous?.cancel()
-            await previous?.value
             if Task.isCancelled { return }
             var iterations = 0
             let maxIterations = 20_000 // safety cap to avoid unbounded loops in pathological cases.
@@ -1175,9 +1178,9 @@ extension MeetingRecordingManager {
         // the typical path is closer to O(n*k) where k is the number of overlapping diarization entries.
         guard !speakerSegments.isEmpty else { return }
         guard !streamingConfirmedSegments.isEmpty else { return }
+        let segmentsToLabel = streamingConfirmedSegments
         assert(streamingConfirmedSegments.count == segmentsToLabel.count, "Segment arrays must match")
         // speakerSegments are normalized to sorted order when assigned so the early-break optimization remains valid.
-        let segmentsToLabel = streamingConfirmedSegments
         let diarizationSegments: [SpeakerSegment] = {
             guard !speakerSegmentBuckets.isEmpty else { return speakerSegments }
             var candidates: [SpeakerSegment] = []
@@ -1227,7 +1230,7 @@ extension MeetingRecordingManager {
             lastLabeledConfirmedCount = 0
         }
 
-        var updatedSegments = streamingConfirmedSegments
+        var updatedSegments = segmentsToLabel
 
         for index in segmentsToLabel.indices {
             guard index >= lastLabeledConfirmedCount else { continue }
@@ -1293,6 +1296,11 @@ private extension MeetingRecordingManager {
     }
 
     func rebuildSpeakerSegmentBuckets() {
+        // Debounce aggressive rebuilds during rapid diarization updates to avoid repeated O(n*m) work.
+        if let last = lastSpeakerBucketRebuildAt, Date().timeIntervalSince(last) < 0.25 {
+            return
+        }
+        lastSpeakerBucketRebuildAt = Date()
         speakerSegmentBuckets.removeAll()
         guard !speakerSegments.isEmpty else { return }
         var dropped = 0

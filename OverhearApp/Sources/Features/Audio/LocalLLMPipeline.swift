@@ -128,6 +128,7 @@ actor LocalLLMPipeline {
     func warmup() async -> WarmupOutcome {
         // Reuse in-flight warmup if one exists.
         if let task = warmupTask {
+            let taskID = task.id
             switch await waitForWarmup(task: task, timeout: warmupTimeout) {
             case .completed:
                 return .completed
@@ -136,7 +137,12 @@ actor LocalLLMPipeline {
                 FileLogger.log(category: logCategory, message: "Existing warmup task timed out; restarting warmup")
                 task.cancel()
                 await task.value
-                warmupTask = nil
+                // Only clear if we're still looking at the same task; otherwise another caller already restarted it.
+                if warmupTask?.id == taskID {
+                    warmupTask = nil
+                } else {
+                    return .timedOut
+                }
             }
         }
 
@@ -194,6 +200,8 @@ actor LocalLLMPipeline {
             }
             let completed = await group.next() ?? .timeout
             group.cancelAll()
+            // Drain any remaining tasks to completion for cleanliness.
+            while await group.next() != nil {}
             return completed
         }
     }
@@ -224,8 +232,9 @@ actor LocalLLMPipeline {
             downloadWatchTask?.cancel()
             downloadWatchTask = nil
             downloadWatchGeneration = generation
+            let watchdogDelay = downloadWatchdogDelay
             downloadWatchTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64((self?.downloadWatchdogDelay ?? 2) * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(watchdogDelay * 1_000_000_000))
                 await self?.handleDownloadWatchdog(generation: generation)
             }
         }

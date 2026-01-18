@@ -74,6 +74,22 @@ actor TranscriptStore {
     private let encryptionKey: SymmetricKey
     private let persistenceEnabled: Bool
     private static let logger = Logger(subsystem: "com.overhear.app", category: "TranscriptStore")
+    private static let keychainBypassDecision: (enabled: Bool, reason: String?, requested: Bool, validContext: Bool) = {
+        let environment = ProcessInfo.processInfo.environment
+        let requested = isKeychainBypassEnabled(environment: environment)
+        let reason = keychainBypassReason(environment: environment)
+        let validContext = isCIEnvironment(environment) || isTestEnvironment(environment)
+#if !DEBUG
+        if requested {
+            return (false, reason, requested, validContext)
+        }
+#endif
+        if requested && !validContext {
+            return (false, reason, requested, validContext)
+        }
+        assert(!requested || validContext, "Keychain bypass only allowed in CI/test")
+        return (requested && validContext, reason, requested, validContext)
+    }()
 
     private static let meetingIDDelimiter = "__"
     
@@ -430,12 +446,7 @@ actor TranscriptStore {
     
     // MARK: - Encryption
 
-    private struct EphemeralKeyBox: @unchecked Sendable {
-        let key: SymmetricKey
-    }
-
     private enum KeyStorage {
-        static let ephemeralKeyBox = EphemeralKeyBox(key: SymmetricKey(size: .bits256))
         private struct LogFlags {
             var didLogBypass = false
             var didLogEphemeralFallback = false
@@ -444,9 +455,11 @@ actor TranscriptStore {
             var didLogPlaintextFallback = false
         }
         private struct InsecureKeyBox { var key: SymmetricKey? }
+        private struct EphemeralFallbackBox { var keyData: Data? }
         // Lightweight global locks to guard shared logging flags and insecure bypass key.
         private static let logLock = OSAllocatedUnfairLock(initialState: LogFlags())
         private static let insecureKeyLock = OSAllocatedUnfairLock(initialState: InsecureKeyBox(key: nil))
+        private static let ephemeralFallbackLock = OSAllocatedUnfairLock(initialState: EphemeralFallbackBox(keyData: nil))
 
         static func shouldLogBypass() -> Bool {
             logLock.withLock { flags in
@@ -527,6 +540,17 @@ actor TranscriptStore {
             }
         }
 
+        static func ephemeralFallbackKey() -> SymmetricKey {
+            ephemeralFallbackLock.withLock { box in
+                if let data = box.keyData {
+                    return SymmetricKey(data: data)
+                }
+                let key = SymmetricKey(size: .bits256)
+                box.keyData = key.withUnsafeBytes { Data($0) }
+                return key
+            }
+        }
+
         static func markEphemeralRiskFlag(_ isActive: Bool) {
             let defaults = UserDefaults.standard
             if isActive {
@@ -558,22 +582,21 @@ actor TranscriptStore {
     /// ephemeral key instead. In production this persists to the Keychain.
     nonisolated private static func getOrCreateEncryptionKey() throws -> SymmetricKey {
         let environment = ProcessInfo.processInfo.environment
-        let bypassEnabled = isKeychainBypassEnabled(environment: environment)
-        let bypassReason = keychainBypassReason(environment: environment)
         logInvalidBypassIfNeeded(environment: environment)
+        let decision = keychainBypassDecision
+        if decision.requested && !decision.validContext {
+            throw Error.keyManagementFailed("Keychain bypass is only allowed in CI or test environments")
+        }
 #if !DEBUG
-        // Never allow bypass in release builds, even if env is spoofed.
-        if bypassEnabled {
+        if decision.requested {
             throw Error.keyManagementFailed("Keychain bypass is not allowed in production builds")
         }
 #endif
+        let bypassEnabled = decision.enabled
+        let bypassReason = decision.reason
 
         // In CI/test environments, avoid Keychain dependencies by using a per-process in-memory key.
         if bypassEnabled {
-            assert(
-                isCIEnvironment(environment) || isTestEnvironment(environment),
-                "Keychain bypass should only be enabled in CI or test environments"
-            )
             let insecureKey = try KeyStorage.insecureBypassKey()
             let reasonSuffix = bypassReason.map { ": \($0)" } ?? ""
             if KeyStorage.shouldLogBypass() {
@@ -677,7 +700,7 @@ actor TranscriptStore {
                     }
                     KeyStorage.markEphemeralInUse()
                     logger.fault("Using ephemeral transcript key due to Keychain failure (status \(addStatus, privacy: .public)); data will be unreadable after restart")
-                    return KeyStorage.ephemeralKeyBox.key
+                    return KeyStorage.ephemeralFallbackKey()
 #else
                     throw Error.keyManagementFailed("Keychain unavailable (status \(addStatus)) and bypass is not permitted in production")
 #endif

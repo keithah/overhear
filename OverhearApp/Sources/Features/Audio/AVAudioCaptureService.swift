@@ -70,6 +70,7 @@ actor AVAudioCaptureService {
         var rolledOver = false
         if state.total >= LogConstants.bufferCountRolloverCap {
             rolledOver = true
+            // Reset counters modulo the periodic interval to avoid overflow; this may skip a periodic log near rollover.
             state.total = state.total % perLogInterval
             state.sinceLast = 0
             // Keep the initial-burst flag set so rollover doesn't repeat the early log flood.
@@ -133,10 +134,15 @@ actor AVAudioCaptureService {
         let sessionID = observerSessionID
         let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
         self.file = file
+        self.outputURL = outputURL
+        self.captureStartDate = Date()
+        self.requestedDuration = duration
+        self.isRecording = true
 
         // Use a smaller buffer to reduce latency for streaming transcripts.
         engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
             guard let self else { return }
+            guard self.isRecording else { return }
 
             // Work with a copy so we don't share task-isolated buffers across actors.
             guard let bufferCopy = buffer.cloned() else {
@@ -153,13 +159,14 @@ actor AVAudioCaptureService {
             }
         }
 
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            engine.inputNode.removeTap(onBus: 0)
+            isRecording = false
+            throw error
+        }
         await log("Audio engine started")
-        captureStartDate = Date()
-        requestedDuration = duration
-        self.file = file
-        self.outputURL = outputURL
-        self.isRecording = true
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CaptureResult, Swift.Error>) in
@@ -219,6 +226,7 @@ actor AVAudioCaptureService {
         engine.inputNode.removeTap(onBus: 0)
         // Stop the engine before clearing observers to let any in-flight callbacks drain.
         engine.stop()
+        await waitForInFlightBuffers()
         bufferObservers.removeAll()
         durationTask?.cancel()
         durationTask = nil
@@ -269,6 +277,18 @@ actor AVAudioCaptureService {
         pendingBufferNotifications = 0
     }
 
+    private func waitForInFlightBuffers() async {
+        var attempts = 0
+        // Give detached buffer handlers a short window to complete before clearing observers.
+        while pendingBufferNotifications > 0, attempts < 50 {
+            attempts += 1
+            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
+        if pendingBufferNotifications > 0 {
+            await log("Pending buffer notifications still in flight during finalize (\(pendingBufferNotifications))")
+        }
+    }
+
     private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID) async {
         guard Self.shouldProcessBuffer(isRecording: isRecording, observerSessionID: observerSessionID, bufferSessionID: sessionID) else {
             return
@@ -279,7 +299,13 @@ actor AVAudioCaptureService {
         }
         pendingBufferNotifications += 1
         defer {
+            let before = pendingBufferNotifications
             pendingBufferNotifications = max(0, pendingBufferNotifications - 1)
+            if before == 0 && pendingBufferNotifications == 0 {
+                Task { [weak self] in
+                    await self?.log("pendingBufferNotifications underflow detected; resetting to 0")
+                }
+            }
 #if DEBUG
             assert(pendingBufferNotifications >= 0, "pendingBufferNotifications underflowed; check backpressure logic")
 #endif
