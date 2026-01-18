@@ -862,7 +862,6 @@ extension MeetingRecordingManager {
         streamingTask?.cancel()
         streamingTask = nil
         streamingMonitorTask?.cancel()
-        await streamingMonitorTask?.value
         streamingMonitorTask = nil
 
         if let token = streamingObserverToken {
