@@ -189,7 +189,9 @@ extension MeetingRecordingManager {
             }
             switch decision {
             case .continue:
-                break
+                try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                if Task.isCancelled { return }
+                continue
             case .stop(let reason):
                 if let reason, snapshot.pendingNotes != nil {
                     await MainActor.run { [weak self] in
@@ -377,6 +379,7 @@ extension MeetingRecordingManager {
 
 /// Serializes note save operations with basic coalescing: only the most recent
 /// operation queued during an in-flight run will execute next.
+/// This is intentional “latest wins” behavior to avoid redundant writes during rapid edits.
 actor NotesSaveQueue {
     private var pendingOperation: (@MainActor () async -> Void)?
     private var isDraining = false

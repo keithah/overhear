@@ -188,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            close(fd)
             return false
         }
         locked = true

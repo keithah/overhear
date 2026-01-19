@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Simple async debouncer used by multiple note editors to avoid spawning a task per keystroke.
+@MainActor
 final class Debouncer: ObservableObject {
     private var task: Task<Void, Never>?
     enum Delay {

@@ -195,7 +195,7 @@ actor LocalLLMPipeline {
                 return .completed
             }
             group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: sanitizedNanoseconds(from: timeout))
                 return .timeout
             }
             let completed = await group.next() ?? .timeout
@@ -234,7 +234,7 @@ actor LocalLLMPipeline {
             downloadWatchGeneration = generation
             let watchdogDelay = downloadWatchdogDelay
             downloadWatchTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(watchdogDelay * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: sanitizedNanoseconds(from: watchdogDelay))
                 await self?.handleDownloadWatchdog(generation: generation)
             }
         }
