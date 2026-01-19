@@ -36,8 +36,8 @@ final class BufferLoggingTests: XCTestCase {
         }
 
         var state = AVAudioCaptureService.BufferLogState()
-        // Force state near the rollover threshold.
-        state.total = 10_000_000
+        // Force state near the rollover threshold (one before cap).
+        state.total = 9_999_999
         state.sinceLast = 10
         state.didFinishInitialBurst = false
 

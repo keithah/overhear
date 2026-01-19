@@ -83,6 +83,12 @@ actor LocalLLMPipeline {
         return await operation()
     }
 
+    private func sanitizedNanoseconds(from seconds: TimeInterval, max: TimeInterval = 31_536_000) -> UInt64 {
+        // Default max ~1 year in seconds to avoid overflow when converting to nanoseconds.
+        let clamped = min(max(seconds, 0), max)
+        return UInt64(clamped * 1_000_000_000)
+    }
+
     init(client: MLXClient?) {
         self.client = client
         let overrideTimeout = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
@@ -417,7 +423,7 @@ actor LocalLLMPipeline {
                     })
                 }
                 group.addTask {
-                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    try await Task.sleep(nanoseconds: sanitizedNanoseconds(from: timeout))
                     throw WarmupError.timeout
                 }
                 guard let result = try await group.next() else {
@@ -432,7 +438,7 @@ actor LocalLLMPipeline {
             attempts += 1
             if attempts > 1 {
                 let backoffSeconds = pow(2.0, Double(attempts - 2))
-                try? await Task.sleep(nanoseconds: UInt64(backoffSeconds * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: sanitizedNanoseconds(from: backoffSeconds))
                 if Task.isCancelled { return }
                 if generation != warmupGeneration { return }
             }

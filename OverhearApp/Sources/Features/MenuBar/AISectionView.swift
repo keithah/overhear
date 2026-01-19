@@ -88,7 +88,7 @@ struct AISectionView: View {
                 Task { await regenerateSummary(PromptTemplate.defaultTemplate) }
             }
             Divider()
-            ForEach(PromptTemplate.allTemplates, id: \.id) { template in
+            ForEach(PromptTemplate.allTemplates.filter { $0.id != PromptTemplate.defaultTemplate.id }, id: \.id) { template in
                 Button("Regenerate with \(template.title)") {
                     Task { await regenerateSummary(template) }
                 }

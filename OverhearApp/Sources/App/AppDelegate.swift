@@ -115,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             group.leave()
         }
         // Wait longer for best-effort cleanup before process exit.
-        _ = group.wait(timeout: .now() + 5)
+        _ = group.wait(timeout: .now() + 10)
         cancellables.removeAll()
         UNUserNotificationCenter.current().delegate = nil
         menuBarController?.tearDown()

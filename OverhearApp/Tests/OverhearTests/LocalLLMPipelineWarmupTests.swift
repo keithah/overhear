@@ -86,7 +86,7 @@ final class LocalLLMPipelineWarmupTests: XCTestCase {
     }
 
     func testWarmupCancellationDoesNotSpawnExtraTasks() async {
-        let client = HangingMLXClient()
+        let client = CountingMLXClient()
         let pipeline = LocalLLMPipeline(
             client: client,
             warmupTimeout: 2,
@@ -98,12 +98,14 @@ final class LocalLLMPipelineWarmupTests: XCTestCase {
             await pipeline.warmup()
         }
         // Cancel shortly after starting.
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        try? await Task.sleep(nanoseconds: 50_000_000)
         task.cancel()
         _ = await task.result
 
         // Starting a new warmup should succeed without leftover tasks causing errors.
         let outcome = await pipeline.warmup()
         XCTAssertEqual(outcome, .completed)
+        let calls = await client.warmupCalls
+        XCTAssertEqual(calls, 1, "Warmup should not be restarted unnecessarily after cancellation")
     }
 }

@@ -664,7 +664,7 @@ actor TranscriptStore {
                 kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             ]
             
-            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            var addStatus = SecItemAdd(addQuery as CFDictionary, nil)
             if addStatus == errSecSuccess {
                 return newKey
             } else {
@@ -679,6 +679,7 @@ actor TranscriptStore {
                         if retryStatus == errSecSuccess {
                             return newKey
                         }
+                        addStatus = retryStatus
                     }
                 }
                 if addStatus == errSecInteractionNotAllowed || addStatus == errSecNotAvailable || addStatus == errSecAuthFailed || addStatus == errSecDuplicateItem {
