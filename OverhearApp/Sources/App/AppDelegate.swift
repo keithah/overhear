@@ -182,13 +182,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
         var locked = false
         defer {
-            if !locked {
+            if locked {
                 flock(fd, LOCK_UN)
                 close(fd)
             }
         }
         if flock(fd, LOCK_EX | LOCK_NB) != 0 {
-            close(fd)
             return false
         }
         locked = true

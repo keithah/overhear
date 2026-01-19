@@ -83,9 +83,9 @@ actor LocalLLMPipeline {
         return await operation()
     }
 
-    private func sanitizedNanoseconds(from seconds: TimeInterval, max: TimeInterval = 31_536_000) -> UInt64 {
+    private func sanitizedNanoseconds(from seconds: TimeInterval, maxSeconds: TimeInterval = 31_536_000) -> UInt64 {
         // Default max ~1 year in seconds to avoid overflow when converting to nanoseconds.
-        let clamped = min(max(seconds, 0), max)
+        let clamped = min(max(seconds, 0), maxSeconds)
         return UInt64(clamped * 1_000_000_000)
     }
 
@@ -194,7 +194,7 @@ actor LocalLLMPipeline {
                 await task.value
                 return .completed
             }
-            group.addTask {
+            group.addTask { [self] in
                 try? await Task.sleep(nanoseconds: sanitizedNanoseconds(from: timeout))
                 return .timeout
             }

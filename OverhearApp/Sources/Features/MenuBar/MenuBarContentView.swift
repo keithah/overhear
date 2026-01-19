@@ -23,7 +23,7 @@ final class Debouncer: ObservableObject {
     }
 
     deinit {
-        cancel()
+        Task { await MainActor.run { cancel() } }
     }
 }
 
