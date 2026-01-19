@@ -178,6 +178,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let lockURL = lockDir.appendingPathComponent("instance.lock")
         let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
         guard fd != -1 else { return true }
+        // Ensure the lock fd is not inherited by child processes.
+        _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
         var locked = false
         defer {
             if !locked {

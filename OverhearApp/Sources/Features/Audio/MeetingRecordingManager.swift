@@ -1306,6 +1306,12 @@ private extension MeetingRecordingManager {
         var droppedWide = 0
         var droppedOld = 0
         var keptSegments: [SpeakerSegment] = []
+        if speakerSegments.count > 10_000 {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Rebuilding speaker buckets for \(speakerSegments.count) segments; consider incremental strategy if this recurs"
+            )
+        }
         let newestEnd = speakerSegments.compactMap { $0.end }.max() ?? 0
         let minWindowStart = max(0, newestEnd - SpeakerConstraints.maxWindowSeconds)
         let minBucket = Int(floor(minWindowStart / speakerBucketWidthSeconds))

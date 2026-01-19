@@ -148,6 +148,7 @@ actor AVAudioCaptureService {
             guard let self else { return }
 
             // Work with a copy so we don't share task-isolated buffers across actors.
+            // Clone once per tap callback; the shared copy is reused for all observers.
             guard let bufferCopy = buffer.cloned() else {
                 Task { [weak self] in
                     await self?.log("Tap buffer clone failed; dropping buffer")
