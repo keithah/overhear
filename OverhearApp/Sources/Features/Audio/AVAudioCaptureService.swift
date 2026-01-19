@@ -42,6 +42,7 @@ actor AVAudioCaptureService {
     // Actor isolation keeps buffer logging counters serialized without additional locking.
     private var bufferLogState = BufferLogState()
     private var pendingBufferNotifications = 0
+    private let pendingBufferLock = OSAllocatedUnfairLock(initialState: ())
     private let maxPendingBufferNotifications = 64
     // Updated per capture start so late buffers from a prior session are ignored; guards TOCTOU on stopCapture.
     private var observerSessionID = UUID()
@@ -280,18 +281,21 @@ actor AVAudioCaptureService {
 
     private func resetBufferLogState() {
         bufferLogState = BufferLogState()
-        pendingBufferNotifications = 0
+        pendingBufferLock.withLock {
+            pendingBufferNotifications = 0
+        }
     }
 
     private func waitForInFlightBuffers() async {
         var attempts = 0
         // Give detached buffer handlers a short window to complete before clearing observers.
-        while pendingBufferNotifications > 0, attempts < 50 {
+        while pendingBufferLock.withLock({ pendingBufferNotifications }) > 0, attempts < 50 {
             attempts += 1
             try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
         }
-        if pendingBufferNotifications > 0 {
-            await log("Pending buffer notifications still in flight during finalize (\(pendingBufferNotifications))")
+        let remaining = pendingBufferLock.withLock { pendingBufferNotifications }
+        if remaining > 0 {
+            await log("Pending buffer notifications still in flight during finalize (\(remaining))")
         }
     }
 
@@ -302,20 +306,22 @@ actor AVAudioCaptureService {
         guard shouldProcess else {
             return
         }
-        guard !Self.backpressureDropDecision(pending: pendingBufferNotifications, max: maxPendingBufferNotifications) else {
-            await log("Dropping buffer due to observer backlog (\(pendingBufferNotifications) pending)")
+        let pendingCount = pendingBufferLock.withLock { pendingBufferNotifications }
+        guard !Self.backpressureDropDecision(pending: pendingCount, max: maxPendingBufferNotifications) else {
+            await log("Dropping buffer due to observer backlog (\(pendingCount) pending)")
             return
         }
-        pendingBufferNotifications += 1
+        pendingBufferLock.withLock {
+            pendingBufferNotifications += 1
+        }
         defer {
-            if pendingBufferNotifications > 0 {
-                pendingBufferNotifications -= 1
-            } else {
-                assertionFailure("pendingBufferNotifications underflowed; check backpressure logic")
-                Task { [weak self] in
-                    await self?.log("CRITICAL: pendingBufferNotifications underflow detected; resetting to 0")
+            pendingBufferLock.withLock {
+                if pendingBufferNotifications > 0 {
+                    pendingBufferNotifications -= 1
+                } else {
+                    assertionFailure("pendingBufferNotifications underflowed; check backpressure logic")
+                    pendingBufferNotifications = 0
                 }
-                pendingBufferNotifications = 0
             }
         }
         guard let file else {

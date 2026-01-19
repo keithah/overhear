@@ -55,6 +55,7 @@ extension MeetingRecordingManager {
 
     @MainActor
     private func performNotesSave(notes: String) async {
+        persistPendingNotesCheckpoint(notes)
         await notesSaveQueue.enqueue { [weak self] in
             guard let self else { return }
             if Task.isCancelled { return }
@@ -94,6 +95,7 @@ extension MeetingRecordingManager {
             notesRetryAttempts = 0
             notesRetryTask = nil
             lastNotesError = nil
+            clearPendingNotesCheckpoint()
             if Task.isCancelled {
                 notesSaveState = NotesSaveState.idle
                 return
@@ -279,6 +281,14 @@ extension MeetingRecordingManager {
             try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
             if Task.isCancelled { return }
         }
+    }
+
+    private func persistPendingNotesCheckpoint(_ notes: String) {
+        UserDefaults.standard.set(notes, forKey: pendingNotesCheckpointKey)
+    }
+
+    private func clearPendingNotesCheckpoint() {
+        UserDefaults.standard.removeObject(forKey: pendingNotesCheckpointKey)
     }
 }
 

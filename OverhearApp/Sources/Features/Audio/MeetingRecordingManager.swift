@@ -110,6 +110,7 @@ final class MeetingRecordingManager: ObservableObject {
     private var fileLogTemporarilyEnabled = false
     var notesRetryTask: Task<Void, Never>?
     var notesRetryAttempts = 0
+    private let pendingNotesCheckpointKey = "overhear.pendingNotesCheckpoint"
     let maxNotesRetryAttempts: Int
     var notesHealthCheckTask: Task<Void, Never>?
     var lastNotesError: String?
