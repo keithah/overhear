@@ -98,6 +98,8 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     private var speakerSegmentBuckets: [Int: [SpeakerSegment]] = [:]
     private let speakerBucketWidthSeconds: TimeInterval = 5.0
+    // 12h window -> ~8,640 buckets at 5s; trimmed more aggressively below if needed.
+    private let speakerBucketWindowSeconds: TimeInterval = 6 * 60 * 60
     @Published private(set) var summary: MeetingSummary?
     @Published var notesSaveState: NotesSaveState = .idle
     @Published var lastNotesSavedAt: Date?
@@ -1314,7 +1316,9 @@ private extension MeetingRecordingManager {
             )
         }
         let newestEnd = speakerSegments.compactMap { $0.end }.max() ?? 0
-        let minWindowStart = max(0, newestEnd - SpeakerConstraints.maxWindowSeconds)
+        // Apply a more conservative sliding window for in-memory buckets (default 6h) even if diarization spans longer.
+        let windowSeconds = min(SpeakerConstraints.maxWindowSeconds, speakerBucketWindowSeconds)
+        let minWindowStart = max(0, newestEnd - windowSeconds)
         let minBucket = Int(floor(minWindowStart / speakerBucketWidthSeconds))
         for segment in speakerSegments {
             guard segment.start >= 0,
@@ -1345,13 +1349,19 @@ private extension MeetingRecordingManager {
             }
         }
         // Defensive cleanup: drop any buckets beyond the maximum window to avoid long-run growth.
-        let maxBucket = Int(floor(SpeakerConstraints.maxWindowSeconds / speakerBucketWidthSeconds))
+        let maxBucket = Int(floor(windowSeconds / speakerBucketWidthSeconds))
         speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= minBucket && $0.key <= maxBucket }
         speakerSegments = keptSegments
         if dropped > 0 || droppedWide > 0 || droppedOld > 0 {
             FileLogger.log(
                 category: "MeetingRecordingManager",
                 message: "Dropped \(dropped) out-of-window, \(droppedWide) overly-wide, \(droppedOld) stale diarization segments"
+            )
+        }
+        if speakerSegmentBuckets.count > 5_000 {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Speaker buckets size=\(speakerSegmentBuckets.count); windowSeconds=\(windowSeconds)"
             )
         }
     }

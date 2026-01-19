@@ -178,7 +178,7 @@ extension MeetingRecordingManager {
             }
 
             let elapsed = Date().timeIntervalSince(healthStart)
-            let (shouldContinue, failureReason) = await MainActor.run {
+            let decision = await MainActor.run {
                 MeetingRecordingManager.shouldContinueHealthCheck(
                     snapshot: snapshot,
                     elapsed: elapsed,
@@ -187,8 +187,11 @@ extension MeetingRecordingManager {
                     maxIterations: bounds.maxIterations
                 )
             }
-            if !shouldContinue {
-                if let reason = failureReason, snapshot.pendingNotes != nil {
+            switch decision {
+            case .continue:
+                break
+            case .stop(let reason):
+                if let reason, snapshot.pendingNotes != nil {
                     await MainActor.run { [weak self] in
                         guard let self, generation == self.notesHealthGeneration else { return }
                         notesSaveState = NotesSaveState.failed(reason)
@@ -332,20 +335,25 @@ extension MeetingRecordingManager {
         }
     }
 
+    enum NotesHealthDecision {
+        case `continue`
+        case stop(String?)
+    }
+
     nonisolated static func shouldContinueHealthCheck(
         snapshot: NotesHealthSnapshot,
         elapsed: TimeInterval,
         iterations: Int,
         maxElapsedSeconds: TimeInterval,
         maxIterations: Int
-    ) -> (Bool, String?) {
+    ) -> NotesHealthDecision {
         if elapsed > maxElapsedSeconds {
-            return (false, snapshot.pendingNotes != nil ? "Notes health check exceeded maximum duration" : nil)
+            return .stop(snapshot.pendingNotes != nil ? "Notes health check exceeded maximum duration" : nil)
         }
         if iterations > maxIterations {
-            return (false, snapshot.pendingNotes != nil ? "Notes health check exceeded max iterations" : nil)
+            return .stop(snapshot.pendingNotes != nil ? "Notes health check exceeded max iterations" : nil)
         }
-        return (true, nil)
+        return .continue
     }
 
     nonisolated func planNotesRetryIfNeeded(generation: Int) async -> (shouldRetry: Bool, notes: String?) {
