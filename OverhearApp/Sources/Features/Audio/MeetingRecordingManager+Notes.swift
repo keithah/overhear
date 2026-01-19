@@ -90,12 +90,15 @@ extension MeetingRecordingManager {
                 )
             }
             FileLogger.log(category: "MeetingRecordingManager", message: "Persisted notes for \(transcriptID)")
-            pendingNotes = nil
-            lastNotesSavedAt = Date()
-            notesRetryAttempts = 0
-            notesRetryTask = nil
-            lastNotesError = nil
-            clearPendingNotesCheckpoint()
+            let checkpoint = UserDefaults.standard.string(forKey: pendingNotesCheckpointKey)
+            if pendingNotes == nil || pendingNotes == notes || checkpoint == notes {
+                pendingNotes = nil
+                lastNotesSavedAt = Date()
+                notesRetryAttempts = 0
+                notesRetryTask = nil
+                lastNotesError = nil
+                clearPendingNotesCheckpoint()
+            }
             if Task.isCancelled {
                 notesSaveState = NotesSaveState.idle
                 return

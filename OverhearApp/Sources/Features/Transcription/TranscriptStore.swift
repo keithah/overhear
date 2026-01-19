@@ -509,6 +509,9 @@ actor TranscriptStore {
             insecureKeyLock.withLock { box in
                 box.key = nil
             }
+            ephemeralFallbackLock.withLock { box in
+                box.keyData = nil
+            }
         }
 
         static func didLogBypassForTests() -> Bool {
