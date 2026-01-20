@@ -173,7 +173,8 @@ actor AVAudioCaptureService {
             // Hop off the audio callback thread before any disk I/O or actor work.
             Task.detached(priority: .userInitiated) { [weak self] in
                 guard let self else { return }
-                await self.processIncomingBuffer(bufferCopy, sessionID: sessionID)
+                let bufferSizeBytes = Int(bufferCopy.frameLength) * Int(bufferCopy.format.streamDescription.pointee.mBytesPerFrame)
+                await self.enqueueBuffer(bufferCopy, sessionID: sessionID, sizeBytes: bufferSizeBytes)
             }
         }
 
@@ -330,7 +331,25 @@ actor AVAudioCaptureService {
         }
     }
 
-    private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID) async {
+    private func enqueueBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID, sizeBytes: Int) async {
+        // Memory backpressure guard: drop if total pending bytes exceed cap.
+        let totalBytes = pendingBufferBytesLock.withLock { current -> Int in
+            let next = current + sizeBytes
+            if next > maxPendingBufferBytes {
+                return -1
+            }
+            pendingBufferBytesLock.withLock { $0 += sizeBytes }
+            return next
+        }
+        guard totalBytes != -1 else {
+            await log("Dropping buffer due to buffer memory cap (\(maxPendingBufferBytes) bytes)")
+            return
+        }
+        await processIncomingBuffer(buffer, sessionID: sessionID, sizeBytes: sizeBytes)
+        pendingBufferBytesLock.withLock { $0 = max(0, $0 - sizeBytes) }
+    }
+
+    private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID, sizeBytes: Int) async {
         let recording = isRecording
         let sessionSnapshot = observerSessionID
         let shouldProcess = Self.shouldProcessBuffer(isRecording: recording, observerSessionID: sessionSnapshot, bufferSessionID: sessionID)
