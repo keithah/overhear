@@ -150,7 +150,9 @@ actor TranscriptStore {
             )
             let data = try encoder.encode(transcript)
             let encrypted = try Self.encryptData(data, using: encryptionKey)
-            try encrypted.write(to: fileURL, options: [.atomic])
+            try await Task.detached(priority: .utility) {
+                try encrypted.write(to: fileURL, options: [.atomic])
+            }.value
         } catch let Error.encryptionFailed(message) {
             throw Error.encryptionFailed(message)
         } catch {
@@ -168,8 +170,9 @@ actor TranscriptStore {
             category: "TranscriptStore",
             message: "retrieve() reading \(fileURL.lastPathComponent)"
         )
-        
-        let data = try Data(contentsOf: fileURL)
+        let data = try await Task.detached(priority: .utility) {
+            try Data(contentsOf: fileURL)
+        }.value
         return try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
     }
 
@@ -196,7 +199,9 @@ actor TranscriptStore {
         
         for fileURL in fileURLs {
             do {
-                let data = try Data(contentsOf: fileURL)
+                let data = try await Task.detached(priority: .utility) {
+                    try Data(contentsOf: fileURL)
+                }.value
                 let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
                 transcripts.append(transcript)
             } catch {
@@ -243,7 +248,9 @@ actor TranscriptStore {
             }
             
             do {
-                let data = try Data(contentsOf: fileURL)
+                let data = try await Task.detached(priority: .utility) {
+                    try Data(contentsOf: fileURL)
+                }.value
                 let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
                 
                 if transcript.title.lowercased().contains(lowerQuery) ||
