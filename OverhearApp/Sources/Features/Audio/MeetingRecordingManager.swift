@@ -189,6 +189,9 @@ final class MeetingRecordingManager: ObservableObject {
                 break
             }
         }
+        if !wasUnsorted {
+            return (segments, false)
+        }
         let sorted = segments.sorted { lhs, rhs in
             if lhs.start == rhs.start {
                 return lhs.end < rhs.end

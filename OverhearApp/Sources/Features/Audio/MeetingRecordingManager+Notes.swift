@@ -284,7 +284,7 @@ extension MeetingRecordingManager {
                 }
                 await MainActor.run { [weak self] in
                     guard let self, generation == self.notesHealthGeneration else { return }
-                    let shouldResetRetries = (pendingNotes == nil) && (notesSaveState == NotesSaveState.idle)
+                    let shouldResetRetries = (snapshot.pendingNotes == nil) && (snapshot.saveState == NotesSaveState.idle)
                     if shouldResetRetries {
                         healthRetries = 0
                     }
