@@ -281,8 +281,12 @@ actor AVAudioCaptureService {
 
     private func resetBufferLogState() {
         bufferLogState = BufferLogState()
-        pendingBufferLock.withLock {
-            pendingBufferNotifications = 0
+        let pending = pendingBufferLock.withLock { pendingBufferNotifications }
+        if pending == 0 {
+            return
+        }
+        Task { [weak self] in
+            await self?.log("Leaving \(pending) pending buffer notifications to drain before counter reset")
         }
     }
 

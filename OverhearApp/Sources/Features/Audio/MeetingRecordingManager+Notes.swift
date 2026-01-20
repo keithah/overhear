@@ -194,6 +194,12 @@ extension MeetingRecordingManager {
             case .continue:
                 try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
                 if Task.isCancelled { return }
+                if verboseNotesLogging {
+                    FileLogger.log(
+                        category: "MeetingRecordingManager",
+                        message: "Notes health iteration \(iterations); elapsed=\(String(format: \"%.1f\", elapsed))s"
+                    )
+                }
                 continue
             case .stop(let reason):
                 if let reason, snapshot.pendingNotes != nil {
