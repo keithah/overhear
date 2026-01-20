@@ -60,14 +60,12 @@ jobs:
           script: |
             const prPayload = context.payload.pull_request ?? context.payload.issue?.pull_request;
             const issueNumber = context.payload.issue?.number;
-            if (!prPayload && !issueNumber) {
-              core.setFailed('No pull request context available');
-              return;
-            }
+            const inputNumber = context.payload.inputs?.pr_number ? Number(context.payload.inputs.pr_number) : undefined;
 
             const number =
               prPayload?.number ??
               issueNumber ??
+              inputNumber ??
               (prPayload?.url ? Number(prPayload.url.split('/').pop()) : undefined);
             if (!number) {
               core.setFailed('Could not determine PR number');
