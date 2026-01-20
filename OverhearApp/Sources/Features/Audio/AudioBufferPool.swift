@@ -34,10 +34,8 @@ final class AudioBufferPool {
         lock.lock()
         defer { lock.unlock() }
         let key = ObjectIdentifier(source)
-        let entry = counts[key]
-        let buffer = entry?.0 ?? source
-        let newCount = (entry?.1 ?? 0) + 1
-        counts[key] = (buffer, newCount)
+        let (buffer, count) = counts[key] ?? (source, 0)
+        counts[key] = (buffer, count + 1)
         return PooledAudioBuffer(buffer: buffer) { [weak self] in
             self?.decrement(key: key)
         }

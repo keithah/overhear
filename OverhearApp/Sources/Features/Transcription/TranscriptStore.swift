@@ -30,18 +30,33 @@ struct StoredTranscript: Codable, Identifiable {
 
 /// Thread-safe cache for search results to avoid re-decoding transcripts across queries.
 actor TranscriptSearchCache {
+    private let maxEntries: Int = 200
     private var cache: [URL: StoredTranscript] = [:]
+    private var order: [URL] = []
 
     func get(_ url: URL) -> StoredTranscript? {
-        cache[url]
+        if let value = cache[url] {
+            // Move to back for LRU behavior.
+            order.removeAll(where: { $0 == url })
+            order.append(url)
+            return value
+        }
+        return cache[url]
     }
 
     func set(_ url: URL, value: StoredTranscript) {
         cache[url] = value
+        order.removeAll(where: { $0 == url })
+        order.append(url)
+        if order.count > maxEntries, let evict = order.first {
+            order.removeFirst()
+            cache.removeValue(forKey: evict)
+        }
     }
 
     func clear() {
         cache.removeAll()
+        order.removeAll()
     }
 }
 

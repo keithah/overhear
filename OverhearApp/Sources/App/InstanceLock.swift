@@ -12,16 +12,22 @@ final class InstanceLock {
         let fm = FileManager.default
         let appSupport = (try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
         let baseDir = lockDirectoryOverride ?? appSupport?.appendingPathComponent("Overhear", isDirectory: true)
-        self.lockURL = baseDir?.appendingPathComponent("instance.lock") ?? URL(fileURLWithPath: "/tmp/overhear.instance.lock")
-        self.logger = logger
+        var chosenLockURL = URL(fileURLWithPath: "/tmp/overhear.instance.lock")
         if let dir = baseDir {
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            if let values = try? dir.resourceValues(forKeys: [.isSymbolicLinkKey]), values.isSymbolicLink == true {
+                logger.error("Instance lock directory is a symlink; falling back to /tmp for lock file")
+            } else {
+                chosenLockURL = dir.appendingPathComponent("instance.lock")
+            }
         }
+        self.lockURL = chosenLockURL
+        self.logger = logger
     }
 
     /// Attempts to acquire the single-instance lock. Returns false when another live process holds the lock.
     func acquire() -> Bool {
-        let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
+        let fd = open(lockURL.path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
         guard fd != -1 else { return true }
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
         let pid = getpid()

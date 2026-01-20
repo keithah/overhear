@@ -185,7 +185,8 @@ final class CalendarService: ObservableObject {
 
     nonisolated private func log(_ message: String) {
         calendarLogger.info("\(message, privacy: .public)")
-        guard isFileLoggingEnabled else { return }
+        guard ProcessInfo.processInfo.environment["OVERHEAR_CALENDAR_FILE_LOGS"] == "1" else { return }
+        // Avoid persisting PII: only log coarse events, not event titles/URLs.
         let line = "[CalendarService] \(Date()): \(message)\n"
         let url = URL(fileURLWithPath: "/tmp/overhear.log")
         guard let data = line.data(using: .utf8) else { return }
@@ -198,13 +199,6 @@ final class CalendarService: ObservableObject {
             }
         }
         try? data.write(to: url, options: .atomic)
-    }
-
-    nonisolated private var isFileLoggingEnabled: Bool {
-        if ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1" {
-            return true
-        }
-        return UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
     }
 
     @MainActor

@@ -286,13 +286,14 @@ actor AVAudioCaptureService {
     private func notifyBufferObservers(buffer: AVAudioPCMBuffer, sessionID: UUID) async {
         // Snapshot flags and observers together to avoid TOCTOU during stopCapture().
         // Late buffers after stopCapture() (or from a prior session) are intentionally dropped via the isRecording/session guard.
-        let recording = isRecording
-        let sessionSnapshot = observerSessionID
-        guard Self.shouldProcessBuffer(isRecording: recording, observerSessionID: sessionSnapshot, bufferSessionID: sessionID) else { return }
-        // Snapshot observers once per callback; mutations are serialized by the actor.
-        // If stopCapture() clears observers between the guard and the snapshot, late buffers are dropped by design.
-        let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
-        guard !observersSnapshot.isEmpty else { return }
+        // Snapshot flags and observers together to avoid TOCTOU during stopCapture().
+        let snapshot = (isRecording: isRecording,
+                        sessionID: observerSessionID,
+                        observers: bufferObservers.isEmpty ? [] : Array(bufferObservers.values))
+        guard Self.shouldProcessBuffer(isRecording: snapshot.isRecording,
+                                       observerSessionID: snapshot.sessionID,
+                                       bufferSessionID: sessionID) else { return }
+        guard !snapshot.observers.isEmpty else { return }
 
         // Counter updates are scheduled onto the capture actor (not the audio callback thread) to avoid hot-path locking.
         let decision = Self.advanceLoggingDecision(state: &bufferLogState)
@@ -305,11 +306,11 @@ actor AVAudioCaptureService {
         }
         if useBufferPool {
             guard let pooled = PooledAudioBuffer.makeShared(from: buffer, pool: bufferPool) else { return }
-            for observer in observersSnapshot {
+            for observer in snapshot.observers {
                 observer(pooled)
             }
         } else {
-            for observer in observersSnapshot {
+            for observer in snapshot.observers {
                 guard let copy = buffer.cloned() else { continue }
                 let pooled = PooledAudioBuffer(buffer: copy, release: {})
                 observer(pooled)

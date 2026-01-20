@@ -419,6 +419,7 @@ final class MeetingRecordingManager: ObservableObject {
             max: 7200,
             logger: logger
         )
+        precondition(speakerBucketWidthSeconds > 0, "speakerBucketWidthSeconds must be positive")
     }
     
     /// Start recording the meeting
@@ -880,8 +881,7 @@ extension MeetingRecordingManager {
             streamingObserverToken = await captureService.registerBufferObserver { [weak manager] buffer in
                 guard let manager else { return }
                 // Buffer provided by AVAudioCaptureService is already cloned per observer; forward off the main thread.
-                Task.detached(priority: .userInitiated) { [weak manager] in
-                    guard let manager else { return }
+                Task.detached(priority: .userInitiated) { [manager] in
                     await manager.streamAudio(buffer.buffer)
                 }
             }

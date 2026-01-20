@@ -66,11 +66,18 @@ final class TranscriptSearchIndex {
 
     func search(query: String, limit: Int, offset: Int) throws -> [URL] {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        // Basic tokenization with wildcard suffix to match partial words.
-        let sanitized = query
-            .replacingOccurrences(of: "\"", with: "\"\"")
+        // Allow only alphanumerics, spaces, underscores, and hyphens to avoid FTS operator injection.
+        let allowed = CharacterSet.alphanumerics
+            .union(.whitespacesAndNewlines)
+            .union(CharacterSet(charactersIn: "_-"))
+        let sanitizedScalars = query.unicodeScalars.map { scalar -> UnicodeScalar in
+            allowed.contains(scalar) ? scalar : " " as UnicodeScalar
+        }
+        let sanitized = String(String.UnicodeScalarView(sanitizedScalars))
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let token = sanitized.isEmpty ? "*" : "\(sanitized)*"
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        guard !sanitized.isEmpty else { return [] }
+        let token = "\"\(sanitized)\"*"
         let sql = """
         SELECT path FROM transcripts_fts
         WHERE transcripts_fts MATCH ?1
