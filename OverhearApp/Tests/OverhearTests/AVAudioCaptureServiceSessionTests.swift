@@ -39,5 +39,9 @@ final class AVAudioCaptureServiceSessionTests: XCTestCase {
             AVAudioCaptureService.backpressureDropDecision(pending: 64, max: 64),
             "Should drop when pending reaches the limit"
         )
+        XCTAssertTrue(
+            AVAudioCaptureService.backpressureDropDecision(pending: 128, max: 64),
+            "Should drop when pending exceeds the limit"
+        )
     }
 }

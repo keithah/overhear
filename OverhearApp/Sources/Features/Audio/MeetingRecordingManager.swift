@@ -71,7 +71,16 @@ final class MeetingRecordingManager: ObservableObject {
 
     private enum StreamingLimits {
         // Cap live segments more aggressively to limit memory for long meetings.
-        static let maxLiveSegments = 500
+        static let maxLiveSegments: Int = {
+            let raw = UserDefaults.standard.integer(forKey: "overhear.streaming.maxLiveSegments")
+            let defaultValue = 500
+            guard raw != 0 else { return defaultValue }
+            let clamped = min(max(raw, 100), 5_000)
+            if clamped != raw {
+                configLogger.warning("overhear.streaming.maxLiveSegments \(raw) clamped to \(clamped)")
+            }
+            return clamped
+        }()
     }
 
     // Diarization/spoken timeline is bounded to a 12-hour window to keep bucket maps from growing unbounded.
