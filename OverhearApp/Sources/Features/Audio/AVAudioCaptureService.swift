@@ -49,6 +49,13 @@ actor AVAudioCaptureService {
         let clamped = raw == 0 ? 64 : max(16, min(raw, 512))
         return clamped
     }()
+    private let pendingBufferBytesLock = OSAllocatedUnfairLock(initialState: 0)
+    private let maxPendingBufferBytes: Int = {
+        let raw = UserDefaults.standard.integer(forKey: "overhear.capture.maxPendingBufferBytes")
+        let defaultValue = 50_000_000 // ~50MB
+        guard raw > 0 else { return defaultValue }
+        return min(max(raw, 5_000_000), 200_000_000)
+    }()
     // Updated per capture start so late buffers from a prior session are ignored; guards TOCTOU on stopCapture.
     private var observerSessionID = UUID()
     private enum LogConstants {
@@ -280,9 +287,23 @@ actor AVAudioCaptureService {
             await log("notifyBufferObservers total=\(decision.total) recent=\(decision.recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)")
         }
         guard let sharedCopy = buffer.cloned() else { return }
+        let bufferSize = Int(sharedCopy.frameLength) * Int(sharedCopy.format.streamDescription.pointee.mBytesPerFrame)
+        let totalBytes = pendingBufferBytesLock.withLock { current in
+            let next = current + bufferSize
+            if next > maxPendingBufferBytes {
+                return -1
+            }
+            pendingBufferBytesLock.withLock { $0 += bufferSize }
+            return next
+        }
+        guard totalBytes != -1 else {
+            await log("Dropping buffer due to buffer memory cap (\(maxPendingBufferBytes) bytes)")
+            return
+        }
         for observer in observersSnapshot {
             observer(sharedCopy)
         }
+        pendingBufferBytesLock.withLock { $0 = max(0, $0 - bufferSize) }
     }
 
     private func resetBufferLogState() {
