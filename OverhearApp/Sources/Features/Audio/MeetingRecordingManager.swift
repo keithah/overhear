@@ -124,8 +124,8 @@ final class MeetingRecordingManager: ObservableObject {
     @Published var notesSaveState: NotesSaveState = .idle
     @Published var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
-    var pendingNotes: String?
-    var isNotesSaveRunning = false
+    @MainActor var pendingNotes: String?
+    @MainActor var isNotesSaveRunning = false
     // Generation counters wrap via &+= so extremely long uptimes do not trap on overflow; comparisons only rely on equality.
     var notesHealthGeneration: Int = 0
     private var originalFileLogSetting: Bool?

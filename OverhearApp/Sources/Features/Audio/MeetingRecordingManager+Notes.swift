@@ -384,16 +384,16 @@ extension MeetingRecordingManager {
             guard let self, generation == self.notesHealthGeneration else {
                 return (false, nil as String?)
             }
-            guard pendingNotes != nil else { return (false, nil) }
+            guard let pending = pendingNotes else { return (false, nil) }
             guard Self.shouldRetryNotes(
-                pendingNotes: pendingNotes,
+                pendingNotes: pending,
                 state: notesSaveState,
                 hasRetryTask: notesRetryTask != nil,
                 hasSaveTask: isNotesSaveRunning
             ) else {
                 return (false, nil)
             }
-            return (true, pendingNotes ?? "")
+            return (true, pending)
         }
     }
 }
