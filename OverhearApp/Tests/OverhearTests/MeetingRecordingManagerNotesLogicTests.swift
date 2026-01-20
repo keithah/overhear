@@ -40,7 +40,64 @@ final class MeetingRecordingManagerNotesLogicTests: XCTestCase {
             maxElapsedSeconds: 100,
             maxIterations: 1000
         )
-        XCTAssertFalse(result.0)
-        XCTAssertNotNil(result.1)
+        switch result {
+        case .continue:
+            XCTFail("Expected health check to stop when iterations exceed limit")
+        case .stop(let reason):
+            XCTAssertNotNil(reason)
+        }
+    }
+
+    func testNotesCheckpointStorageRoundTrip() {
+        let key = "test.notes.checkpoint.roundtrip"
+        NotesCheckpointStorage.resetForTests(key: key)
+        XCTAssertNil(NotesCheckpointStorage.load(key: key))
+        NotesCheckpointStorage.save("draft-notes", key: key)
+        XCTAssertEqual(NotesCheckpointStorage.load(key: key), "draft-notes")
+        NotesCheckpointStorage.clear(key: key)
+        XCTAssertNil(NotesCheckpointStorage.load(key: key))
+    }
+
+    func testNotesHealthGenerationWrapsOnRestart() async {
+        guard let manager = try? await MainActor.run(body: {
+            try MeetingRecordingManager(meetingID: "wrap-test")
+        }) else {
+            return XCTFail("Failed to create MeetingRecordingManager")
+        }
+        await MainActor.run {
+            manager.notesHealthGeneration = Int.max
+        }
+        await manager.startNotesHealthCheck()
+        let generation = await MainActor.run { manager.notesHealthGeneration }
+        XCTAssertNotEqual(generation, Int.max)
+        let task = await MainActor.run { () -> Task<Void, Never>? in
+            let task = manager.notesHealthCheckTask
+            task?.cancel()
+            return task
+        }
+        await task?.value
+        await MainActor.run {
+            manager.notesHealthCheckTask = nil
+        }
+    }
+
+    func testPlanNotesRetryRequiresGenerationMatch() async {
+        guard let manager = try? await MainActor.run(body: {
+            try MeetingRecordingManager(meetingID: "retry-gen-test")
+        }) else {
+            return XCTFail("Failed to create MeetingRecordingManager")
+        }
+
+        let mismatchSnapshot = NotesHealthSnapshot(
+            status: .capturing,
+            transcriptID: "tid",
+            pendingNotes: "draft",
+            saveState: .failed("err"),
+            generationMatches: false
+        )
+
+        let plan = await manager.planNotesRetryIfNeeded(snapshot: mismatchSnapshot)
+        XCTAssertFalse(plan.shouldRetry, "Retry should not proceed when generation no longer matches")
+        XCTAssertNil(plan.notes)
     }
 }

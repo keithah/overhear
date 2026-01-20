@@ -69,7 +69,7 @@ final class BufferLoggingTests: XCTestCase {
         XCTAssertFalse(second, "Second instance should be blocked by lock")
 
         await MainActor.run {
-            delegate1.applicationWillTerminate(Notification(name: Notification.Name("test")))
+            delegate1.releaseInstanceLockForTests()
         }
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 // Notes persistence and health-check logic is split into this extension to keep the main
 // recording manager leaner and make the state machine testable in isolation. This file uses
@@ -90,7 +91,7 @@ extension MeetingRecordingManager {
                 )
             }
             FileLogger.log(category: "MeetingRecordingManager", message: "Persisted notes for \(transcriptID)")
-            let checkpoint = UserDefaults.standard.string(forKey: pendingNotesCheckpointKey)
+            let checkpoint = NotesCheckpointStorage.load(key: pendingNotesCheckpointKey)
             if pendingNotes == nil || pendingNotes == notes || checkpoint == notes {
                 pendingNotes = nil
                 lastNotesSavedAt = Date()
@@ -190,18 +191,7 @@ extension MeetingRecordingManager {
                     maxIterations: bounds.maxIterations
                 )
             }
-            switch decision {
-            case .continue:
-                try? await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
-                if Task.isCancelled { return }
-                if verboseNotesLogging {
-                    FileLogger.log(
-                        category: "MeetingRecordingManager",
-                        message: "Notes health iteration \(iterations); elapsed=\(String(format: \"%.1f\", elapsed))s"
-                    )
-                }
-                continue
-            case .stop(let reason):
+            if case .stop(let reason) = decision {
                 if let reason, snapshot.pendingNotes != nil {
                     await MainActor.run { [weak self] in
                         guard let self, generation == self.notesHealthGeneration else { return }
@@ -209,6 +199,13 @@ extension MeetingRecordingManager {
                     }
                 }
                 return
+            }
+
+            if verboseNotesLogging {
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Notes health iteration \(iterations); elapsed=\(String(format: "%.1f", elapsed))s"
+                )
             }
 
             let isActive: Bool = {
@@ -258,7 +255,7 @@ extension MeetingRecordingManager {
             if snapshot.saveState == NotesSaveState.idle, snapshot.pendingNotes != nil {
                 healthRetries = 0
             }
-            let retryPlan = await planNotesRetryIfNeeded(generation: generation)
+            let retryPlan = await planNotesRetryIfNeeded(snapshot: snapshot)
 
             if retryPlan.shouldRetry {
                 healthRetries += 1
@@ -284,8 +281,9 @@ extension MeetingRecordingManager {
                 }
                 await MainActor.run { [weak self] in
                     guard let self, generation == self.notesHealthGeneration else { return }
-                    let shouldResetRetries = (snapshot.pendingNotes == nil) && (snapshot.saveState == NotesSaveState.idle)
-                    if shouldResetRetries {
+                    let currentPending = pendingNotes
+                    let currentSaveState = notesSaveState
+                    if currentPending == nil && currentSaveState == .idle {
                         healthRetries = 0
                     }
                 }
@@ -300,6 +298,7 @@ extension MeetingRecordingManager {
 
     private func persistPendingNotesCheckpoint(_ notes: String) {
         guard MeetingRecordingManager.allowPendingNotesCheckpoint else {
+            NotesCheckpointStorage.clear(key: pendingNotesCheckpointKey)
             if !MeetingRecordingManager.checkpointWarningLogged {
                 MeetingRecordingManager.checkpointWarningLogged = true
                 FileLogger.log(
@@ -309,13 +308,73 @@ extension MeetingRecordingManager {
             }
             return
         }
-        // Stored unencrypted as a crash-recovery fallback; contains only the latest pending notes.
-        UserDefaults.standard.set(notes, forKey: pendingNotesCheckpointKey)
+        if !MeetingRecordingManager.checkpointWarningLogged {
+            MeetingRecordingManager.checkpointWarningLogged = true
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Persisting pending notes checkpoint (Keychain, AfterFirstUnlock); disable via OVERHEAR_DISABLE_NOTES_CHECKPOINT=1 or enable/disable via UserDefaults (overhear.enableNotesCheckpoint)"
+            )
+        }
+        NotesCheckpointStorage.save(notes, key: pendingNotesCheckpointKey)
     }
 
     private func clearPendingNotesCheckpoint() {
-        UserDefaults.standard.removeObject(forKey: pendingNotesCheckpointKey)
+        NotesCheckpointStorage.clear(key: pendingNotesCheckpointKey)
     }
+}
+
+enum NotesCheckpointStorage {
+    private static let service = "com.overhear.notes.checkpoint"
+
+    static func save(_ notes: String, key: String) {
+        guard let data = notes.data(using: .utf8) else { return }
+        let baseQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+        ]
+        SecItemDelete(baseQuery as CFDictionary)
+        var query = baseQuery
+        query[kSecValueData as String] = data
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status != errSecSuccess {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Failed to save pending notes checkpoint (status \(status))"
+            )
+        }
+    }
+
+    static func load(key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess else { return nil }
+        guard let data = item as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func clear(key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    #if DEBUG
+    static func resetForTests(key: String) {
+        clear(key: key)
+    }
+    #endif
 }
 
 // MARK: - Notes health helpers
@@ -386,15 +445,15 @@ extension MeetingRecordingManager {
         return .continue
     }
 
-    nonisolated func planNotesRetryIfNeeded(generation: Int) async -> (shouldRetry: Bool, notes: String?) {
+    nonisolated func planNotesRetryIfNeeded(snapshot: NotesHealthSnapshot) async -> (shouldRetry: Bool, notes: String?) {
         await MainActor.run { [weak self] in
-            guard let self, generation == self.notesHealthGeneration else {
+            guard let self, snapshot.generationMatches else {
                 return (false, nil as String?)
             }
-            guard let pending = pendingNotes else { return (false, nil) }
+            guard let pending = snapshot.pendingNotes else { return (false, nil) }
             guard Self.shouldRetryNotes(
                 pendingNotes: pending,
-                state: notesSaveState,
+                state: snapshot.saveState,
                 hasRetryTask: notesRetryTask != nil,
                 hasSaveTask: isNotesSaveRunning
             ) else {
@@ -411,9 +470,11 @@ extension MeetingRecordingManager {
 actor NotesSaveQueue {
     private var pendingOperation: (@MainActor () async -> Void)?
     private var isDraining = false
+    private var enqueuedCount = 0
 
     func enqueue(_ operation: @escaping @MainActor () async -> Void) async {
         pendingOperation = operation
+        enqueuedCount &+= 1
         guard !isDraining else { return }
         isDraining = true
         while let current = pendingOperation {
@@ -422,4 +483,8 @@ actor NotesSaveQueue {
         }
         isDraining = false
     }
+
+    #if DEBUG
+    func _testEnqueuedCount() -> Int { enqueuedCount }
+    #endif
 }

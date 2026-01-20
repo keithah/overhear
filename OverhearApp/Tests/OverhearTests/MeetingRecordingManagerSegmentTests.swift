@@ -41,8 +41,8 @@ final class MeetingRecordingManagerSegmentTests: XCTestCase {
 
         let trimmed = MeetingRecordingManager.trimToLiveSegmentLimit(segments)
 
-        XCTAssertEqual(trimmed.count, 1_000)
-        XCTAssertEqual(trimmed.first?.text, "segment-50")
+        XCTAssertEqual(trimmed.count, 500)
+        XCTAssertEqual(trimmed.first?.text, "segment-550")
         XCTAssertEqual(trimmed.last?.text, "segment-1049")
     }
 }

@@ -13,8 +13,30 @@ final class CalendarService: ObservableObject {
     private static var didOpenPrivacySettings = false
     private var didShowPermissionAlert = false
     private var accessRequestTask: Task<Bool, Never>?
+    private let forceAuthorizeOverride: Bool = {
+        ProcessInfo.processInfo.environment["OVERHEAR_FORCE_CALENDAR_AUTH"] == "1"
+    }()
+    private var persistedGrant: Bool = {
+        UserDefaults.standard.bool(forKey: "overhear.calendar.grantedOnce")
+    }()
 
     func requestAccessIfNeeded(retryCount: Int = 0) async -> Bool {
+        if forceAuthorizeOverride {
+            log("Force-authorizing calendar access via OVERHEAR_FORCE_CALENDAR_AUTH")
+            authorizationStatus = .authorized
+            return true
+        }
+
+        if persistedGrant {
+            if #available(macOS 14.0, *) {
+                authorizationStatus = .fullAccess
+            } else {
+                authorizationStatus = .authorized
+            }
+            log("Using persisted granted state; skipping prompt")
+            return true
+        }
+
         let status = EKEventStore.authorizationStatus(for: .event)
         authorizationStatus = status
         log("Authorization status on entry: \(status.rawValue)")
@@ -58,6 +80,16 @@ final class CalendarService: ObservableObject {
             log("Authorization unsettled and prompt did not resolve (retry \(retryCount + 1))")
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             return await requestAccessIfNeeded(retryCount: retryCount + 1)
+        }
+
+        if result {
+            // Refresh status after the request so we honor the system's decision.
+            authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+            persistedGrant = true
+            UserDefaults.standard.set(true, forKey: "overhear.calendar.grantedOnce")
+            log("Access granted; updated authorizationStatus to \(authorizationStatus.rawValue)")
+        } else if authorizationStatus == .notDetermined {
+            log("Access result=false but status still notDetermined; will not retry immediately to avoid prompt loops")
         }
 
         return result
@@ -234,7 +266,16 @@ final class CalendarService: ObservableObject {
                 granted = granted || writeGranted
             }
         }
-        
+
+        // If any path granted access, lock it in to avoid repeated prompts even if EventKit reports transitional status.
+        if granted {
+            authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+            persistedGrant = true
+            UserDefaults.standard.set(true, forKey: "overhear.calendar.grantedOnce")
+            log("Access granted; treating status as \(authorizationStatus.rawValue)")
+            return true
+        }
+
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         log("Authorization status after request: \(authorizationStatus.rawValue)")
         if !granted {

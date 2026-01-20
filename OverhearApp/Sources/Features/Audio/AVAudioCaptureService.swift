@@ -42,33 +42,53 @@ actor AVAudioCaptureService {
     // Actor isolation keeps buffer logging counters serialized without additional locking.
     private var bufferLogState = BufferLogState()
     private var pendingBufferNotifications = 0
-    private let pendingBufferLock = OSAllocatedUnfairLock(initialState: ())
-    // Default to 64 pending buffers (~3s at 2048 frames/44.1kHz); configurable for debugging.
+    // Default to 64 pending buffers (~3s at 2048 frames/44.1kHz); configurable via UserDefaults overhear.capture.maxPendingBuffers (clamped 16–512).
     private let maxPendingBufferNotifications: Int = {
         let raw = UserDefaults.standard.integer(forKey: "overhear.capture.maxPendingBuffers")
         let clamped = raw == 0 ? 64 : max(16, min(raw, 512))
         return clamped
     }()
     private var bufferPool = AudioBufferPool()
+    private var pendingBufferBytes = 0
+    private let maxPendingBufferBytes: Int = {
+        let raw = UserDefaults.standard.integer(forKey: "overhear.capture.maxPendingBufferBytes")
+        let defaultCap = 50_000_000 // ~50MB
+        let resolved = raw == 0 ? defaultCap : raw
+        return max(5_000_000, min(resolved, 500_000_000)) // 5MB–500MB
+    }()
+    // Debug counters/flags for observability.
+    private var droppedForBackpressure = 0
+    private var droppedForMemory = 0
+    private let logDrops: Bool = {
+        ProcessInfo.processInfo.environment["OVERHEAR_DEBUG_BUFFER_DROPS"] == "1"
+            || UserDefaults.standard.bool(forKey: "overhear.debugBufferDrops")
+    }()
+    private let useBufferPool: Bool = {
+        let env = ProcessInfo.processInfo.environment["OVERHEAR_DISABLE_BUFFER_POOL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if env == "1" || env?.lowercased() == "true" {
+            return false
+        }
+        return !UserDefaults.standard.bool(forKey: "overhear.capture.disableBufferPool")
+    }()
     // Updated per capture start so late buffers from a prior session are ignored; guards TOCTOU on stopCapture.
     private var observerSessionID = UUID()
     private enum LogConstants {
-        static let initialBufferLogs: Int = {
+        static var initialBufferLogs: Int {
             let raw = UserDefaults.standard.integer(forKey: "overhear.capture.initialBufferLogs")
             let clamped = min(max(raw, 1), 100)
             return clamped > 0 ? clamped : 5
-        }()
-        static let buffersPerLog: Int = {
+        }
+        static var buffersPerLog: Int {
             let raw = UserDefaults.standard.integer(forKey: "overhear.capture.buffersPerLog")
             let clamped = min(max(raw, 10), 500)
             return clamped > 0 ? clamped : 50
-        }()
+        }
         // Extra defensive cap to avoid unbounded counters in long sessions.
         static let bufferCountRolloverCap: UInt64 = 10_000_000
     }
 
     /// Computes whether a buffer notification should be logged while updating counters in-place.
-    @MainActor
     static func advanceLoggingDecision(state: inout BufferLogState) -> BufferLogDecision {
         let perLogInterval = UInt64(LogConstants.buffersPerLog)
         state.total &+= 1
@@ -84,6 +104,7 @@ actor AVAudioCaptureService {
             // Keep the initial-burst flag set so rollover doesn't repeat the early log flood.
             state.didFinishInitialBurst = true
             // The check is on the pre-incremented value; rollover will occur on the next advance call after hitting the cap.
+            // Rollover skipping a single periodic log is acceptable to avoid overflow/reset storms.
         }
 
         let initialLimit = UInt64(LogConstants.initialBufferLogs)
@@ -282,15 +303,23 @@ actor AVAudioCaptureService {
         if decision.shouldLog {
             await log("notifyBufferObservers total=\(decision.total) recent=\(decision.recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)")
         }
-        guard let pooled = PooledAudioBuffer.makeShared(from: buffer, pool: &bufferPool) else { return }
-        for observer in observersSnapshot {
-            observer(pooled)
+        if useBufferPool {
+            guard let pooled = PooledAudioBuffer.makeShared(from: buffer, pool: bufferPool) else { return }
+            for observer in observersSnapshot {
+                observer(pooled)
+            }
+        } else {
+            for observer in observersSnapshot {
+                guard let copy = buffer.cloned() else { continue }
+                let pooled = PooledAudioBuffer(buffer: copy, release: {})
+                observer(pooled)
+            }
         }
     }
 
     private func resetBufferLogState() {
         bufferLogState = BufferLogState()
-        let pending = pendingBufferLock.withLock { pendingBufferNotifications }
+        let pending = pendingBufferNotifications
         if pending == 0 {
             return
         }
@@ -302,11 +331,11 @@ actor AVAudioCaptureService {
     private func waitForInFlightBuffers() async {
         var attempts = 0
         // Give detached buffer handlers a short window to complete before clearing observers.
-        while pendingBufferLock.withLock({ pendingBufferNotifications }) > 0, attempts < 50 {
+        while pendingBufferNotifications > 0, attempts < 50 {
             attempts += 1
             try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
         }
-        let remaining = pendingBufferLock.withLock { pendingBufferNotifications }
+        let remaining = pendingBufferNotifications
         if remaining > 0 {
             await log("Pending buffer notifications still in flight during finalize (\(remaining))")
         }
@@ -314,20 +343,17 @@ actor AVAudioCaptureService {
 
     private func enqueueBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID, sizeBytes: Int) async {
         // Memory backpressure guard: drop if total pending bytes exceed cap.
-        let totalBytes = pendingBufferBytesLock.withLock { current -> Int in
-            let next = current + sizeBytes
-            if next > maxPendingBufferBytes {
-                return -1
+        let nextBytes = pendingBufferBytes + sizeBytes
+        guard nextBytes <= maxPendingBufferBytes else {
+            droppedForMemory &+= 1
+            if logDrops {
+                await log("Dropping buffer due to buffer memory cap (\(maxPendingBufferBytes) bytes); pendingBytes=\(pendingBufferBytes) droppedForMemory=\(droppedForMemory)")
             }
-            pendingBufferBytesLock.withLock { $0 += sizeBytes }
-            return next
-        }
-        guard totalBytes != -1 else {
-            await log("Dropping buffer due to buffer memory cap (\(maxPendingBufferBytes) bytes)")
             return
         }
+        pendingBufferBytes = nextBytes
         await processIncomingBuffer(buffer, sessionID: sessionID, sizeBytes: sizeBytes)
-        pendingBufferBytesLock.withLock { $0 = max(0, $0 - sizeBytes) }
+        pendingBufferBytes = max(0, pendingBufferBytes - sizeBytes)
     }
 
     private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID, sizeBytes: Int) async {
@@ -337,22 +363,24 @@ actor AVAudioCaptureService {
         guard shouldProcess else {
             return
         }
-        let pendingCount = pendingBufferLock.withLock { pendingBufferNotifications }
+        let pendingCount = pendingBufferNotifications
         guard !Self.backpressureDropDecision(pending: pendingCount, max: maxPendingBufferNotifications) else {
-            await log("Dropping buffer due to observer backlog (\(pendingCount) pending)")
+            droppedForBackpressure &+= 1
+            if logDrops {
+                await log("Dropping buffer due to observer backlog (\(pendingCount) pending >= max \(maxPendingBufferNotifications)); pendingBytes=\(pendingBufferBytes) droppedForBackpressure=\(droppedForBackpressure)")
+            }
             return
         }
-        pendingBufferLock.withLock {
-            pendingBufferNotifications += 1
-        }
+        pendingBufferNotifications += 1
         defer {
-            pendingBufferLock.withLock {
-                if pendingBufferNotifications > 0 {
-                    pendingBufferNotifications -= 1
-                } else {
-                    assertionFailure("pendingBufferNotifications underflowed; check backpressure logic")
-                    pendingBufferNotifications = 0
-                }
+            if pendingBufferNotifications > 0 {
+                pendingBufferNotifications -= 1
+            } else {
+                FileLogger.log(
+                    category: "AVAudioCaptureService",
+                    message: "pendingBufferNotifications underflowed; correcting to 0 (check backpressure logic)"
+                )
+                pendingBufferNotifications = 0
             }
         }
         guard let file else {
@@ -382,6 +410,53 @@ actor AVAudioCaptureService {
     }
 
 }
+
+#if DEBUG
+// MARK: - Test hooks
+
+extension AVAudioCaptureService {
+    func _testConfigureRecordingState(recording: Bool, sessionID: UUID) {
+        isRecording = recording
+        observerSessionID = sessionID
+    }
+
+    func _testSetRecordingFlag(_ recording: Bool) {
+        isRecording = recording
+    }
+
+    func _testSetOutputURL(_ url: URL) {
+        outputURL = url
+    }
+
+    func _testObserverCount() -> Int {
+        bufferObservers.count
+    }
+
+    func _testNotifyObservers(buffer: AVAudioPCMBuffer, sessionID: UUID) async {
+        await notifyBufferObservers(buffer: buffer, sessionID: sessionID)
+    }
+
+    func _testClearObservers() {
+        bufferObservers.removeAll()
+    }
+
+    func _testSetPendingBufferCount(_ count: Int) {
+        pendingBufferNotifications = count
+    }
+
+    func _testPendingBufferCount() -> Int {
+        pendingBufferNotifications
+    }
+
+    func _testWaitForInFlightBuffers() async {
+        await waitForInFlightBuffers()
+    }
+
+    func _testFinalizeRecording(url: URL, stoppedEarly: Bool) async {
+        await finalizeRecording(url: url, stoppedEarly: stoppedEarly)
+    }
+}
+#endif
 
 // SAFETY: `AVAudioPCMBuffer` is treated as `@unchecked Sendable` so it can be
 // stored and passed between actors inside the capture pipeline. This is safe

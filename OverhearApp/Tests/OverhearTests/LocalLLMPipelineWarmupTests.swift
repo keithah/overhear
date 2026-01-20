@@ -108,4 +108,22 @@ final class LocalLLMPipelineWarmupTests: XCTestCase {
         let calls = await client.warmupCalls
         XCTAssertEqual(calls, 1, "Warmup should not be restarted unnecessarily after cancellation")
     }
+
+    func testWarmupGenerationWrapsAndContinues() async {
+        let client = CountingMLXClient()
+        let pipeline = LocalLLMPipeline(
+            client: client,
+            warmupTimeout: 2,
+            failureCooldown: 1,
+            downloadWatchdogDelay: 0.1
+        )
+
+        await pipeline._testSetWarmupGeneration(Int.max)
+        let outcome = await pipeline.warmup()
+        XCTAssertEqual(outcome, .completed)
+        let generationAfterWrap = await pipeline._testWarmupGeneration()
+        XCTAssertNotEqual(generationAfterWrap, Int.max)
+        let calls = await client.warmupCalls
+        XCTAssertEqual(calls, 1)
+    }
 }

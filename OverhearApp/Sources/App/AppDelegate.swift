@@ -4,6 +4,7 @@ import Foundation
 import SwiftUI
 import Combine
 import Darwin
+import OSLog
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -13,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notificationDeduper: NotificationDeduper!
     private var cancellables: Set<AnyCancellable> = []
     private var instanceLockFD: Int32?
+    private let lockLogger = Logger(subsystem: "com.overhear.app", category: "AppDelegate.Lock")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !isRunningTests else {
@@ -104,6 +106,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        if isRunningTests {
+            if let fd = instanceLockFD {
+                flock(fd, LOCK_UN)
+                close(fd)
+            }
+            return
+        }
         let group = DispatchGroup()
         group.enter()
         Task { @MainActor [weak self] in
@@ -180,18 +189,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard fd != -1 else { return true }
         // Ensure the lock fd is not inherited by child processes.
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+        let pid = getpid()
         var locked = false
+        var retainFD = false
         defer {
-            if locked {
+            if locked && !retainFD {
                 flock(fd, LOCK_UN)
+            }
+            if !retainFD {
                 close(fd)
             }
         }
         if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            let holderPID = readLockPID(from: lockURL)
+            if let holderPID, !isProcessRunning(pid: holderPID) {
+                lockLogger.notice("Detected stale instance lock for pid \(holderPID); attempting to reclaim")
+                if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+                    locked = true
+                    retainFD = true
+                    instanceLockFD = fd
+                    writePID(pid, to: fd)
+                    return true
+                }
+            } else if let holderPID {
+                lockLogger.error("Another Overhear instance is already running (pid \(holderPID))")
+            } else {
+                lockLogger.error("Another Overhear instance is already running")
+            }
             return false
         }
         locked = true
+        retainFD = true
         instanceLockFD = fd
+        writePID(pid, to: fd)
         return true
     }
 }
@@ -228,8 +258,44 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
 @MainActor
 private extension AppDelegate {
-    // Additional helpers can live here
+    func writePID(_ pid: Int32, to fd: Int32) {
+        let data = "\(pid)\n".data(using: .utf8) ?? Data()
+        _ = ftruncate(fd, 0)
+        _ = lseek(fd, 0, SEEK_SET)
+        data.withUnsafeBytes { ptr in
+            guard let base = ptr.baseAddress else { return }
+            _ = write(fd, base, ptr.count)
+        }
+        _ = fsync(fd)
+    }
+
+    func readLockPID(from url: URL) -> Int32? {
+        guard let contents = try? String(contentsOf: url).trimmingCharacters(in: .whitespacesAndNewlines),
+              let value = Int32(contents) else {
+            return nil
+        }
+        return value
+    }
+
+    func isProcessRunning(pid: Int32) -> Bool {
+        let result = kill(pid, 0)
+        if result == 0 { return true }
+        return errno == EPERM
+    }
 }
+
+#if DEBUG
+@MainActor
+extension AppDelegate {
+    func releaseInstanceLockForTests() {
+        if let fd = instanceLockFD {
+            flock(fd, LOCK_UN)
+            close(fd)
+            instanceLockFD = nil
+        }
+    }
+}
+#endif
 
 actor NotificationDeduper {
     private var handled: Set<String> = []
