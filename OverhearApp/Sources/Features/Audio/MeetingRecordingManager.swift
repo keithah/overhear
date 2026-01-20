@@ -874,6 +874,7 @@ extension MeetingRecordingManager {
         await startLiveStreaming()
     }
 
+    @MainActor
     func stopLiveStreaming() async {
         if let pending = streamingHypothesis, !pending.text.isEmpty {
             let confirmed = LiveTranscriptSegment(
@@ -914,6 +915,7 @@ extension MeetingRecordingManager {
         )
     }
 
+    @MainActor
     func startStreamingMonitor() async {
         streamingMonitorGeneration &+= 1
         let generation = streamingMonitorGeneration
