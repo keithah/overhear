@@ -326,6 +326,7 @@ struct NotesHealthSnapshot {
     let pendingNotes: String?
     let saveState: MeetingRecordingManager.NotesSaveState
     let generationMatches: Bool
+    let snapshotDate: Date = Date()
 }
 
 private struct NotesHealthBounds {
@@ -348,12 +349,18 @@ extension MeetingRecordingManager {
                     generationMatches: false
                 )
             }
+            // Capture all MainActor state atomically to avoid TOCTOU between fields.
+            let currentStatus = status
+            let currentTranscriptID = transcriptID
+            let currentPendingNotes = pendingNotes
+            let currentSaveState = notesSaveState
+            let generationMatches = generation == notesHealthGeneration
             return NotesHealthSnapshot(
-                status: status,
-                transcriptID: transcriptID,
-                pendingNotes: pendingNotes,
-                saveState: notesSaveState,
-                generationMatches: generation == notesHealthGeneration
+                status: currentStatus,
+                transcriptID: currentTranscriptID,
+                pendingNotes: currentPendingNotes,
+                saveState: currentSaveState,
+                generationMatches: generationMatches
             )
         }
     }
