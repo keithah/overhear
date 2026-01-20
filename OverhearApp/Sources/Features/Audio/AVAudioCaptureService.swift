@@ -76,6 +76,7 @@ actor AVAudioCaptureService {
             state.sinceLast = 0
             // Keep the initial-burst flag set so rollover doesn't repeat the early log flood.
             state.didFinishInitialBurst = true
+            // The check is on the pre-incremented value; rollover will occur on the next advance call after hitting the cap.
         }
 
         let initialLimit = UInt64(LogConstants.initialBufferLogs)

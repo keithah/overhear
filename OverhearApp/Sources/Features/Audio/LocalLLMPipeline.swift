@@ -72,6 +72,7 @@ actor LocalLLMPipeline {
     private var downloadStartAt: Date?
     private var lastReadyAt: Date?
     private var lastWarmupDuration: TimeInterval?
+    private var hasArmedDownloadWatchdog = false
     private var modelID: String {
         MLXPreferences.modelID()
     }
@@ -156,6 +157,7 @@ actor LocalLLMPipeline {
         downloadWatchTask?.cancel()
         await downloadWatchTask?.value
         downloadWatchTask = nil
+        hasArmedDownloadWatchdog = false
         if downloadStartAt == nil {
             downloadStartAt = Date()
         }
@@ -218,6 +220,9 @@ actor LocalLLMPipeline {
         if downloadStartAt == nil {
             downloadStartAt = Date()
         }
+        if progress < 0.999 {
+            hasArmedDownloadWatchdog = false
+        }
         notifyStateChanged()
         let bucket = min(10, max(0, Int((progress * 100).rounded(.towardZero) / 10)))
         if bucket != lastProgressLogBucket {
@@ -226,7 +231,7 @@ actor LocalLLMPipeline {
         }
 
         // Watchdog: if we reach 100% download but never transition to ready, auto-promote after a short delay.
-        if progress >= 0.999 {
+        if progress >= 0.999 && !hasArmedDownloadWatchdog {
             // Only arm one watchdog per generation.
             guard downloadWatchGeneration != generation else { return }
             downloadWatchTask?.cancel()
@@ -237,6 +242,7 @@ actor LocalLLMPipeline {
                 try? await Task.sleep(nanoseconds: sanitizedNanoseconds(from: watchdogDelay))
                 await self?.handleDownloadWatchdog(generation: generation)
             }
+            hasArmedDownloadWatchdog = true
         }
     }
 
