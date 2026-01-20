@@ -112,6 +112,15 @@ final class MeetingRecordingManager: ObservableObject {
     private var fileLogTemporarilyEnabled = false
     var notesRetryTask: Task<Void, Never>?
     var notesRetryAttempts = 0
+    private static let allowPendingNotesCheckpoint: Bool = {
+        let env = ProcessInfo.processInfo.environment["OVERHEAR_DISABLE_NOTES_CHECKPOINT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if env == "1" || env?.lowercased() == "true" {
+            return false
+        }
+        return !UserDefaults.standard.bool(forKey: "overhear.disableNotesCheckpoint")
+    }()
+    private static var checkpointWarningLogged = false
     fileprivate let pendingNotesCheckpointKey = "overhear.pendingNotesCheckpoint"
     let maxNotesRetryAttempts: Int
     var notesHealthCheckTask: Task<Void, Never>?

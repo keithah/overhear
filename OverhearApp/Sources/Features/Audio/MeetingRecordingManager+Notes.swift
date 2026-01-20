@@ -284,7 +284,8 @@ extension MeetingRecordingManager {
                 }
                 await MainActor.run { [weak self] in
                     guard let self, generation == self.notesHealthGeneration else { return }
-                    if pendingNotes == nil && notesSaveState == NotesSaveState.idle {
+                    let shouldResetRetries = (pendingNotes == nil) && (notesSaveState == NotesSaveState.idle)
+                    if shouldResetRetries {
                         healthRetries = 0
                     }
                 }
@@ -298,6 +299,17 @@ extension MeetingRecordingManager {
     }
 
     private func persistPendingNotesCheckpoint(_ notes: String) {
+        guard MeetingRecordingManager.allowPendingNotesCheckpoint else {
+            if !MeetingRecordingManager.checkpointWarningLogged {
+                MeetingRecordingManager.checkpointWarningLogged = true
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Pending notes checkpoint disabled (env/UserDefaults); crash recovery may lose unsaved notes"
+                )
+            }
+            return
+        }
+        // Stored unencrypted as a crash-recovery fallback; contains only the latest pending notes.
         UserDefaults.standard.set(notes, forKey: pendingNotesCheckpointKey)
     }
 

@@ -83,6 +83,8 @@ actor TranscriptStore {
         if requested {
             return (false, reason, requested, validContext)
         }
+#else
+        // DEBUG builds allow bypass for local/testing convenience; constrained to CI/test contexts below.
 #endif
         if requested && !validContext {
             return (false, reason, requested, validContext)
