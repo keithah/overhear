@@ -176,7 +176,7 @@ final class AVAudioCaptureServiceSessionTests: XCTestCase {
                     await service._testNotifyObservers(buffer: buffer, sessionID: sessionID)
                 }
             }
-            group.waitForAll()
+            await group.waitForAll()
         }
         let pending = await service._testPendingBufferCount()
         XCTAssertLessThanOrEqual(pending, 64, "Pending buffer count should not exceed max after stress")
