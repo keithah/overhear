@@ -68,6 +68,7 @@ actor AVAudioCaptureService {
     }
 
     /// Computes whether a buffer notification should be logged while updating counters in-place.
+    @MainActor
     static func advanceLoggingDecision(state: inout BufferLogState) -> BufferLogDecision {
         let perLogInterval = UInt64(LogConstants.buffersPerLog)
         state.total &+= 1

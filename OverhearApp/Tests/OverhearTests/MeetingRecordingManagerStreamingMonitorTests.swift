@@ -107,5 +107,18 @@ final class MeetingRecordingManagerStreamingMonitorTests: XCTestCase {
         XCTAssertFalse(evaluation?.shouldContinueMonitoring ?? true)
         XCTAssertEqual(evaluation?.logMessage, "Streaming monitor exceeded max duration (10s); stopping monitor")
     }
+
+    func testMonitorCancelsGracefully() async {
+        let manager = try? MeetingRecordingManager(meetingID: "id")
+        await manager?.startStreamingMonitor()
+        manager?.streamingMonitorTask?.cancel()
+        let result = await manager?.streamingMonitorTask?.result
+        switch result {
+        case .success, .none:
+            break
+        case .failure(let error):
+            XCTFail("Streaming monitor should cancel without error: \(error)")
+        }
+    }
 }
 #endif
