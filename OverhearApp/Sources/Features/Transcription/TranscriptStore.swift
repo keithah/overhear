@@ -229,49 +229,56 @@ actor TranscriptStore {
             at: storageDirectory,
             includingPropertiesForKeys: nil
         ).filter { $0.pathExtension == "json" }
-        
-        var results: [StoredTranscript] = []
-        var processedCount = 0
-        var skippedCount = 0
-        
         // Sort newest-first so we can satisfy limit+offset quickly without scanning all files.
         let sortedFileURLs = fileURLs.sorted { lhs, rhs in
             let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             return lhsDate > rhsDate
         }
-        
-        for fileURL in sortedFileURLs {
-            // Early exit once we've accumulated the requested window (offset + limit).
-            if processedCount >= offset + limit {
-                break
-            }
-            
-            do {
-                let data = try await Task.detached(priority: .utility) {
-                    try Data(contentsOf: fileURL)
-                }.value
-                let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
-                
-                if transcript.title.lowercased().contains(lowerQuery) ||
-                   transcript.transcript.lowercased().contains(lowerQuery) {
-                    processedCount += 1
-                    
-                    // Handle offset by skipping results
-                    if processedCount > offset {
-                        results.append(transcript)
-                    } else {
-                        skippedCount += 1
+
+        // Process in parallel with a small concurrency cap to improve throughput on large collections.
+        let maxConcurrent = 4
+        var results: [StoredTranscript] = []
+        var queued = 0
+        try await withThrowingTaskGroup(of: StoredTranscript?.self) { group in
+            var iterator = sortedFileURLs.makeIterator()
+
+            func enqueueNext() {
+                guard let url = iterator.next(), queued < offset + limit else { return }
+                queued += 1
+                group.addTask {
+                    do {
+                        let data = try await Task.detached(priority: .utility) {
+                            try Data(contentsOf: url)
+                        }.value
+                        let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
+                        if transcript.title.lowercased().contains(lowerQuery) ||
+                            transcript.transcript.lowercased().contains(lowerQuery) {
+                            return transcript
+                        }
+                        return nil
+                    } catch {
+                        return nil
                     }
                 }
-            } catch {
-                // Skip files that can't be decoded
-                continue
+            }
+
+            for _ in 0..<maxConcurrent { enqueueNext() }
+
+            while let result = try await group.next() {
+                enqueueNext()
+                if let transcript = result {
+                    results.append(transcript)
+                    if results.count >= offset + limit { group.cancelAll() }
+                }
             }
         }
-        
-        // Sort results by date (most recent first)
-        return results.sorted { $0.date > $1.date }
+
+        let sortedResults = results.sorted { $0.date > $1.date }
+        if offset >= sortedResults.count { return [] }
+        let startIndex = sortedResults.index(sortedResults.startIndex, offsetBy: offset)
+        let endIndex = sortedResults.index(startIndex, offsetBy: min(limit, sortedResults.count - offset))
+        return Array(sortedResults[startIndex..<endIndex])
     }
     
     /// Decrypts data if possible; falls back to plaintext decoding for legacy files.
