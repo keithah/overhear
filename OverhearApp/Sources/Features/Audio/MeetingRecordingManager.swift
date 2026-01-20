@@ -97,9 +97,20 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var audioFileURL: URL?
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     private var speakerSegmentBuckets: [Int: [SpeakerSegment]] = [:]
-    private let speakerBucketWidthSeconds: TimeInterval = 5.0
-    // 12h window -> ~8,640 buckets at 5s; trimmed more aggressively below if needed.
-    private let speakerBucketWindowSeconds: TimeInterval = 6 * 60 * 60
+    private var lastBucketizedIndex: Int = 0
+    private var lastBucketMinBucket: Int = 0
+    private let speakerBucketWidthSeconds: TimeInterval = 5.0 // aligns with diarization timestamp granularity
+    // Default 6h window (~4,320 buckets at 5s); tunable via UserDefaults overhear.speakerBucketWindowSeconds (1h–12h).
+    private let speakerBucketWindowSeconds: TimeInterval = {
+        let raw = UserDefaults.standard.double(forKey: "overhear.speakerBucketWindowSeconds")
+        let defaultValue: TimeInterval = 6 * 60 * 60
+        guard raw > 0 else { return defaultValue }
+        let clamped = min(max(raw, 60 * 60), SpeakerConstraints.maxWindowSeconds)
+        if clamped != raw {
+            configLogger.warning("overhear.speakerBucketWindowSeconds \(raw, privacy: .public)s clamped to \(clamped, privacy: .public)s")
+        }
+        return clamped
+    }()
     @Published private(set) var summary: MeetingSummary?
     @Published var notesSaveState: NotesSaveState = .idle
     @Published var lastNotesSavedAt: Date?
@@ -1316,7 +1327,6 @@ private extension MeetingRecordingManager {
             return
         }
         lastSpeakerBucketRebuildAt = Date()
-        speakerSegmentBuckets.removeAll()
         guard !speakerSegments.isEmpty else { return }
         var dropped = 0
         var droppedWide = 0
@@ -1333,7 +1343,20 @@ private extension MeetingRecordingManager {
         let windowSeconds = min(SpeakerConstraints.maxWindowSeconds, speakerBucketWindowSeconds)
         let minWindowStart = max(0, newestEnd - windowSeconds)
         let minBucket = Int(floor(minWindowStart / speakerBucketWidthSeconds))
-        for segment in speakerSegments {
+        // Prune stale buckets if window advanced.
+        let previousMinBucket = lastBucketMinBucket
+        if minBucket > previousMinBucket {
+            speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= minBucket }
+            lastBucketMinBucket = minBucket
+            // If window jumped forward significantly, rebuild from scratch for safety.
+            if minBucket - previousMinBucket > 1_000 {
+                speakerSegmentBuckets.removeAll()
+                lastBucketizedIndex = 0
+            }
+        }
+
+        let segmentsToProcess = speakerSegments.suffix(from: lastBucketizedIndex)
+        for segment in segmentsToProcess {
             guard segment.start >= 0,
                   segment.end >= segment.start,
                   segment.end <= SpeakerConstraints.maxWindowSeconds else {
@@ -1361,7 +1384,8 @@ private extension MeetingRecordingManager {
                 speakerSegmentBuckets[bucket, default: []].append(segment)
             }
         }
-        // Defensive cleanup: drop any buckets beyond the maximum window to avoid long-run growth.
+        // Update index and prune buckets to window to avoid long-run growth.
+        lastBucketizedIndex = speakerSegments.count
         let maxBucket = Int(floor(windowSeconds / speakerBucketWidthSeconds))
         speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= minBucket && $0.key <= maxBucket }
         speakerSegments = keptSegments

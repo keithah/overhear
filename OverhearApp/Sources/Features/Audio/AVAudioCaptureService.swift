@@ -43,7 +43,12 @@ actor AVAudioCaptureService {
     private var bufferLogState = BufferLogState()
     private var pendingBufferNotifications = 0
     private let pendingBufferLock = OSAllocatedUnfairLock(initialState: ())
-    private let maxPendingBufferNotifications = 64
+    // Default to 64 pending buffers (~3s at 2048 frames/44.1kHz); configurable for debugging.
+    private let maxPendingBufferNotifications: Int = {
+        let raw = UserDefaults.standard.integer(forKey: "overhear.capture.maxPendingBuffers")
+        let clamped = raw == 0 ? 64 : max(16, min(raw, 512))
+        return clamped
+    }()
     // Updated per capture start so late buffers from a prior session are ignored; guards TOCTOU on stopCapture.
     private var observerSessionID = UUID()
     private enum LogConstants {
