@@ -3,7 +3,6 @@ import UserNotifications
 import Foundation
 import SwiftUI
 import Combine
-import Darwin
 import OSLog
 
 @MainActor
@@ -13,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let recordingOverlay = RecordingOverlayController()
     private var notificationDeduper: NotificationDeduper!
     private var cancellables: Set<AnyCancellable> = []
-    private var instanceLockFD: Int32?
+    private var instanceLock: InstanceLock?
     private let lockLogger = Logger(subsystem: "com.overhear.app", category: "AppDelegate.Lock")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -22,11 +21,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        guard enforceSingleInstance() else {
+        let lock = InstanceLock(logger: lockLogger)
+        guard lock.acquire() else {
             FileLogger.log(category: "App", message: "Another Overhear instance detected; exiting this instance")
             NSApp.terminate(nil)
             return
         }
+        instanceLock = lock
 
         UNUserNotificationCenter.current().delegate = self
         bootstrapFileLoggingFlag()
@@ -107,10 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationWillTerminate(_ notification: Notification) {
         if isRunningTests {
-            if let fd = instanceLockFD {
-                flock(fd, LOCK_UN)
-                close(fd)
-            }
+            instanceLock?.release()
             return
         }
         let group = DispatchGroup()
@@ -129,10 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UNUserNotificationCenter.current().delegate = nil
         menuBarController?.tearDown()
         recordingOverlay.hide()
-        if let fd = instanceLockFD {
-            flock(fd, LOCK_UN)
-            close(fd)
-        }
+        instanceLock?.release()
     }
 
     @MainActor
@@ -171,59 +166,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isRunningTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
-
-    func enforceSingleInstance(lockDirectoryOverride: URL? = nil) -> Bool {
-        let fm = FileManager.default
-        guard let appSupport = try? fm.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        ) else {
-            return true
-        }
-        let lockDir = lockDirectoryOverride ?? appSupport.appendingPathComponent("Overhear", isDirectory: true)
-        try? fm.createDirectory(at: lockDir, withIntermediateDirectories: true)
-        let lockURL = lockDir.appendingPathComponent("instance.lock")
-        let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
-        guard fd != -1 else { return true }
-        // Ensure the lock fd is not inherited by child processes.
-        _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
-        let pid = getpid()
-        var locked = false
-        var retainFD = false
-        defer {
-            if locked && !retainFD {
-                flock(fd, LOCK_UN)
-            }
-            if !retainFD {
-                close(fd)
-            }
-        }
-        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
-            let holderPID = readLockPID(from: lockURL)
-            if let holderPID, !isProcessRunning(pid: holderPID) {
-                lockLogger.notice("Detected stale instance lock for pid \(holderPID); attempting to reclaim")
-                if flock(fd, LOCK_EX | LOCK_NB) == 0 {
-                    locked = true
-                    retainFD = true
-                    instanceLockFD = fd
-                    writePID(pid, to: fd)
-                    return true
-                }
-            } else if let holderPID {
-                lockLogger.error("Another Overhear instance is already running (pid \(holderPID))")
-            } else {
-                lockLogger.error("Another Overhear instance is already running")
-            }
-            return false
-        }
-        locked = true
-        retainFD = true
-        instanceLockFD = fd
-        writePID(pid, to: fd)
-        return true
-    }
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
@@ -256,43 +198,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     }
 }
 
-@MainActor
-private extension AppDelegate {
-    func writePID(_ pid: Int32, to fd: Int32) {
-        let data = "\(pid)\n".data(using: .utf8) ?? Data()
-        _ = ftruncate(fd, 0)
-        _ = lseek(fd, 0, SEEK_SET)
-        data.withUnsafeBytes { ptr in
-            guard let base = ptr.baseAddress else { return }
-            _ = write(fd, base, ptr.count)
-        }
-        _ = fsync(fd)
-    }
-
-    func readLockPID(from url: URL) -> Int32? {
-        guard let contents = try? String(contentsOf: url).trimmingCharacters(in: .whitespacesAndNewlines),
-              let value = Int32(contents) else {
-            return nil
-        }
-        return value
-    }
-
-    func isProcessRunning(pid: Int32) -> Bool {
-        let result = kill(pid, 0)
-        if result == 0 { return true }
-        return errno == EPERM
-    }
-}
-
 #if DEBUG
 @MainActor
 extension AppDelegate {
     func releaseInstanceLockForTests() {
-        if let fd = instanceLockFD {
-            flock(fd, LOCK_UN)
-            close(fd)
-            instanceLockFD = nil
-        }
+        instanceLock?.release()
     }
 }
 #endif

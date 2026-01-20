@@ -1,0 +1,98 @@
+import Foundation
+import OSLog
+import Darwin
+
+/// File-backed single-instance lock that can be exercised without AppKit.
+final class InstanceLock {
+    private let lockURL: URL
+    private let logger: Logger
+    private var fd: Int32?
+
+    init(lockDirectoryOverride: URL? = nil, logger: Logger = Logger(subsystem: "com.overhear.app", category: "InstanceLock")) {
+        let fm = FileManager.default
+        let appSupport = (try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
+        let baseDir = lockDirectoryOverride ?? appSupport?.appendingPathComponent("Overhear", isDirectory: true)
+        self.lockURL = baseDir?.appendingPathComponent("instance.lock") ?? URL(fileURLWithPath: "/tmp/overhear.instance.lock")
+        self.logger = logger
+        if let dir = baseDir {
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+    }
+
+    /// Attempts to acquire the single-instance lock. Returns false when another live process holds the lock.
+    func acquire() -> Bool {
+        let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
+        guard fd != -1 else { return true }
+        _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+        let pid = getpid()
+        var locked = false
+        var retainFD = false
+        defer {
+            if locked && !retainFD {
+                flock(fd, LOCK_UN)
+            }
+            if !retainFD {
+                close(fd)
+            }
+        }
+
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            let holderPID = readLockPID(from: lockURL)
+            if let holderPID, !isProcessRunning(pid: holderPID) {
+                logger.notice("Detected stale instance lock for pid \(holderPID); attempting to reclaim")
+                if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+                    locked = true
+                    retainFD = true
+                    self.fd = fd
+                    writePID(pid, to: fd)
+                    return true
+                }
+            } else if let holderPID {
+                logger.error("Another Overhear instance is already running (pid \(holderPID))")
+            } else {
+                logger.error("Another Overhear instance is already running")
+            }
+            return false
+        }
+
+        locked = true
+        retainFD = true
+        self.fd = fd
+        writePID(pid, to: fd)
+        return true
+    }
+
+    func release() {
+        guard let fd else { return }
+        flock(fd, LOCK_UN)
+        close(fd)
+        self.fd = nil
+    }
+}
+
+private extension InstanceLock {
+    func writePID(_ pid: Int32, to fd: Int32) {
+        let data = "\(pid)\n".data(using: .utf8) ?? Data()
+        _ = ftruncate(fd, 0)
+        _ = lseek(fd, 0, SEEK_SET)
+        data.withUnsafeBytes { ptr in
+            guard let base = ptr.baseAddress else { return }
+            _ = write(fd, base, ptr.count)
+        }
+        _ = fsync(fd)
+    }
+
+    func readLockPID(from url: URL) -> Int32? {
+        guard let contents = try? String(contentsOf: url).trimmingCharacters(in: .whitespacesAndNewlines),
+              let value = Int32(contents) else {
+            return nil
+        }
+        return value
+    }
+
+    func isProcessRunning(pid: Int32) -> Bool {
+        let result = kill(pid, 0)
+        if result == 0 { return true }
+        return errno == EPERM
+    }
+}

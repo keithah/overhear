@@ -22,6 +22,7 @@
 		672895B9E03830086B5E32E1 /* PreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0467AC2803809ABEE6368BF8 /* PreferencesService.swift */; };
 		7361C4DA3E42422989068561EBA3080B /* DiarizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B740BF673544A594625D9ACC07BA8B /* DiarizationService.swift */; };
 		F9F18B9E7C414B09B1C5C77E /* TranscriptSearchIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90E62BD28B8C472F91C9BBAD /* TranscriptSearchIndex.swift */; };
+		B8E3A1F22C8842D5B3D6D0F1 /* InstanceLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E3A1F12C8842D5B3D6D0F1 /* InstanceLock.swift */; };
 		7B4976A61FDC8DF74F991A16 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6760441C0977FD19F2B6838 /* PreferencesView.swift */; };
 		80FE5CAE940E4AD9869D8CE173ED4A23 /* FluidAudioAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF48982FAB834055A2AC3FAE79109395 /* FluidAudioAdapter.swift */; };
 		A2AA394AFCDD414AA6082028123BD864 /* DiarizationEngineFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92836CB09DD3497BBCB5A20B5D645F09 /* DiarizationEngineFactory.swift */; };
@@ -155,6 +156,7 @@
 		B450443A64541675999965EF /* Overhear.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Overhear.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B9643B3F6CF09183E7E9EE4A /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		C01606FEE32B43E2DE0C9D8E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B8E3A1F12C8842D5B3D6D0F1 /* InstanceLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstanceLock.swift; sourceTree = "<group>"; };
 		C268D5AFB48081C5B8477301 /* PreferencesWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesWindowController.swift; sourceTree = "<group>"; };
 		C5563B52A06A54C980A22A14 /* OverhearApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverhearApp.swift; sourceTree = "<group>"; };
 		D12220410D1DBBF18A9BA1D0 /* MenuBarContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarContentView.swift; sourceTree = "<group>"; };
@@ -439,6 +441,7 @@
 			children = (
 				C5563B52A06A54C980A22A14 /* OverhearApp.swift */,
 				C01606FEE32B43E2DE0C9D8E /* AppDelegate.swift */,
+				B8E3A1F12C8842D5B3D6D0F1 /* InstanceLock.swift */,
 				B0753D3EBF878CDDA7278CF7 /* AppContext.swift */,
 				A1F0D0C1F1E201000000000D /* PermissionsService.swift */,
 				A1F0D0C1F1E2010000000001 /* Types.swift */,
@@ -597,6 +600,7 @@
 			files = (
 				B09ACBBF34AF004C83A0835A /* OverhearApp.swift in Sources */,
 				EDF853AFF500BEEA7B7EB51C /* AppDelegate.swift in Sources */,
+				B8E3A1F22C8842D5B3D6D0F1 /* InstanceLock.swift in Sources */,
 				016A546E4C2C7638A8013832 /* AppContext.swift in Sources */,
 				4C460327A9D08F6F394261F2 /* MenuBarController.swift in Sources */,
 				C2D5E6CE6C1B18A934FB6917 /* MenuBarContentView.swift in Sources */,
