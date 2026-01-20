@@ -39,6 +39,11 @@ actor LocalLLMPipeline {
         }
     }
 
+    enum WarmupOutcome: Equatable {
+        case completed
+        case timedOut
+    }
+
     static let shared = LocalLLMPipeline(
         client: MLXAdapter.makeClient()
     )
@@ -47,11 +52,14 @@ actor LocalLLMPipeline {
     private var warmupTask: Task<Void, Never>?
     private let logger = Logger(subsystem: "com.overhear.app", category: "LocalLLMPipeline")
     private let logCategory = "LocalLLMPipeline"
+    // Timeouts and cooldowns are intentionally conservative to avoid hammering downloads and to
+    // allow long-running warmups on slower machines. They can be tuned via UserDefaults.
     private let warmupTimeout: TimeInterval
     private let downloadWatchdogDelay: TimeInterval
     private let failureCooldown: TimeInterval
     private(set) var state: State
     private var downloadWatchTask: Task<Void, Never>?
+    // Wrapping generation guard; &+= avoids traps on extremely long runtimes.
     private var warmupGeneration: Int = 0
     private var lastProgressLogBucket: Int = -1
     private var consecutiveFailures = 0
@@ -67,9 +75,18 @@ actor LocalLLMPipeline {
     private var modelID: String {
         MLXPreferences.modelID()
     }
+
+    // Generation counters wrap with &+= to avoid overflow traps during extremely long runtimes;
+    // equality checks remain safe because a wrapped value must still match the current generation.
     private func runIfCurrentGeneration<T: Sendable>(_ generation: Int, operation: @escaping @Sendable () async -> T) async -> T? {
         guard generation == warmupGeneration else { return nil }
         return await operation()
+    }
+
+    private func sanitizedNanoseconds(from seconds: TimeInterval, maxSeconds: TimeInterval = 31_536_000) -> UInt64 {
+        // Default max ~1 year in seconds to avoid overflow when converting to nanoseconds.
+        let clamped = min(max(seconds, 0), maxSeconds)
+        return UInt64(clamped * 1_000_000_000)
     }
 
     init(client: MLXClient?) {
@@ -88,7 +105,7 @@ actor LocalLLMPipeline {
         self.failureCooldown = min(max(rawCooldown, 5.0), 900.0)
 
         let watchdogOverride = UserDefaults.standard.double(forKey: "overhear.mlxDownloadWatchdogDelay")
-        let resolvedWatchdog = watchdogOverride > 0 ? watchdogOverride : 2
+        let resolvedWatchdog = watchdogOverride > 0 ? watchdogOverride : 5
         self.downloadWatchdogDelay = min(max(resolvedWatchdog, 1.0), 60.0) // clamp to sensible bounds
 
         if client == nil {
@@ -98,19 +115,47 @@ actor LocalLLMPipeline {
         }
     }
 
+    /// Testing initializer that allows injecting configuration without user defaults/clamps.
+    init(
+        client: MLXClient?,
+        warmupTimeout: TimeInterval,
+        failureCooldown: TimeInterval,
+        downloadWatchdogDelay: TimeInterval
+    ) {
+        self.client = client
+        self.warmupTimeout = warmupTimeout
+        self.failureCooldown = failureCooldown
+        self.downloadWatchdogDelay = downloadWatchdogDelay
+        state = client == nil ? .unavailable("MLX client not available") : .idle
+    }
+
     /// Warms the local model (best-effort). Safe to call multiple times.
-    func warmup() async {
+    @discardableResult
+    func warmup() async -> WarmupOutcome {
+        // Reuse in-flight warmup if one exists.
         if let task = warmupTask {
-            task.cancel()
-            await task.value
-            warmupTask = nil
+            switch await waitForWarmup(task: task, timeout: warmupTimeout) {
+            case .completed:
+                return .completed
+            case .timeout:
+                logger.error("Existing warmup task exceeded timeout; cancelling and restarting")
+                FileLogger.log(category: logCategory, message: "Existing warmup task timed out; restarting warmup")
+                task.cancel()
+                await task.value
+                warmupTask = nil
+            }
         }
+
+        warmupGeneration &+= 1
+        if warmupGeneration == 0 {
+            FileLogger.log(category: logCategory, message: "Warmup generation counter wrapped; continuing with generation=\(warmupGeneration)")
+        }
+        let generation = warmupGeneration
+
+        // Clear any lingering watchdog before starting a fresh warmup; use the current generation for bookkeeping.
         downloadWatchTask?.cancel()
         await downloadWatchTask?.value
         downloadWatchTask = nil
-
-        warmupGeneration &+= 1
-        let generation = warmupGeneration
         if downloadStartAt == nil {
             downloadStartAt = Date()
         }
@@ -120,9 +165,44 @@ actor LocalLLMPipeline {
             await self.warmupInternal(generation: generation, maxAttempts: 3, timeout: self.warmupTimeout)
         }
         warmupTask = task
-        await task.value
+        let waitResult = await waitForWarmup(task: task, timeout: warmupTimeout)
+        if waitResult == .timeout {
+            FileLogger.log(category: logCategory, message: "Warmup timed out after \(Int(warmupTimeout))s; cancelling")
+            logger.error("Warmup timed out after \(self.warmupTimeout, privacy: .public)s; cancelling")
+            task.cancel()
+            downloadWatchTask?.cancel()
+            await task.value
+            if warmupGeneration == generation {
+                warmupTask = nil
+            }
+            return .timedOut
+        }
         if warmupGeneration == generation {
             warmupTask = nil
+        }
+        return .completed
+    }
+
+    private enum WarmupWaitResult {
+        case completed
+        case timeout
+    }
+
+    private func waitForWarmup(task: Task<Void, Never>, timeout: TimeInterval) async -> WarmupWaitResult {
+        await withTaskGroup(of: WarmupWaitResult.self) { group in
+            group.addTask {
+                await task.value
+                return .completed
+            }
+            group.addTask { [self] in
+                try? await Task.sleep(nanoseconds: sanitizedNanoseconds(from: timeout))
+                return .timeout
+            }
+            let completed = await group.next() ?? .timeout
+            group.cancelAll()
+            // Drain any remaining tasks to completion for cleanliness.
+            while await group.next() != nil {}
+            return completed
         }
     }
 
@@ -148,14 +228,13 @@ actor LocalLLMPipeline {
         // Watchdog: if we reach 100% download but never transition to ready, auto-promote after a short delay.
         if progress >= 0.999 {
             // Only arm one watchdog per generation.
-            if downloadWatchGeneration != generation {
-                downloadWatchTask?.cancel()
-                downloadWatchTask = nil
-            }
-            guard downloadWatchTask == nil else { return }
+            guard downloadWatchGeneration != generation else { return }
+            downloadWatchTask?.cancel()
+            downloadWatchTask = nil
             downloadWatchGeneration = generation
+            let watchdogDelay = downloadWatchdogDelay
             downloadWatchTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64((self?.downloadWatchdogDelay ?? 2) * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: sanitizedNanoseconds(from: watchdogDelay))
                 await self?.handleDownloadWatchdog(generation: generation)
             }
         }
@@ -308,6 +387,12 @@ actor LocalLLMPipeline {
         case timeout
     }
 
+    private enum WarmupStrategy {
+        case clearCache
+        case switchModel(String)
+        case giveUp(String)
+    }
+
     private func warmupInternal(generation: Int, maxAttempts: Int = 3, timeout: TimeInterval = 600) async {
         ensureModelObserver()
         guard let client else { return }
@@ -329,7 +414,7 @@ actor LocalLLMPipeline {
                 // Run warmup and a timeout sentinel in parallel; whichever finishes first cancels the other.
                 group.addTask {
                     try await client.warmup(progress: { [weak self] progress in
-                        Task { [weak self] in
+                        Task { @MainActor [weak self] in
                             guard let self else { return }
                             await self.runIfCurrentGeneration(generation) {
                                 await self.setDownloading(progress, generation: generation)
@@ -338,7 +423,7 @@ actor LocalLLMPipeline {
                     })
                 }
                 group.addTask {
-                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    try await Task.sleep(nanoseconds: sanitizedNanoseconds(from: timeout))
                     throw WarmupError.timeout
                 }
                 guard let result = try await group.next() else {
@@ -353,7 +438,7 @@ actor LocalLLMPipeline {
             attempts += 1
             if attempts > 1 {
                 let backoffSeconds = pow(2.0, Double(attempts - 2))
-                try? await Task.sleep(nanoseconds: UInt64(backoffSeconds * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: sanitizedNanoseconds(from: backoffSeconds))
                 if Task.isCancelled { return }
                 if generation != warmupGeneration { return }
             }
@@ -383,12 +468,11 @@ actor LocalLLMPipeline {
                 state = .ready(modelInUse)
                 notifyStateChanged()
                 let duration = Date().timeIntervalSince(warmupStart)
-                let durationString = String(format: "%.2f", duration)
                 logger.info("MLX warmup completed (model=\(modelInUse, privacy: .public)) in \(duration, format: .fixed(precision: 2))s")
-                FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse)) in \(durationString)s")
+                FileLogger.log(category: logCategory, message: "MLX warmup completed (model=\(modelInUse)) in \(String(format: "%.2f", duration))s")
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
-                if let downloadStartAt {
+                if let downloadStartAt = downloadStartAt {
                     let downloadDuration = Date().timeIntervalSince(downloadStartAt)
                     FileLogger.log(
                         category: logCategory,
@@ -403,7 +487,6 @@ actor LocalLLMPipeline {
                 return
             } catch {
                 let duration = Date().timeIntervalSince(warmupStart)
-                let durationString = String(format: "%.2f", duration)
                 downloadWatchTask?.cancel()
                 downloadWatchTask = nil
                 guard generation == warmupGeneration else { return }
@@ -411,20 +494,25 @@ actor LocalLLMPipeline {
                     FileLogger.log(category: logCategory, message: "MLX warmup timeout after \(timeout)s")
                 }
                 logger.error("MLX warmup failed after \(duration, format: .fixed(precision: 2))s: \(error.localizedDescription, privacy: .public)")
-                FileLogger.log(category: logCategory, message: "MLX warmup failed after \(durationString)s: \(error.localizedDescription)")
+                FileLogger.log(category: logCategory, message: "MLX warmup failed after \(String(format: "%.2f", duration))s: \(error.localizedDescription)")
                 consecutiveFailures += 1
 
-                if allowCacheRetry, shouldRetryByClearingCache(error: error) {
+                switch nextWarmupStrategy(
+                    error: error,
+                    attempt: attempts,
+                    allowCacheRetry: allowCacheRetry,
+                    attemptedFallback: attemptedFallback,
+                    currentModel: modelInUse
+                ) {
+                case .clearCache:
                     allowCacheRetry = false
                     logger.info("MLX warmup retry after clearing cache (error: \(error.localizedDescription, privacy: .public))")
                     FileLogger.log(category: logCategory, message: "Clearing MLX cache and retrying warmup")
-                    Task.detached { MLXPreferences.clearModelCache() }
+                    MLXPreferences.clearModelCache()
                     state = .idle
                     notifyStateChanged()
                     continue
-                }
-
-                if !attemptedFallback, let fallback = fallbackModelID(for: modelInUse) {
+                case .switchModel(let fallback):
                     attemptedFallback = true
                     modelInUse = fallback
                     FileLogger.log(category: logCategory, message: "Warmup failed; switching model to fallback \(fallback)")
@@ -433,11 +521,11 @@ actor LocalLLMPipeline {
                     state = .idle
                     notifyStateChanged()
                     continue
+                case .giveUp(let reason):
+                    state = .unavailable(reason)
+                    notifyStateChanged()
+                    return
                 }
-
-                state = .unavailable("Warmup failed: \(error.localizedDescription)")
-                notifyStateChanged()
-                return
             }
         }
 
@@ -446,6 +534,23 @@ actor LocalLLMPipeline {
             cooldownUntil = Date().addingTimeInterval(failureCooldown)
         }
         notifyStateChanged()
+    }
+
+    private func nextWarmupStrategy(
+        error: Error,
+        attempt: Int,
+        allowCacheRetry: Bool,
+        attemptedFallback: Bool,
+        currentModel: String
+    ) -> WarmupStrategy {
+        if allowCacheRetry, shouldRetryByClearingCache(error: error) {
+            return .clearCache
+        }
+        if !attemptedFallback, let fallback = fallbackModelID(for: currentModel) {
+            return .switchModel(fallback)
+        }
+        let reason = "Warmup failed after attempt \(attempt): \(error.localizedDescription)"
+        return .giveUp(reason)
     }
 
     private func shouldRetryByClearingCache(error: Error) -> Bool {

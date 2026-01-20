@@ -1,16 +1,12 @@
 import AVFoundation
 import Foundation
-import os.log
+import OSLog
 
-/// Captures microphone audio locally using AVAudioEngine.
+/// Captures microphone audio locally using AVAudioEngine. All mutable state lives on this actor;
+/// the tap callback immediately hops to the actor before touching counters, observers, or disk
+/// so isolation boundaries stay clear.
 actor AVAudioCaptureService {
     private let logger = Logger(subsystem: "com.overhear.app", category: "AVAudioCaptureService")
-    private var isLoggingEnabled: Bool {
-        if ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1" {
-            return true
-        }
-        return UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
-    }
 
     enum Error: LocalizedError {
         case alreadyRecording
@@ -37,13 +33,19 @@ actor AVAudioCaptureService {
 
     private let engine = AVAudioEngine()
     private var file: AVAudioFile?
+    private let isLoggingEnabled: Bool
     private var outputURL: URL?
     private var continuation: CheckedContinuation<CaptureResult, Swift.Error>?
     private var isRecording = false
     private var durationTask: Task<Void, Never>?
     private var bufferObservers: [UUID: AudioBufferObserver] = [:]
-    private var bufferNotificationsLogged: UInt64 = 0
-    private var buffersSinceLastLog: UInt64 = 0
+    // Actor isolation keeps buffer logging counters serialized without additional locking.
+    private var bufferLogState = BufferLogState()
+    private var pendingBufferNotifications = 0
+    private let pendingBufferLock = OSAllocatedUnfairLock(initialState: ())
+    private let maxPendingBufferNotifications = 64
+    // Updated per capture start so late buffers from a prior session are ignored; guards TOCTOU on stopCapture.
+    private var observerSessionID = UUID()
     private enum LogConstants {
         static let initialBufferLogs: Int = {
             let raw = UserDefaults.standard.integer(forKey: "overhear.capture.initialBufferLogs")
@@ -55,50 +57,121 @@ actor AVAudioCaptureService {
             let clamped = min(max(raw, 10), 500)
             return clamped > 0 ? clamped : 50
         }()
+        // Extra defensive cap to avoid unbounded counters in long sessions.
+        static let bufferCountRolloverCap: UInt64 = 10_000_000
+    }
+
+    /// Computes whether a buffer notification should be logged while updating counters in-place.
+    static func advanceLoggingDecision(state: inout BufferLogState) -> BufferLogDecision {
+        let perLogInterval = UInt64(LogConstants.buffersPerLog)
+        state.total &+= 1
+        state.sinceLast &+= 1
+
+        // Prevent unbounded growth and avoid re-running the "first N" log burst after rollover.
+        var rolledOver = false
+        if state.total >= LogConstants.bufferCountRolloverCap {
+            rolledOver = true
+            // Reset counters modulo the periodic interval to avoid overflow; this may skip a periodic log near rollover.
+            state.total = state.total % perLogInterval
+            state.sinceLast = 0
+            // Keep the initial-burst flag set so rollover doesn't repeat the early log flood.
+            state.didFinishInitialBurst = true
+        }
+
+        let initialLimit = UInt64(LogConstants.initialBufferLogs)
+
+        let shouldLogInitial = !state.didFinishInitialBurst && state.total <= initialLimit
+        let shouldLogPeriodic = state.total > 0 && state.total % perLogInterval == 0
+        let shouldLog = shouldLogInitial || shouldLogPeriodic
+
+        let decision = BufferLogDecision(shouldLog: shouldLog, total: state.total, recent: state.sinceLast, rolledOver: rolledOver)
+
+        if shouldLog {
+            state.sinceLast = 0
+            if state.total >= initialLimit {
+                state.didFinishInitialBurst = true
+            }
+        }
+
+        return decision
+    }
+    struct BufferLogState {
+        var total: UInt64 = 0
+        var sinceLast: UInt64 = 0
+        var didFinishInitialBurst = false
+    }
+    struct BufferLogDecision {
+        let shouldLog: Bool
+        let total: UInt64
+        let recent: UInt64
+        let rolledOver: Bool
+    }
+
+    nonisolated static func backpressureDropDecision(pending: Int, max: Int) -> Bool {
+        pending >= max
+    }
+
+    static func shouldProcessBuffer(isRecording: Bool, observerSessionID: UUID, bufferSessionID: UUID) -> Bool {
+        isRecording && observerSessionID == bufferSessionID
     }
     private var captureStartDate: Date?
     private var requestedDuration: TimeInterval = 0
    
     typealias AudioBufferObserver = @Sendable (AVAudioPCMBuffer) -> Void
 
+    init() {
+        if ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1" {
+            self.isLoggingEnabled = true
+        } else {
+            self.isLoggingEnabled = UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
+        }
+    }
+
     func startCapture(duration: TimeInterval, outputURL: URL) async throws -> CaptureResult {
         guard !isRecording else { throw Error.alreadyRecording }
+        // Reset counters for this session.
+        observerSessionID = UUID()
+        resetBufferLogState()
         await log("startCapture requested (duration: \(duration)s, output: \(outputURL.path))")
         let format = engine.inputNode.outputFormat(forBus: 0)
         await log("Input format: \(format.sampleRate) Hz, channels: \(format.channelCount)")
         try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let sessionID = observerSessionID
         let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
+        self.file = file
+        self.outputURL = outputURL
+        self.captureStartDate = Date()
+        self.requestedDuration = duration
+        self.isRecording = true
 
         // Use a smaller buffer to reduce latency for streaming transcripts.
         engine.inputNode.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
             guard let self else { return }
 
             // Work with a copy so we don't share task-isolated buffers across actors.
-            guard let bufferCopy = buffer.cloned() else { return }
+            // Clone once per tap callback; the shared copy is reused for all observers.
+            guard let bufferCopy = buffer.cloned() else {
+                Task { [weak self] in
+                    await self?.log("Tap buffer clone failed; dropping buffer")
+                }
+                return
+            }
 
-            do {
-                try file.write(from: buffer)
-                Task { [weak self] in
-                    guard let self else { return }
-                    await self.notifyBufferObservers(buffer: bufferCopy)
-                }
-            } catch {
-                Task { [weak self] in
-                    await self?.log("Tap write failed: \(error.localizedDescription)")
-                    await self?.finalizeRecording(result: .failure(Error.captureFailed(error.localizedDescription)))
-                }
+            // Hop off the audio callback thread before any disk I/O or actor work.
+            Task.detached(priority: .userInitiated) { [weak self] in
+                guard let self else { return }
+                await self.processIncomingBuffer(bufferCopy, sessionID: sessionID)
             }
         }
 
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            engine.inputNode.removeTap(onBus: 0)
+            isRecording = false
+            throw error
+        }
         await log("Audio engine started")
-        bufferNotificationsLogged = 0
-        buffersSinceLastLog = 0
-        captureStartDate = Date()
-        requestedDuration = duration
-        self.file = file
-        self.outputURL = outputURL
-        self.isRecording = true
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CaptureResult, Swift.Error>) in
@@ -158,6 +231,7 @@ actor AVAudioCaptureService {
         engine.inputNode.removeTap(onBus: 0)
         // Stop the engine before clearing observers to let any in-flight callbacks drain.
         engine.stop()
+        await waitForInFlightBuffers()
         bufferObservers.removeAll()
         durationTask?.cancel()
         durationTask = nil
@@ -179,36 +253,96 @@ actor AVAudioCaptureService {
         await finalizeRecording(result: .success(makeCaptureResult(url: url, stoppedEarly: stoppedEarly)))
     }
 
-    private func notifyBufferObservers(buffer: AVAudioPCMBuffer) async {
-        guard isRecording else { return }
-        // Snapshot observers immediately so a concurrent stopCapture() won't invalidate this list.
-        let observers = Array(bufferObservers.values)
-        guard !observers.isEmpty else { return }
+    private func notifyBufferObservers(buffer: AVAudioPCMBuffer, sessionID: UUID) async {
+        // Snapshot flags and observers together to avoid TOCTOU during stopCapture().
+        // Late buffers after stopCapture() (or from a prior session) are intentionally dropped via the isRecording/session guard.
+        let recording = isRecording
+        let sessionSnapshot = observerSessionID
+        guard Self.shouldProcessBuffer(isRecording: recording, observerSessionID: sessionSnapshot, bufferSessionID: sessionID) else { return }
+        // Snapshot observers once per callback; mutations are serialized by the actor.
+        // If stopCapture() clears observers between the guard and the snapshot, late buffers are dropped by design.
+        let observersSnapshot = bufferObservers.isEmpty ? [] : Array(bufferObservers.values)
+        guard !observersSnapshot.isEmpty else { return }
 
-        if bufferNotificationsLogged >= UInt64(10_000_000) {
-            bufferNotificationsLogged = 0
-            buffersSinceLastLog = 0
+        // Counter updates are scheduled onto the capture actor (not the audio callback thread) to avoid hot-path locking.
+        let decision = Self.advanceLoggingDecision(state: &bufferLogState)
+
+        if decision.rolledOver {
+            await log("Buffer log counters rolled over at \(LogConstants.bufferCountRolloverCap); continuing periodic logging without repeating initial burst")
         }
-        bufferNotificationsLogged += 1
-        buffersSinceLastLog += 1
-        if bufferNotificationsLogged <= UInt64(LogConstants.initialBufferLogs) || (bufferNotificationsLogged % UInt64(LogConstants.buffersPerLog)) == 0 {
-            let total = bufferNotificationsLogged
-            let recent = buffersSinceLastLog
-            FileLogger.log(
-                category: "AVAudioCaptureService",
-                message: "notifyBufferObservers total=\(total) recent=\(recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)"
-            )
-            buffersSinceLastLog = 0
+        if decision.shouldLog {
+            await log("notifyBufferObservers total=\(decision.total) recent=\(decision.recent) frameLength=\(buffer.frameLength) channels=\(buffer.format.channelCount)")
         }
-        for observer in observers {
-            guard let copy = buffer.cloned() else { continue }
-            observer(copy)
+        guard let sharedCopy = buffer.cloned() else { return }
+        for observer in observersSnapshot {
+            observer(sharedCopy)
         }
+    }
+
+    private func resetBufferLogState() {
+        bufferLogState = BufferLogState()
+        pendingBufferLock.withLock {
+            pendingBufferNotifications = 0
+        }
+    }
+
+    private func waitForInFlightBuffers() async {
+        var attempts = 0
+        // Give detached buffer handlers a short window to complete before clearing observers.
+        while pendingBufferLock.withLock({ pendingBufferNotifications }) > 0, attempts < 50 {
+            attempts += 1
+            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
+        let remaining = pendingBufferLock.withLock { pendingBufferNotifications }
+        if remaining > 0 {
+            await log("Pending buffer notifications still in flight during finalize (\(remaining))")
+        }
+    }
+
+    private func processIncomingBuffer(_ buffer: AVAudioPCMBuffer, sessionID: UUID) async {
+        let recording = isRecording
+        let sessionSnapshot = observerSessionID
+        let shouldProcess = Self.shouldProcessBuffer(isRecording: recording, observerSessionID: sessionSnapshot, bufferSessionID: sessionID)
+        guard shouldProcess else {
+            return
+        }
+        let pendingCount = pendingBufferLock.withLock { pendingBufferNotifications }
+        guard !Self.backpressureDropDecision(pending: pendingCount, max: maxPendingBufferNotifications) else {
+            await log("Dropping buffer due to observer backlog (\(pendingCount) pending)")
+            return
+        }
+        pendingBufferLock.withLock {
+            pendingBufferNotifications += 1
+        }
+        defer {
+            pendingBufferLock.withLock {
+                if pendingBufferNotifications > 0 {
+                    pendingBufferNotifications -= 1
+                } else {
+                    assertionFailure("pendingBufferNotifications underflowed; check backpressure logic")
+                    pendingBufferNotifications = 0
+                }
+            }
+        }
+        guard let file else {
+            await log("Tap write failed: missing file handle")
+            return
+        }
+        do {
+            try file.write(from: buffer)
+        } catch {
+            await log("Tap write failed: \(error.localizedDescription)")
+            await finalizeRecording(result: .failure(Error.captureFailed(error.localizedDescription)))
+            return
+        }
+        await notifyBufferObservers(buffer: buffer, sessionID: sessionID)
     }
 
     private func log(_ message: String) async {
         logger.info("\(message, privacy: .public)")
-        FileLogger.log(category: "AVAudioCaptureService", message: message)
+        if isLoggingEnabled {
+            FileLogger.log(category: "AVAudioCaptureService", message: message)
+        }
     }
 
     private func makeCaptureResult(url: URL, stoppedEarly: Bool) -> CaptureResult {
@@ -222,7 +356,9 @@ actor AVAudioCaptureService {
 // stored and passed between actors inside the capture pipeline. This is safe
 // because buffers are never shared mutably across actors: every observer
 // receives a freshly cloned buffer (`notifyBufferObservers`), and the capture
-// actor owns the original buffer lifetime.
+// actor owns the original buffer lifetime. If the standard library gains a
+// native Sendable conformance for audio buffers, this retroactive annotation
+// should be removed.
 extension AVAudioPCMBuffer: @retroactive @unchecked Sendable {}
 
 extension AVAudioPCMBuffer {

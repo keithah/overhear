@@ -3,6 +3,7 @@ import UserNotifications
 import Foundation
 import SwiftUI
 import Combine
+import Darwin
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -11,8 +12,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let recordingOverlay = RecordingOverlayController()
     private var notificationDeduper: NotificationDeduper!
     private var cancellables: Set<AnyCancellable> = []
+    private var instanceLockFD: Int32?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !isRunningTests else {
+            FileLogger.log(category: "App", message: "Skipping app bootstrap because XCTest is active")
+            return
+        }
+
+        guard enforceSingleInstance() else {
+            FileLogger.log(category: "App", message: "Another Overhear instance detected; exiting this instance")
+            NSApp.terminate(nil)
+            return
+        }
+
         UNUserNotificationCenter.current().delegate = self
         bootstrapFileLoggingFlag()
 
@@ -102,11 +115,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             group.leave()
         }
         // Wait longer for best-effort cleanup before process exit.
-        _ = group.wait(timeout: .now() + 5)
+        _ = group.wait(timeout: .now() + 10)
         cancellables.removeAll()
         UNUserNotificationCenter.current().delegate = nil
         menuBarController?.tearDown()
         recordingOverlay.hide()
+        if let fd = instanceLockFD {
+            flock(fd, LOCK_UN)
+            close(fd)
+        }
     }
 
     @MainActor
@@ -140,6 +157,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if defaults.object(forKey: "overhear.enableFileLogs") == nil {
             defaults.set(false, forKey: "overhear.enableFileLogs")
         }
+    }
+
+    private var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
+    func enforceSingleInstance(lockDirectoryOverride: URL? = nil) -> Bool {
+        let fm = FileManager.default
+        guard let appSupport = try? fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ) else {
+            return true
+        }
+        let lockDir = lockDirectoryOverride ?? appSupport.appendingPathComponent("Overhear", isDirectory: true)
+        try? fm.createDirectory(at: lockDir, withIntermediateDirectories: true)
+        let lockURL = lockDir.appendingPathComponent("instance.lock")
+        let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
+        guard fd != -1 else { return true }
+        // Ensure the lock fd is not inherited by child processes.
+        _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+        var locked = false
+        defer {
+            if locked {
+                flock(fd, LOCK_UN)
+                close(fd)
+            }
+        }
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            return false
+        }
+        locked = true
+        instanceLockFD = fd
+        return true
     }
 }
 

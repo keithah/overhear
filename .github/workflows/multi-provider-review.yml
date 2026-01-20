@@ -8,20 +8,30 @@ on:
     types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number to review"
+        required: true
 
 jobs:
   review:
     if: |
-      github.event_name == 'pull_request' ||
-      (github.event.issue.pull_request && (
-        startsWith(github.event.comment.body, '/review') ||
-        contains(github.event.comment.body, '@opencode') ||
-        contains(github.event.comment.body, '@claude')
-      ))
+      (
+        github.event_name == 'pull_request' ||
+        (github.event.issue.pull_request &&
+          (startsWith(github.event.comment.body, '/review') ||
+           contains(github.event.comment.body, '@opencode') ||
+           contains(github.event.comment.body, '@claude'))) ||
+        github.event_name == 'workflow_dispatch'
+      )
+      && (github.event.pull_request.changed_files <= (vars.MAX_CHANGED_FILES || 9999))
+      && ((github.event.pull_request.additions + github.event.pull_request.deletions) >= (vars.MIN_CHANGED_LINES || 0))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
+      security-events: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,7 +48,7 @@ jobs:
             NPM_PREFIX="$HOME/.npm-global"
             mkdir -p "$NPM_PREFIX"
             npm config set prefix "$NPM_PREFIX"
-            npm install -g opencode-ai@latest
+            npm install -g opencode-ai@1.2.3
             echo "$NPM_PREFIX/bin" >> "$GITHUB_PATH"
           fi
 
@@ -50,14 +60,12 @@ jobs:
           script: |
             const prPayload = context.payload.pull_request ?? context.payload.issue?.pull_request;
             const issueNumber = context.payload.issue?.number;
-            if (!prPayload && !issueNumber) {
-              core.setFailed('No pull request context available');
-              return;
-            }
+            const inputNumber = context.payload.inputs?.pr_number ? Number(context.payload.inputs.pr_number) : undefined;
 
             const number =
               prPayload?.number ??
               issueNumber ??
+              inputNumber ??
               (prPayload?.url ? Number(prPayload.url.split('/').pop()) : undefined);
             if (!number) {
               core.setFailed('Could not determine PR number');
@@ -84,10 +92,18 @@ jobs:
           fi
 
       - name: Run Multi-Provider Review
-        uses: keithah/multi-provider-code-review@main
+        uses: keithah/multi-provider-code-review@dev
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REVIEW_PROVIDERS: ${{ vars.REVIEW_PROVIDERS || 'opencode/big-pickle,opencode/grok-code,opencode/minimax-m2.1-free,opencode/glm-4.7-free' }}
+          REVIEW_PROVIDERS: ${{ vars.REVIEW_PROVIDERS || 'openrouter/google/gemini-2.0-flash-exp:free,openrouter/mistralai/devstral-2512:free,openrouter/xiaomi/mimo-v2-flash:free,opencode/big-pickle,opencode/grok-code,opencode/minimax-m2.1-free,opencode/glm-4.7-free' }}
+          SYNTHESIS_MODEL: ${{ vars.SYNTHESIS_MODEL || 'openrouter/google/gemini-2.0-flash-exp:free' }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          MIN_CHANGED_LINES: ${{ vars.MIN_CHANGED_LINES || 0 }}
+          MAX_CHANGED_FILES: ${{ vars.MAX_CHANGED_FILES || 0 }}
+          SKIP_LABELS: ${{ vars.SKIP_LABELS || 'skip-review,no-ai-review' }}
+          PROVIDER_LIMIT: ${{ vars.PROVIDER_LIMIT || 0 }}
+          PROVIDER_RETRIES: ${{ vars.PROVIDER_RETRIES || 2 }}
+          BUDGET_MAX_USD: ${{ vars.BUDGET_MAX_USD || 0 }}
           PR_TITLE: ${{ steps.pr.outputs.title }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           PR_BODY: ${{ steps.pr.outputs.body }}
@@ -95,6 +111,19 @@ jobs:
           SYNTHESIS_MODEL: ${{ vars.SYNTHESIS_MODEL || '' }}
           DIFF_MAX_BYTES: ${{ vars.DIFF_MAX_BYTES || '' }}
           RUN_TIMEOUT_SECONDS: ${{ vars.RUN_TIMEOUT_SECONDS || '' }}
+
+      - name: Upload review artifacts
+        if: always() && hashFiles('multi-provider-report/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-reports
+          path: multi-provider-report/*
+
+      - name: Upload SARIF to code scanning
+        if: always() && hashFiles('multi-provider-report/*.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: multi-provider-report/multi-provider-review.sarif
 
 # To disable auto-run on every PR change, remove the pull_request block.
 # To disable manual triggers, remove the issue_comment block or the IF filter.

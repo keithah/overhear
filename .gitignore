@@ -5,6 +5,7 @@ DerivedData/
 *.xcworkspace/xcuserdata
 *.xcodeproj/xcuserdata
 *.xcodeproj/project.xcworkspace/xcuserdata
+OverhearApp/Overhear.xcodeproj/project.xcworkspace/xcuserdata/
 
 # SwiftPM
 .swiftpm/

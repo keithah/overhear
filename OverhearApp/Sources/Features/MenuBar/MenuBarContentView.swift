@@ -1,4 +1,51 @@
 import SwiftUI
+
+/// Simple async debouncer used by multiple note editors to avoid spawning a task per keystroke.
+@MainActor
+final class Debouncer: ObservableObject {
+    private var task: Task<Void, Never>?
+    enum Delay {
+        static let notesSaveNanoseconds: UInt64 = 500_000_000
+    }
+
+    func schedule(delayNanoseconds: UInt64, action: @escaping @MainActor () async -> Void) {
+        task?.cancel()
+        task = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            if Task.isCancelled { return }
+            await action()
+        }
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
+    }
+
+    deinit {
+        Task { await MainActor.run { cancel() } }
+    }
+}
+
+struct StatusChip: View {
+    let title: String
+    let color: Color
+    var icon: String?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let icon {
+                Image(systemName: icon)
+            }
+            Text(title)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(color.opacity(0.15)))
+        .foregroundColor(color)
+    }
+}
 import AppKit
 import UniformTypeIdentifiers
 import Combine
@@ -8,37 +55,10 @@ extension NSNotification.Name {
     static let closeMenuPopover = NSNotification.Name("CloseMenuPopover")
 }
 
-private func makeLLMStatusChip(for state: LocalLLMPipeline.State) -> some View {
-    let (title, color, icon): (String, Color, String) = {
-        switch state {
-        case .ready:
-            return (state.displayDescription, .green, "checkmark.circle.fill")
-        case .downloading:
-            return (state.displayDescription, .orange, "arrow.down.circle.fill")
-        case .warming:
-            return (state.displayDescription, .orange, "clock")
-        case .unavailable:
-            return (state.displayDescription, .red, "exclamationmark.triangle.fill")
-        case .idle:
-            return (state.displayDescription, .secondary, "bolt.horizontal.circle")
-        }
-    }()
-    return HStack(spacing: 4) {
-        Image(systemName: icon)
-            .foregroundColor(color)
-        Text(title)
-            .font(.system(size: 10))
-            .foregroundColor(color)
-    }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 4)
-    .background(Capsule().fill(color.opacity(0.12)))
-}
-
 struct MenuBarContentView: View {
      @ObservedObject var viewModel: MeetingListViewModel
-     @ObservedObject var preferences: PreferencesService
-     @ObservedObject var recordingCoordinator: MeetingRecordingCoordinator
+    @ObservedObject var preferences: PreferencesService
+    @ObservedObject var recordingCoordinator: MeetingRecordingCoordinator
     @ObservedObject var autoRecordingCoordinator: AutoRecordingCoordinator
     var openPreferences: () -> Void
     var onToggleRecording: () -> Void
@@ -101,8 +121,8 @@ if viewModel.isLoading {
                                      .id(dateIdentifier(group.date))  // Anchor for scroll
                                      .frame(maxWidth: .infinity, alignment: .leading)
                                  
-                                 // Meetings for this date
-                                 ForEach(group.meetings) { meeting in
+                                // Meetings for this date
+                                ForEach(group.meetings, id: \.id) { meeting in
                                      if preferences.viewMode == .minimalist {
                                         MinimalistMeetingRowView(
                                             meeting: meeting,
@@ -207,7 +227,8 @@ if viewModel.isLoading {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
         }
-        .frame(width: preferences.viewMode == .minimalist ? 360 : 360, height: calculateHeight())
+        .frame(width: preferences.viewMode == .minimalist ? 320 : 360, height: calculateHeight())
+        .onAppear { refreshGroupedMeetingsCache() }
         .onChange(of: recordingCoordinator.isRecording) { _, newValue in
             if newValue && preferences.autoShowLiveNotes && !didAutoShowLiveNotes {
                 LiveNotesWindowController.shared.show(with: recordingCoordinator)
@@ -217,6 +238,8 @@ if viewModel.isLoading {
                 didAutoShowLiveNotes = false
             }
         }
+        .onReceive(viewModel.$pastSections) { _ in refreshGroupedMeetingsCache() }
+        .onReceive(viewModel.$upcomingSections) { _ in refreshGroupedMeetingsCache() }
     }
     
     private var allMeetings: [Meeting] {
@@ -224,14 +247,7 @@ if viewModel.isLoading {
             .flatMap { $0.meetings }
     }
     
-    private var groupedMeetings: [(date: Date, meetings: [Meeting])] {
-        let key = meetingsHash(allMeetings)
-        if key != groupedCacheKey {
-            groupedCacheKey = key
-            groupedCache = computeGroupedMeetings(allMeetings)
-        }
-        return groupedCache
-    }
+    private var groupedMeetings: [(date: Date, meetings: [Meeting])] { groupedCache }
     
     private var todayDate: Date {
         Calendar.current.startOfDay(for: Date())
@@ -260,6 +276,13 @@ private let dateIdentifierFormatter: DateFormatter = {
         let past = mapped.filter { $0.date < today }
         let todayAndFuture = mapped.filter { $0.date >= today }
         return past + todayAndFuture
+    }
+
+    private func refreshGroupedMeetingsCache() {
+        let key = meetingsHash(allMeetings)
+        guard key != groupedCacheKey else { return }
+        groupedCacheKey = key
+        groupedCache = computeGroupedMeetings(allMeetings)
     }
 
     private func meetingsHash(_ meetings: [Meeting]) -> Int {
@@ -338,9 +361,38 @@ private let dateIdentifierFormatter: DateFormatter = {
         totalHeight += 8
         
         // Minimum height, maximum around 700 to accommodate most scenarios
-        return min(max(totalHeight, 150), 700)
-     }
+        return max(150, min(totalHeight, 700))
+    }
   }
+
+extension MenuBarContentView {
+    static func makeLLMStatusChip(for state: LocalLLMPipeline.State) -> some View {
+        let (title, color, icon): (String, Color, String) = {
+            switch state {
+            case .ready:
+                return (state.displayDescription, .green, "checkmark.circle.fill")
+            case .downloading:
+                return (state.displayDescription, .orange, "arrow.down.circle.fill")
+            case .warming:
+                return (state.displayDescription, .orange, "clock")
+            case .unavailable:
+                return (state.displayDescription, .red, "exclamationmark.triangle.fill")
+            case .idle:
+                return (state.displayDescription, .secondary, "bolt.horizontal.circle")
+            }
+        }()
+        return HStack(spacing: 4) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+            Text(title)
+                .font(.system(size: 10))
+                .foregroundColor(color)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(color.opacity(0.12)))
+    }
+}
 
 // Note: SwiftUI's ScrollView on macOS has natural deceleration.
 // The scroll behavior will naturally slow down as you scroll up into the past.
@@ -352,13 +404,12 @@ struct LiveNotesView: View {
     @State private var showTranscript = true
     @State private var showNotes = true
     @State private var showAI = true
-    @State private var notesDebounceTask: Task<Void, Never>?
     @State private var isRegenerating = false
     @State private var notesPrefilled = false
     @State private var llmStateDescription: String = "Checking…"
     @State private var llmState: LocalLLMPipeline.State = .idle
     @State private var isWarmingLLM = false
-    @State private var warmupTask: Task<Void, Never>?
+    @State private var warmupTask: Task<LocalLLMPipeline.WarmupOutcome, Never>?
     @State private var llmStatePollTask: Task<Void, Never>?
     @State private var llmIsReady = false
     @State private var lastLoggedLLMState: String?
@@ -423,7 +474,9 @@ struct LiveNotesView: View {
             Task { await prefillNotesIfNeeded() }
             Task { await refreshLLMState() }
             Task { await warmLLM() }
-            startLLMStatePolling()
+            if isLLMFallbackPollingEnabled {
+                startLLMStatePolling()
+            }
         }
         .onDisappear {
             llmStatePollTask?.cancel()
@@ -455,9 +508,9 @@ struct LiveNotesView: View {
             }
             Spacer()
             HStack(spacing: 6) {
-                statusChip(title: statusText, color: statusColor, icon: "record.circle")
-                streamingChip
-                llmChip
+                StatusChip(title: statusText, color: statusColor, icon: "record.circle")
+                streamingStatusChip
+                MenuBarContentView.makeLLMStatusChip(for: llmState)
             }
             Button {
                 Task { await coordinator.stopRecording() }
@@ -515,19 +568,7 @@ struct LiveNotesView: View {
         }
     }
 
-    private func statusChip(title: String, color: Color, icon: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-            Text(title)
-        }
-        .font(.system(size: 11, weight: .semibold))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(Capsule().fill(color.opacity(0.15)))
-        .foregroundColor(color)
-    }
-
-    private var streamingChip: some View {
+    private var streamingStatusChip: some View {
         let title: String
         let color: Color
         switch coordinator.streamingHealth.state {
@@ -547,11 +588,7 @@ struct LiveNotesView: View {
             title = "Streaming idle"
             color = .secondary
         }
-        return statusChip(title: title, color: color, icon: "waveform.and.magnifyingglass")
-    }
-
-    private var llmChip: some View {
-        makeLLMStatusChip(for: llmState)
+        return StatusChip(title: title, color: color, icon: "waveform.and.magnifyingglass")
     }
 
     private var consentNotice: some View {
@@ -699,143 +736,30 @@ struct LiveNotesView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
                     .onChange(of: coordinator.liveNotes) { _, newValue in
-                        notesDebounceTask?.cancel()
-                        notesDebounceTask = Task { @MainActor [weak coordinator] in
-                            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms debounce
-                            guard let coordinator else { return }
-                            await coordinator.saveNotes(newValue)
-                        }
+                        coordinator.scheduleDebouncedNotesSave(newValue)
                     }
                     .onDisappear {
-                        notesDebounceTask?.cancel()
-                        notesDebounceTask = nil
+                        coordinator.cancelPendingNotesSave()
+                        Task { await coordinator.flushPendingNotesSave(coordinator.liveNotes) }
                     }
             }
         }
     }
 
     private var aiSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("AI-enhanced bullets")
-                    .font(.system(size: 12, weight: .semibold))
-                Spacer()
-                if coordinator.summary != nil {
-                    Text("Ready")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.green)
-                } else {
-                Text("Generates after recording")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-            Text(llmStateDescription)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-                if llmIsReady {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text("LLM ready")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.green)
-                    }
-                } else {
-                    Button {
-                        Task { await warmLLM() }
-                    } label: {
-                        Text(isWarmingLLM ? "Warming…" : "Warm up LLM")
-                    }
-                    .disabled(isWarmingLLM)
-                    .controlSize(.mini)
-                }
-                Menu {
-                    Button("Regenerate (default prompt)") {
-                        Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
-                    }
-                    Divider()
-                    ForEach(PromptTemplate.allTemplates, id: \.id) { template in
-                        Button("Regenerate with \(template.title)") {
-                            Task { await regenerateSummary(template: template) }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .foregroundColor(.secondary)
-                }
-                .menuStyle(.borderlessButton)
-                .disabled(isRegenerating || coordinator.liveTranscript.isEmpty)
-                Button {
-                    copySummary()
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Copy AI bullets")
-                Button {
-                    exportSummary()
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Export summary/notes")
-            }
-            if let summary = coordinator.summary {
-                VStack(alignment: .leading, spacing: 10) {
-                    if !summary.summary.isEmpty {
-                        Text(summary.summary)
-                            .font(.system(size: 12))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if !summary.highlights.isEmpty {
-                        Divider()
-                        Text("Highlights")
-                            .font(.system(size: 12, weight: .semibold))
-                        ForEach(summary.highlights, id: \.self) { highlight in
-                            HStack(alignment: .top, spacing: 6) {
-                                Image(systemName: "circle.fill")
-                                    .font(.system(size: 6))
-                                    .foregroundColor(.secondary)
-                                    .padding(.top, 4)
-                                Text(highlight)
-                                    .font(.system(size: 12))
-                            }
-                        }
-                    }
-                    if !summary.actionItems.isEmpty {
-                        Divider()
-                        Text("Action items")
-                            .font(.system(size: 12, weight: .semibold))
-                        ForEach(summary.actionItems, id: \.self) { item in
-                            HStack(alignment: .top, spacing: 6) {
-                                Image(systemName: "checkmark.circle")
-                                    .foregroundColor(.green)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.description)
-                                        .font(.system(size: 12))
-                                    if let owner = item.owner, !owner.isEmpty {
-                                        Text("Owner: \(owner)")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-            } else {
-                Text("AI-enhanced bullets will appear here once the note finishes processing.")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-            }
-        }
+        AISectionView(
+            summary: coordinator.summary,
+            liveTranscriptIsEmpty: coordinator.liveTranscript.isEmpty,
+            llmState: llmState,
+            llmIsReady: llmIsReady,
+            isWarmingLLM: isWarmingLLM,
+            isRegenerating: isRegenerating,
+            llmStateDescription: llmStateDescription,
+            warmLLM: { await warmLLM() },
+            regenerateSummary: { template in await regenerateSummary(template: template) },
+            copySummary: { copySummary() },
+            exportSummary: { exportSummary() }
+        )
     }
 
     private func prependBullet() {
@@ -875,8 +799,6 @@ struct LiveNotesView: View {
         await coordinator.regenerateSummary(template: template)
         isRegenerating = false
     }
-
-    private var llmStatusChip: some View { makeLLMStatusChip(for: llmState) }
 
     private func prefillNotesIfNeeded() async {
         let shouldPrefill = await MainActor.run { () -> Bool in
@@ -920,7 +842,7 @@ struct LiveNotesView: View {
 
     private func warmLLM() async {
         if let warmupTask {
-            await warmupTask.value
+            _ = await warmupTask.value
             return
         }
         isWarmingLLM = true
@@ -928,8 +850,14 @@ struct LiveNotesView: View {
             await LocalLLMPipeline.shared.warmup()
         }
         warmupTask = task
-        await task.value
+        let outcome = await task.value
         warmupTask = nil
+        if outcome == .timedOut {
+            FileLogger.log(
+                category: "MenuBarContentView",
+                message: "LLM warmup timed out; continuing with fallback polling"
+            )
+        }
         await refreshLLMState()
         if llmIsReady {
             llmStatePollTask?.cancel()
@@ -939,15 +867,21 @@ struct LiveNotesView: View {
         isWarmingLLM = false
     }
 
+    private var isLLMFallbackPollingEnabled: Bool {
+        let defaults = UserDefaults.standard
+        // Default to true so polling stays on as a safety net unless explicitly disabled.
+        guard defaults.object(forKey: "overhear.llm.enableFallbackPolling") != nil else { return true }
+        return defaults.bool(forKey: "overhear.llm.enableFallbackPolling")
+    }
+
     private func startLLMStatePolling() {
         llmStatePollTask?.cancel()
-        guard !llmIsReady else { return }
+        guard isLLMFallbackPollingEnabled, !llmIsReady else { return }
         llmStatePollTask = Task { @MainActor in
-            // Fallback polling in case state notifications are missed; prefer notification-driven updates.
-            let pollIntervalSeconds = 10.0
-            let maxWarmupSeconds = UserDefaults.standard.double(forKey: "overhear.mlxWarmupTimeout")
-            let resolvedMaxSeconds = maxWarmupSeconds > 0 ? maxWarmupSeconds : 900
-            let maxAttempts = Int(resolvedMaxSeconds / pollIntervalSeconds)
+            // Fallback polling in case a state-changed notification is missed.
+            // Use a conservative interval to avoid needless wakeups; most updates arrive via notifications.
+            let pollIntervalSeconds: TimeInterval = 60.0
+            let maxAttempts = 15 // ~15 minutes of fallback polling to match warmup timeout safety net
             var attempts = 0
             defer { llmStatePollTask = nil }
             while !Task.isCancelled && !llmIsReady && attempts < maxAttempts {
@@ -1002,10 +936,12 @@ struct LiveNotesView: View {
             }
         }
     }
+
 }
 
 struct LiveNotesManagerView: View {
     @ObservedObject var manager: MeetingRecordingManager
+    @StateObject private var managerNotesDebouncer = Debouncer()
     @State private var searchText: String = ""
     @State private var showTranscript = true
     @State private var showNotes = true
@@ -1015,7 +951,7 @@ struct LiveNotesManagerView: View {
     @State private var llmStateDescription: String = "Checking…"
     @State private var llmState: LocalLLMPipeline.State = .idle
     @State private var isWarmingLLM = false
-    @State private var warmupTask: Task<Void, Never>?
+    @State private var warmupTask: Task<LocalLLMPipeline.WarmupOutcome, Never>?
     var onHide: () -> Void
 
     private var isActiveRecording: Bool {
@@ -1081,15 +1017,10 @@ struct LiveNotesManagerView: View {
                     .foregroundColor(.secondary)
                 Text(manager.displayTitle)
                     .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
+                .lineLimit(1)
             }
             Spacer()
-            Text(statusText)
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(statusColor.opacity(0.15)))
-                .foregroundColor(statusColor)
+            StatusChip(title: statusText, color: statusColor, icon: "record.circle")
             Button {
                 Task { await manager.stopRecording() }
             } label: {
@@ -1215,9 +1146,13 @@ struct LiveNotesManagerView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
                     .frame(minHeight: 120)
                     .onChange(of: liveNotes) { _, newValue in
-                        Task { await manager.saveNotes(newValue) }
+                        managerNotesDebouncer.schedule(delayNanoseconds: Debouncer.Delay.notesSaveNanoseconds) { [weak manager] in
+                            guard let manager else { return }
+                            await manager.saveNotes(newValue)
+                        }
                     }
                     .onDisappear {
+                        managerNotesDebouncer.cancel()
                         Task { await manager.saveNotes(liveNotes) }
                     }
             }
@@ -1232,108 +1167,19 @@ struct LiveNotesManagerView: View {
     }
 
     private var aiSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("AI-enhanced bullets")
-                    .font(.system(size: 12, weight: .semibold))
-                Spacer()
-                if manager.summary != nil {
-                    Text("Ready")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.green)
-                } else {
-                    Text("Generates after recording")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                llmStatusChipManager
-                Menu {
-                    Button("Regenerate (default prompt)") {
-                        Task { await regenerateSummary(template: PromptTemplate.defaultTemplate) }
-                    }
-                    Divider()
-                    ForEach(PromptTemplate.allTemplates, id: \.id) { template in
-                        Button("Regenerate with \(template.title)") {
-                            Task { await regenerateSummary(template: template) }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .foregroundColor(.secondary)
-                }
-                .menuStyle(.borderlessButton)
-                .disabled(isRegenerating || manager.liveTranscript.isEmpty)
-                Button {
-                    copySummary()
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Copy AI bullets")
-                Button {
-                    exportSummary()
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Export summary/notes")
-            }
-            if let summary = manager.summary {
-                VStack(alignment: .leading, spacing: 10) {
-                    if !summary.summary.isEmpty {
-                        Text(summary.summary)
-                            .font(.system(size: 12))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if !summary.highlights.isEmpty {
-                        Divider()
-                        Text("Highlights")
-                            .font(.system(size: 12, weight: .semibold))
-                        ForEach(summary.highlights, id: \.self) { highlight in
-                            HStack(alignment: .top, spacing: 6) {
-                                Image(systemName: "circle.fill")
-                                    .font(.system(size: 6))
-                                    .foregroundColor(.secondary)
-                                    .padding(.top, 4)
-                                Text(highlight)
-                                    .font(.system(size: 12))
-                            }
-                        }
-                    }
-                    if !summary.actionItems.isEmpty {
-                        Divider()
-                        Text("Action items")
-                            .font(.system(size: 12, weight: .semibold))
-                        ForEach(summary.actionItems, id: \.self) { item in
-                            HStack(alignment: .top, spacing: 6) {
-                                Image(systemName: "checkmark.circle")
-                                    .foregroundColor(.green)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.description)
-                                        .font(.system(size: 12))
-                                    if let owner = item.owner, !owner.isEmpty {
-                                        Text("Owner: \(owner)")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-            } else {
-                Text("AI-enhanced bullets will appear here once the note finishes processing.")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-            }
-        }
+        AISectionView(
+            summary: manager.summary,
+            liveTranscriptIsEmpty: manager.liveTranscript.isEmpty,
+            llmState: llmState,
+            llmIsReady: llmState.isReady,
+            isWarmingLLM: isWarmingLLM,
+            isRegenerating: isRegenerating,
+            llmStateDescription: llmStateDescription,
+            warmLLM: { await warmLLM() },
+            regenerateSummary: { template in await regenerateSummary(template: template) },
+            copySummary: { copySummary() },
+            exportSummary: { exportSummary() }
+        )
     }
 
     private func prependBullet() {
@@ -1373,8 +1219,6 @@ struct LiveNotesManagerView: View {
         await manager.regenerateSummary(template: template)
         isRegenerating = false
     }
-
-    private var llmStatusChipManager: some View { makeLLMStatusChip(for: llmState) }
 
     private func prefillNotesIfNeeded() async {
         guard liveNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -1455,7 +1299,7 @@ struct LiveNotesManagerView: View {
 
     private func warmLLM() async {
         if let warmupTask {
-            await warmupTask.value
+            _ = await warmupTask.value
             return
         }
         isWarmingLLM = true
@@ -1463,8 +1307,14 @@ struct LiveNotesManagerView: View {
             await LocalLLMPipeline.shared.warmup()
         }
         warmupTask = task
-        await task.value
+        let outcome = await task.value
         warmupTask = nil
+        if outcome == .timedOut {
+            FileLogger.log(
+                category: "LiveNotesView",
+                message: "LLM warmup timed out; leaving fallback polling enabled"
+            )
+        }
         await refreshLLMState()
         isWarmingLLM = false
     }
