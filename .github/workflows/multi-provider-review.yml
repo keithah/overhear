@@ -4,6 +4,9 @@ name: Multi-Provider Code Review
 # - Automatic on PR events (opened/synchronize/reopened)
 # - Manual on PR comments starting with /review or containing @opencode/@claude
 on:
+  push:
+    branches:
+      - '**'
   pull_request:
     types: [opened, synchronize, reopened]
   issue_comment:
