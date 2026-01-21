@@ -142,6 +142,7 @@ final class MeetingListViewModel: ObservableObject {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url.absoluteString, forType: .string)
             showClipboardNotification(url: url)
+            showClipboardAlert()
         }
     }
 
@@ -376,6 +377,16 @@ private func showClipboardNotification(url: URL) {
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         )
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+}
+
+private func showClipboardAlert() {
+    DispatchQueue.main.async {
+        let alert = NSAlert()
+        alert.messageText = "Failed to open link"
+        alert.informativeText = "The meeting URL was copied to your clipboard."
+        alert.alertStyle = .informational
+        alert.runModal()
     }
 }
 
