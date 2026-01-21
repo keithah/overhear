@@ -1375,7 +1375,7 @@ private extension MeetingRecordingManager {
 
     func rebuildSpeakerSegmentBuckets() {
         // Debounce aggressive rebuilds during rapid diarization updates to avoid repeated O(n*m) work.
-        if let last = lastSpeakerBucketRebuildAt, Date().timeIntervalSince(last) < 0.25 {
+        if let last = lastSpeakerBucketRebuildAt, Date().timeIntervalSince(last) < 1.0 {
             FileLogger.log(
                 category: "MeetingRecordingManager",
                 message: "Skipped speaker bucket rebuild due to debounce; segments=\(speakerSegments.count)"

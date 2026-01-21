@@ -298,7 +298,7 @@ actor TranscriptStore {
         }
 
         // Process in parallel with a small concurrency cap to improve throughput on large collections.
-        let maxConcurrent = 4
+        let maxConcurrent = 12
         var results: [StoredTranscript] = []
         var queued = 0
         let currentKey = encryptionKey
