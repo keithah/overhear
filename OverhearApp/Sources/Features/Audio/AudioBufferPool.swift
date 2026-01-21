@@ -12,6 +12,7 @@ final class PooledAudioBuffer: @unchecked Sendable {
         self.release = release
     }
 
+    /// Returns the shared immutable buffer (no copy). Callers must not mutate.
     func cloned() -> AVAudioPCMBuffer {
         buffer
     }

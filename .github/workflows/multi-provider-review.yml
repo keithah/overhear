@@ -22,7 +22,8 @@ jobs:
     if: |
       (
         github.event_name == 'pull_request' ||
-        (github.event.issue.pull_request &&
+        github.event_name == 'push' ||
+        (github.event.issue?.pull_request &&
           (startsWith(github.event.comment.body, '/review') ||
            contains(github.event.comment.body, '@opencode') ||
            contains(github.event.comment.body, '@claude'))) ||

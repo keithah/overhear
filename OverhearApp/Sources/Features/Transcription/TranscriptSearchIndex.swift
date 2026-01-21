@@ -39,15 +39,17 @@ final class TranscriptSearchIndex {
     func index(transcript: StoredTranscript, fileURL: URL) throws {
         let deleteSQL = "DELETE FROM transcripts_fts WHERE id = ?1;"
         try execute(deleteSQL) { [sqliteTransient] stmt in
-            let idCString = transcript.id.cString(using: .utf8)
+            guard let idCString = transcript.id.cString(using: .utf8) else { return }
             sqlite3_bind_text(stmt, 1, idCString, -1, sqliteTransient)
         }
         let insertSQL = "INSERT INTO transcripts_fts (id, title, content, path, date) VALUES (?1, ?2, ?3, ?4, ?5);"
         try execute(insertSQL) { [sqliteTransient] stmt in
-            let idCString = transcript.id.cString(using: .utf8)
-            let titleCString = transcript.title.cString(using: .utf8)
-            let contentCString = transcript.transcript.cString(using: .utf8)
-            let pathCString = fileURL.path.cString(using: .utf8)
+            guard
+                let idCString = transcript.id.cString(using: .utf8),
+                let titleCString = transcript.title.cString(using: .utf8),
+                let contentCString = transcript.transcript.cString(using: .utf8),
+                let pathCString = fileURL.path.cString(using: .utf8)
+            else { return }
             sqlite3_bind_text(stmt, 1, idCString, -1, sqliteTransient)
             sqlite3_bind_text(stmt, 2, titleCString, -1, sqliteTransient)
             sqlite3_bind_text(stmt, 3, contentCString, -1, sqliteTransient)
@@ -59,7 +61,7 @@ final class TranscriptSearchIndex {
     func delete(id: String) throws {
         let sql = "DELETE FROM transcripts_fts WHERE id = ?1;"
         try execute(sql) { [sqliteTransient] stmt in
-            let idCString = id.cString(using: .utf8)
+            guard let idCString = id.cString(using: .utf8) else { return }
             sqlite3_bind_text(stmt, 1, idCString, -1, sqliteTransient)
         }
     }
@@ -96,7 +98,8 @@ final class TranscriptSearchIndex {
         """
         var results: [URL] = []
         try self.query(sql, bind: { [sqliteTransient] stmt in
-            sqlite3_bind_text(stmt, 1, token.cString(using: .utf8), -1, sqliteTransient)
+            guard let tokenCString = token.cString(using: .utf8) else { return }
+            sqlite3_bind_text(stmt, 1, tokenCString, -1, sqliteTransient)
             sqlite3_bind_int(stmt, 2, Int32(limit))
             sqlite3_bind_int(stmt, 3, Int32(offset))
         }, rowHandler: { stmt in

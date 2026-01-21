@@ -140,7 +140,7 @@ final class AVAudioCaptureServiceSessionTests: XCTestCase {
             FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         )
         await service._testSetPendingBufferCount(64)
-        await service._testNotifyObservers(buffer: buffer, sessionID: sessionID)
+        await service._testEnqueueBuffer(buffer: buffer, sessionID: sessionID)
         let pending = await service._testPendingBufferCount()
         XCTAssertEqual(pending, 64, "Backpressure should drop without increasing pending count")
     }
@@ -154,8 +154,8 @@ final class AVAudioCaptureServiceSessionTests: XCTestCase {
             FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         )
         await service._testSetPendingBufferCount(0)
-        // Force underflow by notifying with empty pending and expect correction to 0.
-        await service._testNotifyObservers(buffer: buffer, sessionID: sessionID)
+        // Force underflow by enqueueing with empty pending and expect correction to 0.
+        await service._testEnqueueBuffer(buffer: buffer, sessionID: sessionID)
         let pending = await service._testPendingBufferCount()
         XCTAssertEqual(pending, 0, "Pending counter should not go negative and should be corrected to zero")
     }
@@ -173,7 +173,7 @@ final class AVAudioCaptureServiceSessionTests: XCTestCase {
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<20 {
                 group.addTask {
-                    await service._testNotifyObservers(buffer: buffer, sessionID: sessionID)
+                    await service._testEnqueueBuffer(buffer: buffer, sessionID: sessionID)
                 }
             }
             await group.waitForAll()
@@ -193,7 +193,7 @@ final class AVAudioCaptureServiceSessionTests: XCTestCase {
         )
         // Simulate cap breach by setting pending bytes near the limit via multiple notifications.
         for _ in 0..<5 {
-            await service._testNotifyObservers(buffer: buffer, sessionID: sessionID)
+            await service._testEnqueueBuffer(buffer: buffer, sessionID: sessionID)
         }
         let pending = await service._testPendingBufferCount()
         XCTAssertLessThanOrEqual(pending, 64, "Memory drops should not inflate pending count")

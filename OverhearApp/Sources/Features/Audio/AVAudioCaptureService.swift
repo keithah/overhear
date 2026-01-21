@@ -76,13 +76,15 @@ actor AVAudioCaptureService {
     private enum LogConstants {
         static var initialBufferLogs: Int {
             let raw = UserDefaults.standard.integer(forKey: "overhear.capture.initialBufferLogs")
+            if raw == 0 { return 5 }
             let clamped = min(max(raw, 1), 100)
-            return clamped > 0 ? clamped : 5
+            return clamped
         }
         static var buffersPerLog: Int {
             let raw = UserDefaults.standard.integer(forKey: "overhear.capture.buffersPerLog")
+            if raw == 0 { return 50 }
             let clamped = min(max(raw, 10), 500)
-            return clamped > 0 ? clamped : 50
+            return clamped
         }
         // Extra defensive cap to avoid unbounded counters in long sessions.
         static let bufferCountRolloverCap: UInt64 = 10_000_000
@@ -441,6 +443,13 @@ extension AVAudioCaptureService {
 
     func _testNotifyObservers(buffer: AVAudioPCMBuffer, sessionID: UUID) async {
         await notifyBufferObservers(buffer: buffer, sessionID: sessionID)
+    }
+
+    func _testEnqueueBuffer(buffer: AVAudioPCMBuffer, sessionID: UUID) async {
+        let desc = buffer.format.streamDescription
+        let bytesPerFrame = Int(desc.pointee.mBytesPerFrame)
+        let sizeBytes = Int(buffer.frameLength) * bytesPerFrame
+        await enqueueBuffer(buffer, sessionID: sessionID, sizeBytes: sizeBytes)
     }
 
     func _testClearObservers() {

@@ -292,14 +292,15 @@ actor TranscriptStore {
         var queued = 0
         let currentKey = encryptionKey
         let decoder = decoder
+        let cache = searchCache
         try await withThrowingTaskGroup(of: StoredTranscript?.self) { group in
             var iterator = fileURLs.makeIterator()
 
             func enqueueNext() {
                 guard let url = iterator.next(), queued < offset + limit else { return }
                 queued += 1
-                group.addTask { [self] in
-                    if let cached = await searchCache.get(url) {
+                group.addTask {
+                    if let cached = await cache.get(url) {
                         if cached.title.lowercased().contains(lowerQuery) ||
                             cached.transcript.lowercased().contains(lowerQuery) {
                             return cached
@@ -311,7 +312,7 @@ actor TranscriptStore {
                             try Data(contentsOf: url)
                         }.value
                         let transcript = try Self.decryptOrDecode(data: data, using: currentKey, decoder: decoder)
-                        await searchCache.set(url, value: transcript)
+                        await cache.set(url, value: transcript)
                         if transcript.title.lowercased().contains(lowerQuery) ||
                             transcript.transcript.lowercased().contains(lowerQuery) {
                             return transcript

@@ -1460,6 +1460,7 @@ private extension MeetingRecordingManager {
             // Incremental path: only bucket newly-arrived segments while keeping existing buckets intact.
             let newSegments = speakerSegments.suffix(from: lastBucketizedIndex)
             guard !newSegments.isEmpty else { return }
+            keptSegments = Array(speakerSegments.prefix(lastBucketizedIndex))
             for segment in newSegments {
                 guard segment.start >= 0,
                       segment.end >= segment.start,
@@ -1483,11 +1484,11 @@ private extension MeetingRecordingManager {
                     droppedWide += 1
                     continue
                 }
+                keptSegments.append(segment)
                 for bucket in startBucket...endBucket {
                     speakerSegmentBuckets[bucket, default: []].append(segment)
                 }
             }
-            keptSegments = speakerSegments
         }
 
         // Update index and prune buckets to window to avoid long-run growth.
