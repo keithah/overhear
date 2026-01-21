@@ -1466,6 +1466,7 @@ private extension MeetingRecordingManager {
                 segment.start >= 0 &&
                 segment.end >= segment.start &&
                 segment.end <= SpeakerConstraints.maxWindowSeconds &&
+                segment.end <= speakerBucketWindowSeconds &&
                 segment.end >= minWindowStart
             }
             // Rebuild buckets from keptSegments (within window) before adding new ones.

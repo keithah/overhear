@@ -94,20 +94,24 @@ actor AVAudioCaptureService {
     /// Computes whether a buffer notification should be logged while updating counters in-place.
     static func advanceLoggingDecision(state: inout BufferLogState) -> BufferLogDecision {
         let perLogInterval = UInt64(LogConstants.buffersPerLog)
-        state.total &+= 1
-        state.sinceLast &+= 1
+        if state.total < LogConstants.bufferCountRolloverCap {
+            state.total &+= 1
+        }
+        if state.total >= LogConstants.bufferCountRolloverCap {
+            state.total = LogConstants.bufferCountRolloverCap
+        }
+        if state.sinceLast < UInt64.max {
+            state.sinceLast &+= 1
+        }
 
         // Prevent unbounded growth and avoid re-running the "first N" log burst after rollover.
         var rolledOver = false
         if state.total >= LogConstants.bufferCountRolloverCap {
             rolledOver = true
-            // Reset counters modulo the periodic interval to avoid overflow; this may skip a periodic log near rollover.
-            state.total = state.total % perLogInterval
-            state.sinceLast = 0
-            // Keep the initial-burst flag set so rollover doesn't repeat the early log flood.
+            // Keep counters saturated to avoid overflow; don't repeat the initial burst.
             state.didFinishInitialBurst = true
-            // The check is on the pre-incremented value; rollover will occur on the next advance call after hitting the cap.
-            // Rollover skipping a single periodic log is acceptable to avoid overflow/reset storms.
+            // Reset sinceLast to avoid huge modulo values.
+            state.sinceLast = min(state.sinceLast, perLogInterval)
         }
 
         let initialLimit = UInt64(LogConstants.initialBufferLogs)

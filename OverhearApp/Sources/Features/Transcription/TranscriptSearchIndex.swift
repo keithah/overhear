@@ -83,6 +83,7 @@ final class TranscriptSearchIndex {
         if sanitized.count > 200 {
             sanitized = String(sanitized.prefix(200))
         }
+        sanitized = sanitized.replacingOccurrences(of: "\"", with: "\"\"")
         guard !sanitized.isEmpty else { return [] }
         let words = sanitized.split(separator: " ").map(String.init)
         // Apply wildcard only for single-word, reasonably short queries.

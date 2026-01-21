@@ -198,6 +198,7 @@ actor TranscriptStore {
             let data = try encoder.encode(transcript)
             let encrypted = try Self.encryptData(data, using: encryptionKey)
             try await Task.detached(priority: .utility) {
+                if Task.isCancelled { return }
                 try encrypted.write(to: fileURL, options: [.atomic])
             }.value
 #if canImport(SQLite3)

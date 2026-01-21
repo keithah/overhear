@@ -50,22 +50,20 @@ final class InstanceLock {
             let holderPID = readLockPID(from: lockURL)
             if let holderPID, !isProcessRunning(pid: holderPID) {
                 logger.notice("Detected stale instance lock for pid \(holderPID); attempting to reclaim")
-                if flock(fd, LOCK_EX | LOCK_NB) == 0 {
-                    locked = true
-                    retainFD = true
-                    self.fd = fd
-                    writePID(pid, to: fd)
-                    return true
-                } else {
-                    // Brief backoff to reduce TOCTOU window if another process races to reclaim.
-                    usleep(50_000)
+                for _ in 0..<2 {
                     if flock(fd, LOCK_EX | LOCK_NB) == 0 {
-                        locked = true
-                        retainFD = true
-                        self.fd = fd
                         writePID(pid, to: fd)
-                        return true
+                        // Verify we own the lock by rereading.
+                        if readLockPID(from: lockURL) == pid {
+                            locked = true
+                            retainFD = true
+                            self.fd = fd
+                            return true
+                        } else {
+                            flock(fd, LOCK_UN)
+                        }
                     }
+                    usleep(50_000)
                 }
             } else if let holderPID {
                 logger.error("Another Overhear instance is already running (pid \(holderPID))")

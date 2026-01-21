@@ -329,9 +329,17 @@ extension MeetingRecordingManager {
 
 enum NotesCheckpointStorage {
     private static let service = "com.overhear.notes.checkpoint"
+    private static let fallbackURL: URL? = {
+        let fm = FileManager.default
+        if let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
+            return appSupport.appendingPathComponent("com.overhear.app/NotesCheckpoint", isDirectory: true)
+        }
+        return nil
+    }()
 
-    static func save(_ notes: String, key: String) {
-        guard let data = notes.data(using: .utf8) else { return }
+    @discardableResult
+    static func save(_ notes: String, key: String) -> Bool {
+        guard let data = notes.data(using: .utf8) else { return false }
         let baseQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -345,9 +353,16 @@ enum NotesCheckpointStorage {
         if status != errSecSuccess {
             FileLogger.log(
                 category: "MeetingRecordingManager",
-                message: "Failed to save pending notes checkpoint (status \(status))"
+                message: "Failed to save pending notes checkpoint (status \(status)); falling back to file"
             )
+            if let dir = fallbackURL {
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let url = dir.appendingPathComponent(key)
+                try? data.write(to: url, options: .atomic)
+            }
+            return false
         }
+        return true
     }
 
     static func load(key: String) -> String? {
@@ -372,6 +387,10 @@ enum NotesCheckpointStorage {
             kSecAttrAccount as String: key
         ]
         SecItemDelete(query as CFDictionary)
+        if let dir = fallbackURL {
+            let url = dir.appendingPathComponent(key)
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     #if DEBUG
