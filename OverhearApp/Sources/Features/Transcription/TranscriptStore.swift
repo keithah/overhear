@@ -134,15 +134,6 @@ actor TranscriptStore {
             }
             self.storageDirectory = appSupport.appendingPathComponent("com.overhear.app/Transcripts")
         }
-        #if canImport(SQLite3)
-        if Self.shouldEnableFTS {
-            self.searchIndex = try? TranscriptSearchIndex(baseDirectory: self.storageDirectory)
-        } else {
-            self.searchIndex = nil
-        }
-        #else
-        self.searchIndex = nil
-        #endif
         KeyStorage.markEphemeralRiskFlag(false)
         
         // Ensure storage directory exists (create if missing) and is not shadowed by a file
@@ -161,6 +152,16 @@ actor TranscriptStore {
             }
         }
         
+        #if canImport(SQLite3)
+        if Self.shouldEnableFTS {
+            self.searchIndex = try? TranscriptSearchIndex(baseDirectory: self.storageDirectory)
+        } else {
+            self.searchIndex = nil
+        }
+        #else
+        self.searchIndex = nil
+        #endif
+
         // Initialize encryption key from Keychain
         do {
             self.encryptionKey = try Self.getOrCreateEncryptionKey()

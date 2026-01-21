@@ -27,19 +27,21 @@ final class CalendarService: ObservableObject {
             return true
         }
 
-        if persistedGrant {
-            if #available(macOS 14.0, *) {
-                authorizationStatus = .fullAccess
-            } else {
-                authorizationStatus = .authorized
-            }
-            log("Using persisted granted state; skipping prompt")
-            return true
-        }
-
         let status = EKEventStore.authorizationStatus(for: .event)
         authorizationStatus = status
         log("Authorization status on entry: \(status.rawValue)")
+
+        // If we previously recorded a grant but the system now reports otherwise, clear the flag.
+        if persistedGrant && !CalendarAccessHelper.isAuthorized(status) {
+            log("Persisted grant no longer valid; clearing cache")
+            persistedGrant = false
+            UserDefaults.standard.set(false, forKey: "overhear.calendar.grantedOnce")
+        }
+
+        if persistedGrant, CalendarAccessHelper.isAuthorized(status) {
+            log("Using persisted granted state (validated against current status); skipping prompt")
+            return true
+        }
 
         // Early returns when already decided; only promote activation policy if we must prompt.
         if CalendarAccessHelper.isAuthorized(status) {
