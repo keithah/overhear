@@ -1,8 +1,5 @@
 name: Multi-Provider Code Review
 
-# Triggers:
-# - Automatic on PR events (opened/synchronize/reopened)
-# - Manual on PR comments starting with /review or containing @opencode/@claude
 on:
   push:
     branches:
@@ -19,18 +16,14 @@ on:
 
 jobs:
   review:
-    if: |
-      (
-        github.event_name == 'pull_request' ||
-        github.event_name == 'push' ||
-        (github.event.issue?.pull_request &&
-          (startsWith(github.event.comment.body, '/review') ||
-           contains(github.event.comment.body, '@opencode') ||
-           contains(github.event.comment.body, '@claude'))) ||
-        github.event_name == 'workflow_dispatch'
-      )
-      && (github.event.pull_request.changed_files <= (vars.MAX_CHANGED_FILES || 9999))
-      && ((github.event.pull_request.additions + github.event.pull_request.deletions) >= (vars.MIN_CHANGED_LINES || 0))
+    if: >
+      github.event_name == 'push'
+      || github.event.pull_request
+      || (github.event.issue.pull_request
+          && (startsWith(github.event.comment.body, '/review')
+              || contains(github.event.comment.body, '@opencode')
+              || contains(github.event.comment.body, '@claude')))
+      || (github.event_name == 'workflow_dispatch' && github.event.inputs.pr_number)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -41,50 +34,24 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Cache npm global
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm-global
+            ~/.npm/_cacache
+          key: opencode-cache-${{ runner.os }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-cache-${{ runner.os }}
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: Install OpenCode CLI
-        run: |
-          if ! command -v opencode >/dev/null 2>&1; then
-            NPM_PREFIX="$HOME/.npm-global"
-            mkdir -p "$NPM_PREFIX"
-            npm config set prefix "$NPM_PREFIX"
-            npm install -g opencode-ai@1.2.3
-            echo "$NPM_PREFIX/bin" >> "$GITHUB_PATH"
-          fi
-
-      - name: Collect PR metadata
-        id: pr
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const prPayload = context.payload.pull_request ?? context.payload.issue?.pull_request;
-            const issueNumber = context.payload.issue?.number;
-            const inputNumber = context.payload.inputs?.pr_number ? Number(context.payload.inputs.pr_number) : undefined;
-
-            const number =
-              prPayload?.number ??
-              issueNumber ??
-              inputNumber ??
-              (prPayload?.url ? Number(prPayload.url.split('/').pop()) : undefined);
-            if (!number) {
-              core.setFailed('Could not determine PR number');
-              return;
-            }
-
-            const { data } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: number,
-            });
-
-            core.setOutput('number', data.number);
-            core.setOutput('title', data.title || '');
-            core.setOutput('body', data.body || '');
 
       - name: Detect AGENTS.md
         id: agents
@@ -94,6 +61,62 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Collect PR metadata
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Resolve PR number for pull_request, issue_comment, workflow_dispatch, or push events.
+            let number = context.payload.pull_request?.number;
+            if (!number && context.payload.issue?.pull_request) {
+              number = context.payload.issue.number;
+            }
+            if (!number && context.payload.inputs?.pr_number) {
+              number = Number(context.payload.inputs.pr_number);
+            }
+            if (!number && context.eventName === 'push') {
+              // Try to find an open PR for this commit/branch
+              const ref = context.ref?.replace('refs/heads/', '');
+              if (context.sha) {
+                const associated = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner,
+                  repo,
+                  commit_sha: context.sha,
+                });
+                const openPr = associated.data.find(pr => pr.state === 'open');
+                if (openPr) number = openPr.number;
+              }
+              if (!number && ref) {
+                const prs = await github.rest.pulls.list({
+                  owner,
+                  repo,
+                  head: `${owner}:${ref}`,
+                  state: 'open',
+                });
+                if (prs.data.length > 0) {
+                  number = prs.data[0].number;
+                }
+              }
+            }
+
+            if (!number) {
+              core.setFailed('No pull request context available');
+              return;
+            }
+
+            const { data } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: number,
+            });
+            core.setOutput('number', data.number);
+            core.setOutput('title', data.title || '');
+            core.setOutput('body', data.body || '');
 
       - name: Run Multi-Provider Review
         uses: keithah/multi-provider-code-review@dev
@@ -108,13 +131,11 @@ jobs:
           PROVIDER_LIMIT: ${{ vars.PROVIDER_LIMIT || 0 }}
           PROVIDER_RETRIES: ${{ vars.PROVIDER_RETRIES || 2 }}
           BUDGET_MAX_USD: ${{ vars.BUDGET_MAX_USD || 0 }}
+          REPORT_BASENAME: ${{ vars.REPORT_BASENAME || 'multi-provider-review' }}
           PR_TITLE: ${{ steps.pr.outputs.title }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           PR_BODY: ${{ steps.pr.outputs.body }}
           HAS_AGENTS: ${{ steps.agents.outputs.exists }}
-          SYNTHESIS_MODEL: ${{ vars.SYNTHESIS_MODEL || '' }}
-          DIFF_MAX_BYTES: ${{ vars.DIFF_MAX_BYTES || '' }}
-          RUN_TIMEOUT_SECONDS: ${{ vars.RUN_TIMEOUT_SECONDS || '' }}
 
       - name: Upload review artifacts
         if: always() && hashFiles('multi-provider-report/*') != ''
@@ -127,7 +148,4 @@ jobs:
         if: always() && hashFiles('multi-provider-report/*.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: multi-provider-report/multi-provider-review.sarif
-
-# To disable auto-run on every PR change, remove the pull_request block.
-# To disable manual triggers, remove the issue_comment block or the IF filter.
+          sarif_file: multi-provider-report/${{ vars.REPORT_BASENAME || 'multi-provider-review' }}.sarif

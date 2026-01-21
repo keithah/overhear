@@ -58,3 +58,13 @@ final class AudioBufferPool {
         }
     }
 }
+
+#if DEBUG
+extension AudioBufferPool {
+    func _testActiveCount() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return counts.count
+    }
+}
+#endif

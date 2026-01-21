@@ -62,6 +62,12 @@ actor TranscriptSearchCache {
         cache.removeAll()
         order.removeAll()
     }
+
+#if DEBUG
+    func _testActiveCount() -> Int {
+        cache.count
+    }
+#endif
 }
 
 /// Manages storage and retrieval of transcripts

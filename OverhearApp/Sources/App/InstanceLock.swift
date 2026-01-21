@@ -56,6 +56,16 @@ final class InstanceLock {
                     self.fd = fd
                     writePID(pid, to: fd)
                     return true
+                } else {
+                    // Brief backoff to reduce TOCTOU window if another process races to reclaim.
+                    usleep(50_000)
+                    if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+                        locked = true
+                        retainFD = true
+                        self.fd = fd
+                        writePID(pid, to: fd)
+                        return true
+                    }
                 }
             } else if let holderPID {
                 logger.error("Another Overhear instance is already running (pid \(holderPID))")

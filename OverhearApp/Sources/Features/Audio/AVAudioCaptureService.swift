@@ -88,6 +88,7 @@ actor AVAudioCaptureService {
         }
         // Extra defensive cap to avoid unbounded counters in long sessions.
         static let bufferCountRolloverCap: UInt64 = 10_000_000
+        // Note: at ~50 buffers/sec this rolls over around 56 hours. Increase if very long sessions are expected.
     }
 
     /// Computes whether a buffer notification should be logged while updating counters in-place.
