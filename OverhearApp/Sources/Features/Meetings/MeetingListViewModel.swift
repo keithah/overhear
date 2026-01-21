@@ -142,6 +142,7 @@ final class MeetingListViewModel: ObservableObject {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url.absoluteString, forType: .string)
             showClipboardNotification(url: url)
+            showClipboardAlert()
         }
     }
 
@@ -166,8 +167,7 @@ final class MeetingListViewModel: ObservableObject {
     private func apply(meetings: [Meeting]) {
         let now = Date()
         let calendar = Calendar.current
-        // Extended cutoff: meetings remain "upcoming" until 5 minutes after their end time
-        // We check if the end time is older than 5 minutes ago.
+        // Extended cutoff: keep meetings “upcoming” until 5 minutes after their end time.
         let fiveMinutesAgo = now.addingTimeInterval(-5 * 60)
 
         let combinedMeetings = (meetings + manualRecordings)
@@ -377,6 +377,16 @@ private func showClipboardNotification(url: URL) {
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         )
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+}
+
+private func showClipboardAlert() {
+    DispatchQueue.main.async {
+        let alert = NSAlert()
+        alert.messageText = "Failed to open link"
+        alert.informativeText = "The meeting URL was copied to your clipboard."
+        alert.alertStyle = .informational
+        alert.runModal()
     }
 }
 

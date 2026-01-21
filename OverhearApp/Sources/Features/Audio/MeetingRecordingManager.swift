@@ -63,6 +63,7 @@ final class MeetingRecordingManager: ObservableObject {
         }
     }
 
+    // Pure helper; does not access actor state.
     nonisolated static func healthRetryDelay(base: TimeInterval, retries: Int) -> TimeInterval {
         guard retries > 0 else { return base }
         let exponent = Double(min(retries, 4))
@@ -70,8 +71,19 @@ final class MeetingRecordingManager: ObservableObject {
     }
 
     private enum StreamingLimits {
-        // Cap live segments more aggressively to limit memory for long meetings.
-        static let maxLiveSegments = 500
+        // Cap live segments more aggressively to limit memory for long meetings; default 500, clamped 100–5,000.
+        static let maxLiveSegments: Int = {
+            MainActor.assumeIsolated {
+                let raw = UserDefaults.standard.integer(forKey: "overhear.streaming.maxLiveSegments")
+                let defaultValue = 500
+                guard raw != 0 else { return defaultValue }
+                let clamped = min(max(raw, 100), 5_000)
+                if clamped != raw {
+                    configLogger.warning("overhear.streaming.maxLiveSegments \(raw) clamped to \(clamped)")
+                }
+                return clamped
+            }
+        }()
     }
 
     // Diarization/spoken timeline is bounded to a 12-hour window to keep bucket maps from growing unbounded.
@@ -97,22 +109,54 @@ final class MeetingRecordingManager: ObservableObject {
     @Published private(set) var audioFileURL: URL?
     @Published private(set) var speakerSegments: [SpeakerSegment] = []
     private var speakerSegmentBuckets: [Int: [SpeakerSegment]] = [:]
-    private let speakerBucketWidthSeconds: TimeInterval = 5.0
-    // 12h window -> ~8,640 buckets at 5s; trimmed more aggressively below if needed.
-    private let speakerBucketWindowSeconds: TimeInterval = 6 * 60 * 60
+    private var lastBucketizedIndex: Int = 0
+    private var lastBucketMinBucket: Int = 0
+    private let speakerBucketWidthSeconds: TimeInterval = 5.0 // aligns with diarization timestamp granularity
+    // Default 6h window (~4,320 buckets at 5s); tunable via UserDefaults overhear.speakerBucketWindowSeconds (1h–12h).
+    private let speakerBucketWindowSeconds: TimeInterval = {
+        let raw = UserDefaults.standard.double(forKey: "overhear.speakerBucketWindowSeconds")
+        let defaultValue: TimeInterval = 6 * 60 * 60
+        guard raw > 0 else { return defaultValue }
+        let clamped = min(max(raw, 60 * 60), SpeakerConstraints.maxWindowSeconds)
+        if clamped != raw {
+            configLogger.warning("overhear.speakerBucketWindowSeconds \(raw, privacy: .public)s clamped to \(clamped, privacy: .public)s")
+        }
+        return clamped
+    }()
     @Published private(set) var summary: MeetingSummary?
-    @Published var notesSaveState: NotesSaveState = .idle
+    @Published var notesSaveState: NotesSaveState = .idle // NotesSaveQueue applies “latest wins” coalescing.
     @Published var lastNotesSavedAt: Date?
     private(set) var transcriptID: String?
-    var pendingNotes: String?
-    var isNotesSaveRunning = false
+    @MainActor var pendingNotes: String?
+    @MainActor var isNotesSaveRunning = false
     // Generation counters wrap via &+= so extremely long uptimes do not trap on overflow; comparisons only rely on equality.
     var notesHealthGeneration: Int = 0
     private var originalFileLogSetting: Bool?
     private var fileLogTemporarilyEnabled = false
     var notesRetryTask: Task<Void, Never>?
     var notesRetryAttempts = 0
-    fileprivate let pendingNotesCheckpointKey = "overhear.pendingNotesCheckpoint"
+    // Allow storing a Keychain-protected crash-recovery checkpoint for pending notes.
+    // Disabled with OVERHEAR_DISABLE_NOTES_CHECKPOINT=1 or UserDefaults “overhear.disableNotesCheckpoint”.
+    // Enabled with OVERHEAR_ENABLE_NOTES_CHECKPOINT=1 or UserDefaults “overhear.enableNotesCheckpoint”.
+    static let allowPendingNotesCheckpoint: Bool = {
+        let disableEnv = ProcessInfo.processInfo.environment["OVERHEAR_DISABLE_NOTES_CHECKPOINT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if disableEnv == "1" || disableEnv?.lowercased() == "true" {
+            return false
+        }
+        if UserDefaults.standard.bool(forKey: "overhear.disableNotesCheckpoint") {
+            return false
+        }
+        let enableEnv = ProcessInfo.processInfo.environment["OVERHEAR_ENABLE_NOTES_CHECKPOINT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if enableEnv == "1" || enableEnv?.lowercased() == "true" {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "overhear.enableNotesCheckpoint")
+    }()
+    static let checkpointWarningQueue = DispatchQueue(label: "com.overhear.notes.checkpoint")
+    static var checkpointWarningLogged = false
+    let pendingNotesCheckpointKey = "overhear.pendingNotesCheckpoint"
     let maxNotesRetryAttempts: Int
     var notesHealthCheckTask: Task<Void, Never>?
     var lastNotesError: String?
@@ -132,6 +176,9 @@ final class MeetingRecordingManager: ObservableObject {
         ProcessInfo.processInfo.environment["OVERHEAR_DEBUG_STREAMING_LOGS"] == "1"
             || UserDefaults.standard.bool(forKey: "overhear.debugStreamingLogs")
     }
+    /// Speaker diarization buckets: 5s width; window clamped to min(user default, 12h) to bound memory.
+    /// `StreamingLimits.maxLiveSegments` caps live segments to avoid unbounded growth.
+    // Pure helper; safe to call off-actor.
     nonisolated static func shouldRetryNotes(
         pendingNotes: String?,
         state: NotesSaveState,
@@ -149,16 +196,27 @@ final class MeetingRecordingManager: ObservableObject {
         }
     }
 
+    // Pure helper; no actor state used.
     nonisolated static func normalizeSpeakerSegments(
         _ segments: [SpeakerSegment]
     ) -> (normalized: [SpeakerSegment], wasUnsorted: Bool) {
         guard segments.count > 1 else { return (segments, false) }
         var wasUnsorted = false
+        var isSorted = true
         for idx in 1..<segments.count {
-            if segments[idx - 1].start > segments[idx].start {
+            let prev = segments[idx - 1]
+            let current = segments[idx]
+            if current.start < prev.start {
                 wasUnsorted = true
+                isSorted = false
                 break
             }
+            if current.start == prev.start, current.end < prev.end {
+                wasUnsorted = true
+            }
+        }
+        if isSorted && !wasUnsorted {
+            return (segments, false)
         }
         let sorted = segments.sorted { lhs, rhs in
             if lhs.start == rhs.start {
@@ -169,6 +227,7 @@ final class MeetingRecordingManager: ObservableObject {
         return (sorted, wasUnsorted)
     }
 
+    // Pure helper; no actor state used.
     nonisolated static func trimToLiveSegmentLimit(_ segments: [LiveTranscriptSegment]) -> [LiveTranscriptSegment] {
         guard segments.count > StreamingLimits.maxLiveSegments else { return segments }
         return Array(segments.suffix(StreamingLimits.maxLiveSegments))
@@ -185,6 +244,7 @@ final class MeetingRecordingManager: ObservableObject {
     private var captureStartTime: Date?
     private var transcriptionTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
+    /// Clamp integer configuration overrides and log when clamped.
     private static func clampedInt(forKey key: String, defaultValue: Int, min minimum: Int, max maximum: Int, logger: Logger) -> Int {
         let raw = UserDefaults.standard.integer(forKey: key)
         let clamped = min(max(raw, minimum), maximum)
@@ -194,6 +254,7 @@ final class MeetingRecordingManager: ObservableObject {
         return clamped > 0 ? clamped : defaultValue
     }
 
+    /// Clamp time interval configuration overrides and log when clamped.
     private static func clampedInterval(forKey key: String, defaultValue: TimeInterval, min minimum: TimeInterval, max maximum: TimeInterval, logger: Logger) -> TimeInterval {
         let raw = UserDefaults.standard.double(forKey: key)
         let clamped = min(max(raw, minimum), maximum)
@@ -359,6 +420,7 @@ final class MeetingRecordingManager: ObservableObject {
             max: 7200,
             logger: logger
         )
+        precondition(speakerBucketWidthSeconds > 0, "speakerBucketWidthSeconds must be positive")
     }
     
     /// Start recording the meeting
@@ -740,6 +802,19 @@ final class MeetingRecordingManager: ObservableObject {
     }
 }
 
+#if DEBUG
+extension MeetingRecordingManager {
+    var streamingMonitorTaskForTests: Task<Void, Never>? { streamingMonitorTask }
+    var streamingMonitorGenerationForTests: Int { streamingMonitorGeneration }
+
+    @MainActor
+    func streamingMonitorResultForTests() async -> Result<Void, Never>? {
+        guard let task = streamingMonitorTask else { return nil }
+        return await task.result
+    }
+}
+#endif
+
 #if canImport(FluidAudio)
 extension MeetingRecordingManager {
     /// Streaming configuration tuned for balanced accuracy/latency for live transcripts.
@@ -807,9 +882,8 @@ extension MeetingRecordingManager {
             streamingObserverToken = await captureService.registerBufferObserver { [weak manager] buffer in
                 guard let manager else { return }
                 // Buffer provided by AVAudioCaptureService is already cloned per observer; forward off the main thread.
-                Task.detached(priority: .userInitiated) { [weak manager] in
-                    guard let manager else { return }
-                    await manager.streamAudio(buffer)
+                Task.detached(priority: .userInitiated) { [manager] in
+                    await manager.streamAudio(buffer.buffer)
                 }
             }
 
@@ -842,6 +916,7 @@ extension MeetingRecordingManager {
         await startLiveStreaming()
     }
 
+    @MainActor
     func stopLiveStreaming() async {
         if let pending = streamingHypothesis, !pending.text.isEmpty {
             let confirmed = LiveTranscriptSegment(
@@ -882,6 +957,7 @@ extension MeetingRecordingManager {
         )
     }
 
+    @MainActor
     func startStreamingMonitor() async {
         streamingMonitorGeneration &+= 1
         let generation = streamingMonitorGeneration
@@ -911,7 +987,10 @@ extension MeetingRecordingManager {
                 guard isCurrent else { return }
                 let shouldContinue = await self.evaluateStreamingHealthTick(generation: generation)
                 if !shouldContinue || Task.isCancelled { return }
-                let interval = await self.nextStreamingMonitorInterval()
+                let interval = await MainActor.run { [weak self] in
+                    guard let self else { return self?.monitorIntervalSeconds ?? 2 }
+                    return self.nextStreamingMonitorInterval()
+                }
                 do {
                     try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 } catch {
@@ -924,38 +1003,34 @@ extension MeetingRecordingManager {
     }
 
     /// Adaptive intervals trade faster stall detection for lower steady-state wakeups once streaming is healthy.
-    nonisolated private func nextStreamingMonitorInterval() async -> TimeInterval {
-        await MainActor.run { [weak self] in
-            guard let self else { return 2 }
-            switch streamingHealth.state {
-            case .stalled:
-                // Poll faster while stalled to detect recovery promptly.
-                return max(1, monitorIntervalSeconds / 2)
-            case .active where loggedFirstStreamingToken:
-                return monitorHealthyIntervalSeconds
-            default:
-                return monitorIntervalSeconds
-            }
+    @MainActor
+    private func nextStreamingMonitorInterval() -> TimeInterval {
+        switch streamingHealth.state {
+        case .stalled:
+            // Poll faster while stalled to detect recovery promptly.
+            return max(1, monitorIntervalSeconds / 2)
+        case .active where loggedFirstStreamingToken:
+            return monitorHealthyIntervalSeconds
+        default:
+            return monitorIntervalSeconds
         }
     }
 
-    nonisolated private func evaluateStreamingHealthTick(
+    @MainActor
+    private func evaluateStreamingHealthTick(
         generation: Int,
         now: Date = Date()
     ) async -> Bool {
-        guard let snapshot = await streamingMonitorSnapshot() else { return true }
+        guard generation == streamingMonitorGeneration else { return false }
+        guard let snapshot = streamingMonitorSnapshot() else { return true }
         guard let evaluation = Self.computeStreamingHealth(snapshot: snapshot, now: now) else { return true }
 
-        await MainActor.run { [weak self] in
-            guard let self else { return }
-            guard generation == streamingMonitorGeneration else { return }
-            preTokenStallLogged = evaluation.preTokenStallLogged
-            if let message = evaluation.logMessage {
-                FileLogger.log(category: "MeetingRecordingManager", message: message)
-            }
-            if let newHealth = evaluation.newHealth {
-                streamingHealth = newHealth
-            }
+        preTokenStallLogged = evaluation.preTokenStallLogged
+        if let message = evaluation.logMessage {
+            FileLogger.log(category: "MeetingRecordingManager", message: message)
+        }
+        if let newHealth = evaluation.newHealth {
+            streamingHealth = newHealth
         }
         return evaluation.shouldContinueMonitoring
     }
@@ -1010,6 +1085,7 @@ extension MeetingRecordingManager {
         let shouldContinueMonitoring: Bool
     }
 
+    // Pure helper; relies only on supplied snapshot.
     nonisolated static func computeStreamingHealth(
         snapshot: StreamingMonitorSnapshot,
         now: Date = Date()
@@ -1299,28 +1375,33 @@ private extension MeetingRecordingManager {
 
     func rebuildSpeakerSegmentBuckets() {
         // Debounce aggressive rebuilds during rapid diarization updates to avoid repeated O(n*m) work.
-        if let last = lastSpeakerBucketRebuildAt, Date().timeIntervalSince(last) < 0.25 {
+        if let last = lastSpeakerBucketRebuildAt, Date().timeIntervalSince(last) < 1.0 {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Skipped speaker bucket rebuild due to debounce; segments=\(speakerSegments.count)"
+            )
             return
         }
         lastSpeakerBucketRebuildAt = Date()
-        speakerSegmentBuckets.removeAll()
         guard !speakerSegments.isEmpty else { return }
         var dropped = 0
         var droppedWide = 0
         var droppedOld = 0
         var keptSegments: [SpeakerSegment] = []
-        if speakerSegments.count > 10_000 {
-            FileLogger.log(
-                category: "MeetingRecordingManager",
-                message: "Rebuilding speaker buckets for \(speakerSegments.count) segments; consider incremental strategy if this recurs"
-            )
-        }
-        let newestEnd = speakerSegments.compactMap { $0.end }.max() ?? 0
-        // Apply a more conservative sliding window for in-memory buckets (default 6h) even if diarization spans longer.
         let windowSeconds = min(SpeakerConstraints.maxWindowSeconds, speakerBucketWindowSeconds)
+        let newestEnd = speakerSegments.compactMap { $0.end }.max() ?? 0
         let minWindowStart = max(0, newestEnd - windowSeconds)
         let minBucket = Int(floor(minWindowStart / speakerBucketWidthSeconds))
-        for segment in speakerSegments {
+
+        // Always rebuild fully to keep logic simple and deterministic.
+        let windowedPrefix = speakerSegments.filter { segment in
+            let end = segment.end
+            return end >= minWindowStart && end <= SpeakerConstraints.maxWindowSeconds && end <= speakerBucketWindowSeconds
+        }
+        speakerSegmentBuckets.removeAll()
+        lastBucketizedIndex = 0
+
+        for segment in windowedPrefix {
             guard segment.start >= 0,
                   segment.end >= segment.start,
                   segment.end <= SpeakerConstraints.maxWindowSeconds else {
@@ -1348,20 +1429,22 @@ private extension MeetingRecordingManager {
                 speakerSegmentBuckets[bucket, default: []].append(segment)
             }
         }
-        // Defensive cleanup: drop any buckets beyond the maximum window to avoid long-run growth.
+
+        // Update index and prune buckets to window to avoid long-run growth.
+        lastBucketizedIndex = keptSegments.count
         let maxBucket = Int(floor(windowSeconds / speakerBucketWidthSeconds))
         speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= minBucket && $0.key <= maxBucket }
         speakerSegments = keptSegments
+        if speakerSegments.count > 10_000 || speakerSegmentBuckets.count > 5_000 {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Speaker buckets size=\(speakerSegmentBuckets.count) segments=\(speakerSegments.count) windowSeconds=\(windowSeconds)"
+            )
+        }
         if dropped > 0 || droppedWide > 0 || droppedOld > 0 {
             FileLogger.log(
                 category: "MeetingRecordingManager",
                 message: "Dropped \(dropped) out-of-window, \(droppedWide) overly-wide, \(droppedOld) stale diarization segments"
-            )
-        }
-        if speakerSegmentBuckets.count > 5_000 {
-            FileLogger.log(
-                category: "MeetingRecordingManager",
-                message: "Speaker buckets size=\(speakerSegmentBuckets.count); windowSeconds=\(windowSeconds)"
             )
         }
     }

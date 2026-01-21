@@ -1,9 +1,7 @@
 Pending next PR
-- Incremental speaker bucket rebuild to avoid full-map rebuilds on every diarization update in long sessions.
 - Optional shared immutable buffer strategy if multiple buffer observers cause cloning overhead.
-- Hardening remaining actor isolation concerns (MeetingRecordingManager, LocalLLMPipeline warmup generation) and notes save concurrent access.
-- Further keychain bypass tightening (removing CI/test bypass or alternate secure test key handling) and transcript search optimization beyond newest-first early exit.
-- Structural splits of oversized files (MeetingRecordingManager, MenuBarContentView) and added tests: streaming monitor edge cases, buffer observer stress, single-instance integration.
-- Additional follow-ups: clarify config clamping helper to reduce duplication, document magic numbers (pending buffers=64, firstTokenGrace=30s, bucket width=5s), roll-over logging comment, and NotesSaveQueue behavior; consider encrypting or rethinking pending-notes checkpoint storage; add tests for finalize races (double stopCapture, observer register during finalize), notes health generation wrap, and speaker bucket performance. Also revisit download watchdog default (potentially adaptive or 10s) and potential stale lock handling beyond crash cleanup. Add logging/tests for backpressure drops, normalizeSpeakerSegments and bucket pruning, streaming monitor cancellation, debounce delay/logging flag naming docs, and explore search/FTS indexing plus async tap I/O in a follow-up PR.
-- Remaining from latest review: snapshot notes health fields atomically or via helper to avoid TOCTOU, document DEBUG bypass rationale, consider encrypting or limiting pending-notes checkpoint contents, add PID/stale-lock handling, standardize error/log formats, and add tests for warmup generation wrap and checkpoint staleness.
-- Newly flagged for next pass: avoid counter resets while buffers drain; log when speaker bucket rebuilds are skipped by debounce and profile 8h+ sessions; add iteration counts to verbose health-check logs; consider making select constants debug-configurable with documented defaults; ensure user-facing errors include context; consider earlier termination on rapid consecutive health-check failures.
+- Further keychain bypass tightening (e.g., explicit secure test key handling) and transcript search optimization/FTS (now behind OVERHEAR_ENABLE_FTS/UserDefaults enableFTS).
+- Structural splits of oversized files (MeetingRecordingManager, MenuBarContentView) to be handled in a dedicated PR.
+- Tests remaining: streaming monitor deeper edge cases; buffer observer stress with real tap I/O; checkpoint staleness; long-session speaker bucket profiling/logging; clearer user-facing errors/context.
+- Config/docs cleanup: remaining magic numbers/rollover logging note; consolidate clamping helper usage if desired.
+- Issue: add AppDelegate single-instance integration test (lock file) with proper PBX wiring.

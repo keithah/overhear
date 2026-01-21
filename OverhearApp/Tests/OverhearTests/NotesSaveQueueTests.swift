@@ -46,4 +46,19 @@ final class NotesSaveQueueTests: XCTestCase {
         XCTAssertEqual(values.last, 4)
         XCTAssertLessThanOrEqual(values.count, 2, "Queue should coalesce to first + latest operations")
     }
+
+    func testSequentialEnqueueProcessesAllWhenIdle() async throws {
+        let queue = NotesSaveQueue()
+        let recorder = Recorder()
+
+        await queue.enqueue {
+            await recorder.record(1)
+        }
+        await queue.enqueue {
+            await recorder.record(2)
+        }
+
+        let values = await recorder.values()
+        XCTAssertEqual(values, [1, 2])
+    }
 }

@@ -107,5 +107,56 @@ final class MeetingRecordingManagerStreamingMonitorTests: XCTestCase {
         XCTAssertFalse(evaluation?.shouldContinueMonitoring ?? true)
         XCTAssertEqual(evaluation?.logMessage, "Streaming monitor exceeded max duration (10s); stopping monitor")
     }
+
+    func testMonitorCancelsGracefully() async {
+        let manager = await MainActor.run { try? MeetingRecordingManager(meetingID: "id") }
+        await manager?.startStreamingMonitor()
+        await MainActor.run {
+            manager?.streamingMonitorTaskForTests?.cancel()
+        }
+        let result = await manager?.streamingMonitorResultForTests()
+        switch result {
+        case .success, .none:
+            break
+        }
+    }
+
+    func testMonitorCancelDuringSleepExits() async {
+        guard let manager = await MainActor.run(body: { try? MeetingRecordingManager(meetingID: "sleep-cancel") }) else {
+            return XCTFail("Failed to create manager")
+        }
+        await manager.startStreamingMonitor()
+        // Wait briefly so the monitor enters its sleep cycle, then cancel.
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        let task = await MainActor.run { manager.streamingMonitorTaskForTests }
+        await MainActor.run {
+            task?.cancel()
+        }
+        let result = await task?.result
+        XCTAssertNotNil(result, "Monitor should exit when cancelled during sleep")
+    }
+
+    func testRestartCancelsPriorMonitor() async {
+        guard let manager = await MainActor.run(body: { try? MeetingRecordingManager(meetingID: "restart") }) else {
+            return XCTFail("Failed to create manager")
+        }
+        await manager.startStreamingMonitor()
+        let firstGeneration = await MainActor.run { manager.streamingMonitorGenerationForTests }
+        let firstTask = await MainActor.run { manager.streamingMonitorTaskForTests }
+
+        await manager.startStreamingMonitor()
+        let secondGeneration = await MainActor.run { manager.streamingMonitorGenerationForTests }
+        let secondTask = await MainActor.run { manager.streamingMonitorTaskForTests }
+
+        XCTAssertNotEqual(firstGeneration, secondGeneration, "Restart should bump generation")
+        XCTAssertNotNil(firstTask)
+        XCTAssertNotNil(secondTask)
+
+        await MainActor.run {
+            secondTask?.cancel()
+        }
+        let firstResult = await firstTask?.result
+        XCTAssertNotNil(firstResult, "First monitor should finish once restarted")
+    }
 }
 #endif

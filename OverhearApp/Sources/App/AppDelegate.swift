@@ -3,7 +3,7 @@ import UserNotifications
 import Foundation
 import SwiftUI
 import Combine
-import Darwin
+import OSLog
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -12,7 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let recordingOverlay = RecordingOverlayController()
     private var notificationDeduper: NotificationDeduper!
     private var cancellables: Set<AnyCancellable> = []
-    private var instanceLockFD: Int32?
+    private var instanceLock: InstanceLock?
+    private let lockLogger = Logger(subsystem: "com.overhear.app", category: "AppDelegate.Lock")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !isRunningTests else {
@@ -20,11 +21,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        guard enforceSingleInstance() else {
+        let lock = InstanceLock(logger: lockLogger)
+        guard lock.acquire() else {
             FileLogger.log(category: "App", message: "Another Overhear instance detected; exiting this instance")
             NSApp.terminate(nil)
             return
         }
+        instanceLock = lock
 
         UNUserNotificationCenter.current().delegate = self
         bootstrapFileLoggingFlag()
@@ -104,6 +107,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        if isRunningTests {
+            instanceLock?.release()
+            return
+        }
         let group = DispatchGroup()
         group.enter()
         Task { @MainActor [weak self] in
@@ -120,10 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UNUserNotificationCenter.current().delegate = nil
         menuBarController?.tearDown()
         recordingOverlay.hide()
-        if let fd = instanceLockFD {
-            flock(fd, LOCK_UN)
-            close(fd)
-        }
+        instanceLock?.release()
     }
 
     @MainActor
@@ -162,38 +166,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isRunningTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
-
-    func enforceSingleInstance(lockDirectoryOverride: URL? = nil) -> Bool {
-        let fm = FileManager.default
-        guard let appSupport = try? fm.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        ) else {
-            return true
-        }
-        let lockDir = lockDirectoryOverride ?? appSupport.appendingPathComponent("Overhear", isDirectory: true)
-        try? fm.createDirectory(at: lockDir, withIntermediateDirectories: true)
-        let lockURL = lockDir.appendingPathComponent("instance.lock")
-        let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o600)
-        guard fd != -1 else { return true }
-        // Ensure the lock fd is not inherited by child processes.
-        _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
-        var locked = false
-        defer {
-            if locked {
-                flock(fd, LOCK_UN)
-                close(fd)
-            }
-        }
-        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
-            return false
-        }
-        locked = true
-        instanceLockFD = fd
-        return true
-    }
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
@@ -226,10 +198,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     }
 }
 
+#if DEBUG
 @MainActor
-private extension AppDelegate {
-    // Additional helpers can live here
+extension AppDelegate {
+    func releaseInstanceLockForTests() {
+        instanceLock?.release()
+    }
 }
+#endif
 
 actor NotificationDeduper {
     private var handled: Set<String> = []

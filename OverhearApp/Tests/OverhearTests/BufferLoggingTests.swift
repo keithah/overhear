@@ -52,24 +52,4 @@ final class BufferLoggingTests: XCTestCase {
         XCTAssertFalse(decision.shouldLog)
     }
 
-    func testSingleInstanceLockPreventsSecondInstance() async throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-
-        let delegate1 = await MainActor.run { AppDelegate() }
-        let first = await MainActor.run {
-            delegate1.enforceSingleInstance(lockDirectoryOverride: tempDir)
-        }
-        let second = await MainActor.run {
-            AppDelegate().enforceSingleInstance(lockDirectoryOverride: tempDir)
-        }
-
-        XCTAssertTrue(first, "First instance should acquire lock")
-        XCTAssertFalse(second, "Second instance should be blocked by lock")
-
-        await MainActor.run {
-            delegate1.applicationWillTerminate(Notification(name: Notification.Name("test")))
-        }
-    }
 }

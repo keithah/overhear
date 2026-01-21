@@ -13,11 +13,35 @@ final class CalendarService: ObservableObject {
     private static var didOpenPrivacySettings = false
     private var didShowPermissionAlert = false
     private var accessRequestTask: Task<Bool, Never>?
+    private let forceAuthorizeOverride: Bool = {
+        ProcessInfo.processInfo.environment["OVERHEAR_FORCE_CALENDAR_AUTH"] == "1"
+    }()
+    private var persistedGrant: Bool = {
+        UserDefaults.standard.bool(forKey: "overhear.calendar.grantedOnce")
+    }()
 
     func requestAccessIfNeeded(retryCount: Int = 0) async -> Bool {
+        if forceAuthorizeOverride {
+            log("Force-authorizing calendar access via OVERHEAR_FORCE_CALENDAR_AUTH")
+            authorizationStatus = .authorized
+            return true
+        }
+
         let status = EKEventStore.authorizationStatus(for: .event)
         authorizationStatus = status
         log("Authorization status on entry: \(status.rawValue)")
+
+        // If we previously recorded a grant but the system now reports otherwise, clear the flag.
+        if persistedGrant && !CalendarAccessHelper.isAuthorized(status) {
+            log("Persisted grant no longer valid; clearing cache")
+            persistedGrant = false
+            UserDefaults.standard.set(false, forKey: "overhear.calendar.grantedOnce")
+        }
+
+        if persistedGrant, CalendarAccessHelper.isAuthorized(status) {
+            log("Using persisted granted state (validated against current status); skipping prompt")
+            return true
+        }
 
         // Early returns when already decided; only promote activation policy if we must prompt.
         if CalendarAccessHelper.isAuthorized(status) {
@@ -60,6 +84,16 @@ final class CalendarService: ObservableObject {
             return await requestAccessIfNeeded(retryCount: retryCount + 1)
         }
 
+        if result {
+            // Refresh status after the request so we honor the system's decision.
+            authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+            persistedGrant = true
+            UserDefaults.standard.set(true, forKey: "overhear.calendar.grantedOnce")
+            log("Access granted; updated authorizationStatus to \(authorizationStatus.rawValue)")
+        } else if authorizationStatus == .notDetermined {
+            log("Access result=false but status still notDetermined; will not retry immediately to avoid prompt loops")
+        }
+
         return result
     }
 
@@ -90,6 +124,16 @@ final class CalendarService: ObservableObject {
                        includeEventsWithoutLinks: Bool,
                        includeMaybeEvents: Bool,
                        allowedCalendarIDs: Set<String>) async -> [Meeting] {
+        // Validate authorization each fetch to avoid stale persisted state.
+        let status = EKEventStore.authorizationStatus(for: .event)
+        authorizationStatus = status
+        if !CalendarAccessHelper.isAuthorized(status) {
+            log("Fetch aborted; not authorized (status=\(status.rawValue))")
+            persistedGrant = false
+            UserDefaults.standard.set(false, forKey: "overhear.calendar.grantedOnce")
+            return []
+        }
+
         let now = Date()
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: now)
@@ -153,7 +197,8 @@ final class CalendarService: ObservableObject {
 
     nonisolated private func log(_ message: String) {
         calendarLogger.info("\(message, privacy: .public)")
-        guard isFileLoggingEnabled else { return }
+        guard ProcessInfo.processInfo.environment["OVERHEAR_CALENDAR_FILE_LOGS"] == "1" else { return }
+        // Avoid persisting PII: only log coarse events, not event titles/URLs.
         let line = "[CalendarService] \(Date()): \(message)\n"
         let url = URL(fileURLWithPath: "/tmp/overhear.log")
         guard let data = line.data(using: .utf8) else { return }
@@ -166,13 +211,6 @@ final class CalendarService: ObservableObject {
             }
         }
         try? data.write(to: url, options: .atomic)
-    }
-
-    nonisolated private var isFileLoggingEnabled: Bool {
-        if ProcessInfo.processInfo.environment["OVERHEAR_FILE_LOGS"] == "1" {
-            return true
-        }
-        return UserDefaults.standard.bool(forKey: "overhear.enableFileLogs")
     }
 
     @MainActor
@@ -234,7 +272,16 @@ final class CalendarService: ObservableObject {
                 granted = granted || writeGranted
             }
         }
-        
+
+        // If any path granted access, lock it in to avoid repeated prompts even if EventKit reports transitional status.
+        if granted {
+            authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+            persistedGrant = true
+            UserDefaults.standard.set(true, forKey: "overhear.calendar.grantedOnce")
+            log("Access granted; treating status as \(authorizationStatus.rawValue)")
+            return true
+        }
+
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         log("Authorization status after request: \(authorizationStatus.rawValue)")
         if !granted {

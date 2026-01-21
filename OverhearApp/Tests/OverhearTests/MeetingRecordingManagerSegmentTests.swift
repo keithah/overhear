@@ -16,6 +16,17 @@ final class MeetingRecordingManagerSegmentTests: XCTestCase {
         XCTAssertEqual(normalized.normalized.map(\.speaker), ["A", "B", "C"])
     }
 
+    func testNormalizeSpeakerSegmentsKeepsOrderWhenSorted() {
+        let s1 = SpeakerSegment(speaker: "A", start: 0, end: 5)
+        let s2 = SpeakerSegment(speaker: "B", start: 5, end: 10)
+        let sorted = [s1, s2]
+
+        let normalized = MeetingRecordingManager.normalizeSpeakerSegments(sorted)
+
+        XCTAssertFalse(normalized.wasUnsorted)
+        XCTAssertEqual(normalized.normalized.map(\.speaker), ["A", "B"])
+    }
+
     func testTrimToLiveSegmentLimitKeepsMostRecent() {
         let segments: [LiveTranscriptSegment] = (0..<1_050).map { index in
             LiveTranscriptSegment(
@@ -30,8 +41,8 @@ final class MeetingRecordingManagerSegmentTests: XCTestCase {
 
         let trimmed = MeetingRecordingManager.trimToLiveSegmentLimit(segments)
 
-        XCTAssertEqual(trimmed.count, 1_000)
-        XCTAssertEqual(trimmed.first?.text, "segment-50")
+        XCTAssertEqual(trimmed.count, 500)
+        XCTAssertEqual(trimmed.first?.text, "segment-550")
         XCTAssertEqual(trimmed.last?.text, "segment-1049")
     }
 }

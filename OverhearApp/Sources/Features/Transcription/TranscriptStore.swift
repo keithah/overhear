@@ -28,6 +28,48 @@ struct StoredTranscript: Codable, Identifiable {
     }
 }
 
+/// Thread-safe cache for search results to avoid re-decoding transcripts across queries.
+actor TranscriptSearchCache {
+    private let maxEntries: Int = 200
+    private var cache: [URL: StoredTranscript] = [:]
+    private var order: [URL] = []
+
+    func get(_ url: URL) -> StoredTranscript? {
+        if let value = cache[url] {
+            // Move to back for LRU behavior.
+            if order.last != url {
+                order.removeAll(where: { $0 == url })
+                order.append(url)
+            }
+            return value
+        }
+        return cache[url]
+    }
+
+    func set(_ url: URL, value: StoredTranscript) {
+        cache[url] = value
+        if order.last != url {
+            order.removeAll(where: { $0 == url })
+            order.append(url)
+        }
+        if order.count > maxEntries, let evict = order.first {
+            order.removeFirst()
+            cache.removeValue(forKey: evict)
+        }
+    }
+
+    func clear() {
+        cache.removeAll()
+        order.removeAll()
+    }
+
+#if DEBUG
+    func _testActiveCount() -> Int {
+        cache.count
+    }
+#endif
+}
+
 /// Manages storage and retrieval of transcripts
 actor TranscriptStore {
     enum Error: LocalizedError {
@@ -74,22 +116,18 @@ actor TranscriptStore {
     private let encryptionKey: SymmetricKey
     private let persistenceEnabled: Bool
     private static let logger = Logger(subsystem: "com.overhear.app", category: "TranscriptStore")
-    private static let keychainBypassDecision: (enabled: Bool, reason: String?, requested: Bool, validContext: Bool) = {
-        let environment = ProcessInfo.processInfo.environment
-        let requested = isKeychainBypassEnabled(environment: environment)
-        let reason = keychainBypassReason(environment: environment)
-        let validContext = isCIEnvironment(environment) || isTestEnvironment(environment)
-#if !DEBUG
-        if requested {
-            return (false, reason, requested, validContext)
+    private static let keychainBypassDecision: (enabled: Bool, reason: String?, requested: Bool, validContext: Bool) = evaluateBypass(environment: ProcessInfo.processInfo.environment)
+    private let searchCache = TranscriptSearchCache()
+    // Optional FTS index; disabled by default to avoid unexpected disk writes. Enable via OVERHEAR_ENABLE_FTS=1 or UserDefaults overhear.enableFTS.
+    private let searchIndex: TranscriptSearchIndex?
+
+    private static var shouldEnableFTS: Bool {
+        let env = ProcessInfo.processInfo.environment["OVERHEAR_ENABLE_FTS"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if env == "1" || env?.lowercased() == "true" {
+            return true
         }
-#endif
-        if requested && !validContext {
-            return (false, reason, requested, validContext)
-        }
-        assert(!requested || validContext, "Keychain bypass only allowed in CI/test")
-        return (requested && validContext, reason, requested, validContext)
-    }()
+        return UserDefaults.standard.bool(forKey: "overhear.enableFTS")
+    }
 
     private static let meetingIDDelimiter = "__"
     
@@ -124,6 +162,16 @@ actor TranscriptStore {
             }
         }
         
+        #if canImport(SQLite3)
+        if Self.shouldEnableFTS {
+            self.searchIndex = try? TranscriptSearchIndex(baseDirectory: self.storageDirectory)
+        } else {
+            self.searchIndex = nil
+        }
+        #else
+        self.searchIndex = nil
+        #endif
+
         // Initialize encryption key from Keychain
         do {
             self.encryptionKey = try Self.getOrCreateEncryptionKey()
@@ -139,6 +187,7 @@ actor TranscriptStore {
     /// Save a transcript (encrypted)
     func save(_ transcript: StoredTranscript) async throws {
         guard persistenceEnabled else { throw Error.storageDisabled }
+        await searchCache.clear()
         let fileURL = storageDirectory.appendingPathComponent(Self.fileName(for: transcript))
         
         do {
@@ -148,7 +197,13 @@ actor TranscriptStore {
             )
             let data = try encoder.encode(transcript)
             let encrypted = try Self.encryptData(data, using: encryptionKey)
-            try encrypted.write(to: fileURL, options: [.atomic])
+            try await Task.detached(priority: .utility) {
+                if Task.isCancelled { return }
+                try encrypted.write(to: fileURL, options: [.atomic])
+            }.value
+#if canImport(SQLite3)
+            try searchIndex?.index(transcript: transcript, fileURL: fileURL)
+#endif
         } catch let Error.encryptionFailed(message) {
             throw Error.encryptionFailed(message)
         } catch {
@@ -166,8 +221,9 @@ actor TranscriptStore {
             category: "TranscriptStore",
             message: "retrieve() reading \(fileURL.lastPathComponent)"
         )
-        
-        let data = try Data(contentsOf: fileURL)
+        let data = try await Task.detached(priority: .utility) {
+            try Data(contentsOf: fileURL)
+        }.value
         return try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
     }
 
@@ -194,7 +250,9 @@ actor TranscriptStore {
         
         for fileURL in fileURLs {
             do {
-                let data = try Data(contentsOf: fileURL)
+                let data = try await Task.detached(priority: .utility) {
+                    try Data(contentsOf: fileURL)
+                }.value
                 let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
                 transcripts.append(transcript)
             } catch {
@@ -218,51 +276,79 @@ actor TranscriptStore {
         }
         
         let lowerQuery = query.lowercased()
-        let fileURLs = try FileManager.default.contentsOfDirectory(
-            at: storageDirectory,
-            includingPropertiesForKeys: nil
-        ).filter { $0.pathExtension == "json" }
-        
-        var results: [StoredTranscript] = []
-        var processedCount = 0
-        var skippedCount = 0
-        
-        // Sort newest-first so we can satisfy limit+offset quickly without scanning all files.
-        let sortedFileURLs = fileURLs.sorted { lhs, rhs in
-            let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return lhsDate > rhsDate
+        var fileURLs: [URL] = []
+        var offsetAlreadyApplied = false
+        #if canImport(SQLite3)
+        if let urls = try? searchIndex?.search(query: lowerQuery, limit: limit, offset: offset) {
+            fileURLs = urls
+            offsetAlreadyApplied = true
         }
-        
-        for fileURL in sortedFileURLs {
-            // Early exit once we've accumulated the requested window (offset + limit).
-            if processedCount >= offset + limit {
-                break
+        #endif
+        if fileURLs.isEmpty {
+            let all = try FileManager.default.contentsOfDirectory(
+                at: storageDirectory,
+                includingPropertiesForKeys: nil
+            ).filter { $0.pathExtension == "json" }
+            // Sort newest-first so we can satisfy limit+offset quickly without scanning all files.
+            fileURLs = all.sorted { lhs, rhs in
+                let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhsDate > rhsDate
             }
-            
-            do {
-                let data = try Data(contentsOf: fileURL)
-                let transcript = try Self.decryptOrDecode(data: data, using: encryptionKey, decoder: decoder)
-                
-                if transcript.title.lowercased().contains(lowerQuery) ||
-                   transcript.transcript.lowercased().contains(lowerQuery) {
-                    processedCount += 1
-                    
-                    // Handle offset by skipping results
-                    if processedCount > offset {
-                        results.append(transcript)
-                    } else {
-                        skippedCount += 1
+        }
+
+        // Process in parallel with a small concurrency cap to improve throughput on large collections.
+        let maxConcurrent = 12
+        var results: [StoredTranscript] = []
+        var queued = 0
+        let currentKey = encryptionKey
+        let decoder = decoder
+        let cache = searchCache
+        try await withThrowingTaskGroup(of: StoredTranscript?.self) { group in
+            var iterator = fileURLs.makeIterator()
+
+            func enqueueNext() {
+                guard let url = iterator.next(), queued < offset + limit else { return }
+                queued += 1
+                group.addTask {
+                    if let cached = await cache.get(url) {
+                        if cached.title.lowercased().contains(lowerQuery) ||
+                            cached.transcript.lowercased().contains(lowerQuery) {
+                            return cached
+                        }
+                        return nil
+                    }
+                    do {
+                        let data = try await Task.detached(priority: .utility) {
+                            try Data(contentsOf: url)
+                        }.value
+                        let transcript = try Self.decryptOrDecode(data: data, using: currentKey, decoder: decoder)
+                        await cache.set(url, value: transcript)
+                        if transcript.title.lowercased().contains(lowerQuery) ||
+                            transcript.transcript.lowercased().contains(lowerQuery) {
+                            return transcript
+                        }
+                        return nil
+                    } catch {
+                        return nil
                     }
                 }
-            } catch {
-                // Skip files that can't be decoded
-                continue
+            }
+
+            for _ in 0..<maxConcurrent { enqueueNext() }
+
+            while let result = try await group.next() {
+                enqueueNext()
+                if let transcript = result {
+                    results.append(transcript)
+                    if results.count >= offset + limit { group.cancelAll() }
+                }
             }
         }
-        
-        // Sort results by date (most recent first)
-        return results.sorted { $0.date > $1.date }
+
+        let sortedResults = results.sorted { $0.date > $1.date }
+        let effectiveOffset = offsetAlreadyApplied ? 0 : offset
+        return Array(sortedResults.dropFirst(effectiveOffset).prefix(limit))
     }
     
     /// Decrypts data if possible; falls back to plaintext decoding for legacy files.
@@ -295,9 +381,13 @@ actor TranscriptStore {
         guard let fileURL = try fileURLForTranscript(id: id) else {
             throw Error.notFound
         }
+        await searchCache.clear()
         
         do {
             try FileManager.default.removeItem(at: fileURL)
+#if canImport(SQLite3)
+            try searchIndex?.delete(id: id)
+#endif
         } catch {
             throw Error.deletionFailed(error.localizedDescription)
         }
@@ -379,31 +469,52 @@ actor TranscriptStore {
     
     /// Determine if we should bypass the Keychain (explicit env override only).
     nonisolated private static var isKeychainBypassed: Bool {
-        isKeychainBypassEnabled(environment: ProcessInfo.processInfo.environment)
+        keychainBypassDecision.enabled
     }
 
     nonisolated private static var keychainBypassReason: String? {
-        keychainBypassReason(environment: ProcessInfo.processInfo.environment)
+        keychainBypassDecision.reason
     }
 
     nonisolated internal static func isKeychainBypassEnabled(environment: [String: String]) -> Bool {
+        evaluateBypass(environment: environment).enabled
+    }
+
+    nonisolated internal static func keychainBypassReason(environment: [String: String]) -> String? {
+        let decision = evaluateBypass(environment: environment)
+        guard decision.enabled else { return nil }
+        if decision.validContext {
+            return decision.reason
+        }
+        return nil
+    }
+
+    private static func evaluateBypass(environment: [String: String]) -> (enabled: Bool, reason: String?, requested: Bool, validContext: Bool) {
         let truthy: Set<String> = ["1", "true", "TRUE", "True"]
         let allowBypass = truthy.contains(
             environment["OVERHEAR_ALLOW_INSECURE_BYPASS"]?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         )
-        guard allowBypass else { return false }
-        let value = environment["OVERHEAR_INSECURE_NO_KEYCHAIN"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard truthy.contains(value) else { return false }
-        return isCIEnvironment(environment) || isTestEnvironment(environment)
-    }
-
-    nonisolated internal static func keychainBypassReason(environment: [String: String]) -> String? {
-        guard isKeychainBypassEnabled(environment: environment) else { return nil }
-        if isTestEnvironment(environment) { return "XCTestConfigurationFilePath" }
-        if isCIEnvironment(environment) { return "CI/GitHubActions" }
-        return "OVERHEAR_INSECURE_NO_KEYCHAIN"
+        let requested = truthy.contains(
+            environment["OVERHEAR_INSECURE_NO_KEYCHAIN"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        )
+        let validContext = isCIEnvironment(environment) || isTestEnvironment(environment)
+        #if !DEBUG
+            return (false, "bypass not allowed in release", requested, validContext)
+        #else
+            guard allowBypass && requested else { return (false, nil, requested, validContext) }
+            if !validContext {
+                logger.critical("Keychain bypass requested outside CI/test; ignoring request")
+                return (false, "invalid context", requested, validContext)
+            }
+            let reason: String? = {
+                if isTestEnvironment(environment) { return "XCTestConfigurationFilePath" }
+                if isCIEnvironment(environment) { return "CI/GitHubActions" }
+                return "OVERHEAR_INSECURE_NO_KEYCHAIN"
+            }()
+            return (true, reason, requested, validContext)
+        #endif
     }
 
     // Global lock protects process-scoped bypass logging flags that may be touched from many call sites.
@@ -433,6 +544,24 @@ actor TranscriptStore {
     // Testing helpers
     nonisolated internal static func logInvalidBypassIfNeededForTests(environment: [String: String]) {
         logInvalidBypassIfNeeded(environment: environment)
+    }
+
+    // CI/test telemetry hook; only active when a valid bypass is requested.
+    nonisolated internal static func logBypassUsageIfNeeded(environment: [String: String]) {
+        let decision = evaluateBypass(environment: environment)
+        guard decision.enabled, decision.validContext else { return }
+        FileLogger.log(
+            category: "TranscriptStore",
+            message: "Keychain bypass in CI/test: reason=\(decision.reason ?? "unknown")"
+        )
+    }
+
+    // Document bypass expectations for CI/test usage.
+    nonisolated internal static var bypassUsageHint: String {
+        """
+        Keychain bypass is only honored in DEBUG + CI/test contexts with BOTH OVERHEAR_ALLOW_INSECURE_BYPASS=1 and OVERHEAR_INSECURE_NO_KEYCHAIN=1 set.
+        Release builds always reject bypass. CI/test transcripts use process-scoped ephemeral keys and are not encrypted at rest.
+        """
     }
 
     nonisolated internal static func resetBypassLogStateForTests() {
@@ -595,7 +724,7 @@ actor TranscriptStore {
             throw Error.keyManagementFailed("Keychain bypass is only allowed in CI or test environments")
         }
 #if !DEBUG
-        if decision.requested {
+        if decision.requested || decision.enabled {
             throw Error.keyManagementFailed("Keychain bypass is not allowed in production builds")
         }
 #endif

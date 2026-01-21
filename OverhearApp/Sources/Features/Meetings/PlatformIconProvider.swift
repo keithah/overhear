@@ -9,30 +9,30 @@ final class PlatformIconProvider {
         switch platform {
         case .zoom:
             return PlatformIconInfo(
-                iconName: "ZoomIcon",
+                iconName: "video.circle.fill", // consistent with Meeting.swift expectations
                 color: NSColor(calibratedRed: 0.04, green: 0.36, blue: 1.0, alpha: 1.0),  // #0B5CFF Zoom Blue
-                isSystemIcon: false
+                isSystemIcon: true
             )
         
         case .meet:
             return PlatformIconInfo(
-                iconName: "MeetIcon",
+                iconName: "person.2.fill",
                 color: NSColor(calibratedRed: 0.0, green: 0.53, blue: 0.48, alpha: 1.0),  // #00897B Meet Green
-                isSystemIcon: false
+                isSystemIcon: true
             )
         
         case .teams:
             return PlatformIconInfo(
-                iconName: "TeamsIcon",
+                iconName: "person.3.fill",
                 color: NSColor(calibratedRed: 0.48, green: 0.41, blue: 0.93, alpha: 1.0),  // #7B68EE Teams Purple
-                isSystemIcon: false
+                isSystemIcon: true
             )
         
         case .webex:
             return PlatformIconInfo(
-                iconName: "WebexIcon",
+                iconName: "person.2.circle.fill",
                 color: NSColor(calibratedRed: 0.0, green: 0.35, blue: 0.61, alpha: 1.0),  // #005A9C Webex Blue
-                isSystemIcon: false
+                isSystemIcon: true
             )
         
         case .unknown:

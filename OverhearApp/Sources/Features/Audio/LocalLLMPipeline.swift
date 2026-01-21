@@ -72,8 +72,33 @@ actor LocalLLMPipeline {
     private var downloadStartAt: Date?
     private var lastReadyAt: Date?
     private var lastWarmupDuration: TimeInterval?
+    private var hasArmedDownloadWatchdog = false
     private var modelID: String {
         MLXPreferences.modelID()
+    }
+
+#if DEBUG
+    // Test-only helpers to validate generation wrapping behavior.
+    func _testSetWarmupGeneration(_ value: Int) {
+        warmupGeneration = value
+    }
+
+    func _testIncrementWarmupGeneration() -> Int {
+        warmupGeneration &+= 1
+        return warmupGeneration
+    }
+
+    func _testWarmupGeneration() -> Int {
+        warmupGeneration
+    }
+#endif
+
+    private func nextWarmupGeneration() -> Int {
+        warmupGeneration &+= 1
+        if warmupGeneration == 0 {
+            FileLogger.log(category: logCategory, message: "Warmup generation counter wrapped; continuing with generation=\(warmupGeneration)")
+        }
+        return warmupGeneration
     }
 
     // Generation counters wrap with &+= to avoid overflow traps during extremely long runtimes;
@@ -105,7 +130,7 @@ actor LocalLLMPipeline {
         self.failureCooldown = min(max(rawCooldown, 5.0), 900.0)
 
         let watchdogOverride = UserDefaults.standard.double(forKey: "overhear.mlxDownloadWatchdogDelay")
-        let resolvedWatchdog = watchdogOverride > 0 ? watchdogOverride : 5
+        let resolvedWatchdog = watchdogOverride > 0 ? watchdogOverride : 5.0
         self.downloadWatchdogDelay = min(max(resolvedWatchdog, 1.0), 60.0) // clamp to sensible bounds
 
         if client == nil {
@@ -146,16 +171,13 @@ actor LocalLLMPipeline {
             }
         }
 
-        warmupGeneration &+= 1
-        if warmupGeneration == 0 {
-            FileLogger.log(category: logCategory, message: "Warmup generation counter wrapped; continuing with generation=\(warmupGeneration)")
-        }
-        let generation = warmupGeneration
+        let generation = nextWarmupGeneration()
 
         // Clear any lingering watchdog before starting a fresh warmup; use the current generation for bookkeeping.
         downloadWatchTask?.cancel()
         await downloadWatchTask?.value
         downloadWatchTask = nil
+        hasArmedDownloadWatchdog = false
         if downloadStartAt == nil {
             downloadStartAt = Date()
         }
@@ -218,6 +240,9 @@ actor LocalLLMPipeline {
         if downloadStartAt == nil {
             downloadStartAt = Date()
         }
+        if progress < 0.999 {
+            hasArmedDownloadWatchdog = false
+        }
         notifyStateChanged()
         let bucket = min(10, max(0, Int((progress * 100).rounded(.towardZero) / 10)))
         if bucket != lastProgressLogBucket {
@@ -226,17 +251,19 @@ actor LocalLLMPipeline {
         }
 
         // Watchdog: if we reach 100% download but never transition to ready, auto-promote after a short delay.
-        if progress >= 0.999 {
+        if progress >= 0.999 && !hasArmedDownloadWatchdog {
             // Only arm one watchdog per generation.
             guard downloadWatchGeneration != generation else { return }
             downloadWatchTask?.cancel()
             downloadWatchTask = nil
             downloadWatchGeneration = generation
             let watchdogDelay = downloadWatchdogDelay
+            let watchdogSleep = sanitizedNanoseconds(from: watchdogDelay)
             downloadWatchTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: sanitizedNanoseconds(from: watchdogDelay))
+                try? await Task.sleep(nanoseconds: watchdogSleep)
                 await self?.handleDownloadWatchdog(generation: generation)
             }
+            hasArmedDownloadWatchdog = true
         }
     }
 
@@ -408,6 +435,7 @@ actor LocalLLMPipeline {
         var attemptedFallback = false
         var modelInUse = modelID
         let warmupStart = Date()
+        let timeoutNanoseconds = sanitizedNanoseconds(from: timeout)
 
         func runWarmupWithTimeout() async throws {
             try await withThrowingTaskGroup(of: Void.self) { group in
@@ -423,7 +451,7 @@ actor LocalLLMPipeline {
                     })
                 }
                 group.addTask {
-                    try await Task.sleep(nanoseconds: sanitizedNanoseconds(from: timeout))
+                    try await Task.sleep(nanoseconds: timeoutNanoseconds)
                     throw WarmupError.timeout
                 }
                 guard let result = try await group.next() else {
@@ -438,7 +466,8 @@ actor LocalLLMPipeline {
             attempts += 1
             if attempts > 1 {
                 let backoffSeconds = pow(2.0, Double(attempts - 2))
-                try? await Task.sleep(nanoseconds: sanitizedNanoseconds(from: backoffSeconds))
+                let backoffNanoseconds = sanitizedNanoseconds(from: backoffSeconds)
+                try? await Task.sleep(nanoseconds: backoffNanoseconds)
                 if Task.isCancelled { return }
                 if generation != warmupGeneration { return }
             }

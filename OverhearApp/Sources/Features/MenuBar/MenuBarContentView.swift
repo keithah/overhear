@@ -23,7 +23,6 @@ final class Debouncer: ObservableObject {
     }
 
     deinit {
-        Task { await MainActor.run { cancel() } }
     }
 }
 
@@ -63,6 +62,7 @@ struct MenuBarContentView: View {
     var openPreferences: () -> Void
     var onToggleRecording: () -> Void
     @State private var didAutoShowLiveNotes = false
+    @State private var didInitialScroll = false
     @State private var groupedCacheKey: Int = 0
     @State private var groupedCache: [(date: Date, meetings: [Meeting])] = []
 
@@ -161,14 +161,23 @@ if viewModel.isLoading {
                                proxy.scrollTo(dateIdentifier(target), anchor: .top)
                            }
                        }
-                   }
-                   .onReceive(NotificationCenter.default.publisher(for: .scrollToToday)) { _ in
+                  }
+                  .onReceive(NotificationCenter.default.publisher(for: .scrollToToday)) { _ in
                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                            if let target = scrollTargetDate() {
                                withAnimation {
                                    proxy.scrollTo(dateIdentifier(target), anchor: .top)
                                }
                            }
+                       }
+                   }
+                   .onChange(of: groupedCacheKey) { _, _ in
+                       guard !didInitialScroll else { return }
+                       if let target = scrollTargetDate() {
+                           withAnimation {
+                               proxy.scrollTo(dateIdentifier(target), anchor: .top)
+                           }
+                           didInitialScroll = true
                        }
                    }
               }
@@ -283,6 +292,7 @@ private let dateIdentifierFormatter: DateFormatter = {
         guard key != groupedCacheKey else { return }
         groupedCacheKey = key
         groupedCache = computeGroupedMeetings(allMeetings)
+        didInitialScroll = false
     }
 
     private func meetingsHash(_ meetings: [Meeting]) -> Int {
