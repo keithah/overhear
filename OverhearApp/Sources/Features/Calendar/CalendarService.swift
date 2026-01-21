@@ -124,6 +124,16 @@ final class CalendarService: ObservableObject {
                        includeEventsWithoutLinks: Bool,
                        includeMaybeEvents: Bool,
                        allowedCalendarIDs: Set<String>) async -> [Meeting] {
+        // Validate authorization each fetch to avoid stale persisted state.
+        let status = EKEventStore.authorizationStatus(for: .event)
+        authorizationStatus = status
+        if !CalendarAccessHelper.isAuthorized(status) {
+            log("Fetch aborted; not authorized (status=\(status.rawValue))")
+            persistedGrant = false
+            UserDefaults.standard.set(false, forKey: "overhear.calendar.grantedOnce")
+            return []
+        }
+
         let now = Date()
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: now)

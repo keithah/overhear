@@ -299,21 +299,25 @@ extension MeetingRecordingManager {
     private func persistPendingNotesCheckpoint(_ notes: String) {
         guard MeetingRecordingManager.allowPendingNotesCheckpoint else {
             NotesCheckpointStorage.clear(key: pendingNotesCheckpointKey)
+        MeetingRecordingManager.checkpointWarningQueue.sync {
             if !MeetingRecordingManager.checkpointWarningLogged {
                 MeetingRecordingManager.checkpointWarningLogged = true
                 FileLogger.log(
                     category: "MeetingRecordingManager",
                     message: "Pending notes checkpoint disabled (env/UserDefaults); crash recovery may lose unsaved notes"
-                )
+                    )
+                }
             }
             return
         }
-        if !MeetingRecordingManager.checkpointWarningLogged {
-            MeetingRecordingManager.checkpointWarningLogged = true
-            FileLogger.log(
-                category: "MeetingRecordingManager",
-                message: "Persisting pending notes checkpoint (Keychain, AfterFirstUnlock); disable via OVERHEAR_DISABLE_NOTES_CHECKPOINT=1 or enable/disable via UserDefaults (overhear.enableNotesCheckpoint)"
-            )
+        MeetingRecordingManager.checkpointWarningQueue.sync {
+            if !MeetingRecordingManager.checkpointWarningLogged {
+                MeetingRecordingManager.checkpointWarningLogged = true
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Persisting pending notes checkpoint (Keychain, AfterFirstUnlock); disable via OVERHEAR_DISABLE_NOTES_CHECKPOINT=1 or enable/disable via UserDefaults (overhear.enableNotesCheckpoint)"
+                )
+            }
         }
         NotesCheckpointStorage.save(notes, key: pendingNotesCheckpointKey)
     }
@@ -385,7 +389,6 @@ struct NotesHealthSnapshot {
     let pendingNotes: String?
     let saveState: MeetingRecordingManager.NotesSaveState
     let generationMatches: Bool
-    let snapshotDate: Date = Date()
 }
 
 private struct NotesHealthBounds {

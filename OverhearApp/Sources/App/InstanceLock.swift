@@ -12,7 +12,8 @@ final class InstanceLock {
         let fm = FileManager.default
         let appSupport = (try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
         let baseDir = lockDirectoryOverride ?? appSupport?.appendingPathComponent("Overhear", isDirectory: true)
-        var chosenLockURL = URL(fileURLWithPath: "/tmp/overhear.instance.lock")
+        let userTemp = FileManager.default.temporaryDirectory.appendingPathComponent(NSUserName(), isDirectory: true)
+        var chosenLockURL = userTemp.appendingPathComponent("overhear.instance.lock")
         if let dir = baseDir {
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
             if let values = try? dir.resourceValues(forKeys: [.isSymbolicLinkKey]), values.isSymbolicLink == true {

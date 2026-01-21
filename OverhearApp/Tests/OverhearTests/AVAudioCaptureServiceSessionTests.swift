@@ -64,7 +64,7 @@ final class AVAudioCaptureServiceSessionTests: XCTestCase {
         let observerID = await service.registerBufferObserver { _ in
             first.fulfill()
         }
-        await service._testNotifyObservers(buffer: buffer, sessionID: sessionID)
+        await service._testEnqueueBuffer(buffer: buffer, sessionID: sessionID)
         await fulfillment(of: [first], timeout: 1.0)
 
         await service.unregisterBufferObserver(observerID)
@@ -72,7 +72,7 @@ final class AVAudioCaptureServiceSessionTests: XCTestCase {
         await service._testConfigureRecordingState(recording: false, sessionID: sessionID)
         let inverted = expectation(description: "observer not called after stop")
         inverted.isInverted = true
-        await service._testNotifyObservers(buffer: buffer, sessionID: sessionID)
+        await service._testEnqueueBuffer(buffer: buffer, sessionID: sessionID)
         await fulfillment(of: [inverted], timeout: 0.5)
     }
 

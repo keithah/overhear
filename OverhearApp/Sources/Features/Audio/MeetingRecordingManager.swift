@@ -154,6 +154,7 @@ final class MeetingRecordingManager: ObservableObject {
         }
         return UserDefaults.standard.bool(forKey: "overhear.enableNotesCheckpoint")
     }()
+    static let checkpointWarningQueue = DispatchQueue(label: "com.overhear.notes.checkpoint")
     static var checkpointWarningLogged = false
     let pendingNotesCheckpointKey = "overhear.pendingNotesCheckpoint"
     let maxNotesRetryAttempts: Int
@@ -1460,7 +1461,22 @@ private extension MeetingRecordingManager {
             // Incremental path: only bucket newly-arrived segments while keeping existing buckets intact.
             let newSegments = speakerSegments.suffix(from: lastBucketizedIndex)
             guard !newSegments.isEmpty else { return }
-            keptSegments = Array(speakerSegments.prefix(lastBucketizedIndex))
+            // Re-validate existing segments within window to avoid accumulation of invalid/stale entries.
+            keptSegments = speakerSegments.filter { segment in
+                segment.start >= 0 &&
+                segment.end >= segment.start &&
+                segment.end <= SpeakerConstraints.maxWindowSeconds &&
+                segment.end >= minWindowStart
+            }
+            // Rebuild buckets from keptSegments (within window) before adding new ones.
+            speakerSegmentBuckets.removeAll()
+            for segment in keptSegments {
+                let startBucket = Int(floor(segment.start / speakerBucketWidthSeconds))
+                let endBucket = Int(floor(segment.end / speakerBucketWidthSeconds))
+                for bucket in startBucket...endBucket {
+                    speakerSegmentBuckets[bucket, default: []].append(segment)
+                }
+            }
             for segment in newSegments {
                 guard segment.start >= 0,
                       segment.end >= segment.start,

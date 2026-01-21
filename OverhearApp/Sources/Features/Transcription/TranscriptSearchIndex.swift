@@ -83,12 +83,13 @@ final class TranscriptSearchIndex {
             sanitized = String(sanitized.prefix(200))
         }
         guard !sanitized.isEmpty else { return [] }
-        // For very long queries, skip prefix wildcard to avoid table scans.
+        let words = sanitized.split(separator: " ").map(String.init)
+        // Apply wildcard only for single-word, reasonably short queries.
         let token: String
-        if sanitized.count > 50 {
-            token = "\"\(sanitized)\""
+        if words.count == 1, let first = words.first, first.count <= 50 {
+            token = "\"\(first)\"*"
         } else {
-            token = "\"\(sanitized)\"*"
+            token = "\"\(sanitized)\""
         }
         let sql = """
         SELECT path FROM transcripts_fts
