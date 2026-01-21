@@ -31,6 +31,15 @@ final class AudioBufferPool {
     private var counts: [ObjectIdentifier: (AVAudioPCMBuffer, Int)] = [:]
     private let lock = NSLock()
 
+    deinit {
+        lock.lock()
+        let leaked = counts.count
+        lock.unlock()
+        if leaked > 0 {
+            NSLog("AudioBufferPool deinit with \(leaked) pooled buffers still retained; ensure pool outlives pooled buffers.")
+        }
+    }
+
     func incrementRetain(source: AVAudioPCMBuffer) -> PooledAudioBuffer? {
         lock.lock()
         defer { lock.unlock() }

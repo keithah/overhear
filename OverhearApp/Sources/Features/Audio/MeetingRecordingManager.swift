@@ -1393,118 +1393,40 @@ private extension MeetingRecordingManager {
         let minWindowStart = max(0, newestEnd - windowSeconds)
         let minBucket = Int(floor(minWindowStart / speakerBucketWidthSeconds))
 
-        var needsFullRebuild = false
-        if minBucket > lastBucketMinBucket || speakerSegments.count < lastBucketizedIndex {
-            needsFullRebuild = true
+        // Always rebuild fully to keep logic simple and deterministic.
+        let windowedPrefix = speakerSegments.filter { segment in
+            let end = segment.end
+            return end >= minWindowStart && end <= SpeakerConstraints.maxWindowSeconds && end <= speakerBucketWindowSeconds
         }
-        // If we already bucketed everything and the window hasn’t advanced, we can skip work.
-        if !needsFullRebuild && lastBucketizedIndex >= speakerSegments.count {
-            return
-        }
-        if speakerSegments.count > 10_000 || needsFullRebuild {
-            FileLogger.log(
-                category: "MeetingRecordingManager",
-                message: "Rebuilding speaker buckets for \(speakerSegments.count) segments; consider incremental strategy if this recurs"
-            )
-        }
-        // If the window advances, we need to prune and rebuild to avoid holding stale entries.
-        if needsFullRebuild {
-            // Prune stale buckets if window advanced.
-            let previousMinBucket = lastBucketMinBucket
-            if minBucket > previousMinBucket {
-                speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= minBucket }
-                lastBucketMinBucket = minBucket
-                // If window jumped forward significantly, rebuild from scratch for safety.
-                if minBucket - previousMinBucket > 1_000 {
-                    speakerSegmentBuckets.removeAll()
-                    lastBucketizedIndex = 0
-                }
-            }
+        speakerSegmentBuckets.removeAll()
+        lastBucketizedIndex = 0
 
-            // Keep only segments inside the active window before adding new ones.
-            let windowedPrefix = speakerSegments.filter { segment in
-                let end = segment.end
-                return end >= minWindowStart && end <= SpeakerConstraints.maxWindowSeconds
+        for segment in windowedPrefix {
+            guard segment.start >= 0,
+                  segment.end >= segment.start,
+                  segment.end <= SpeakerConstraints.maxWindowSeconds else {
+                FileLogger.log(
+                    category: "MeetingRecordingManager",
+                    message: "Skipping out-of-bounds diarization segment start=\(segment.start) end=\(segment.end)"
+                )
+                dropped += 1
+                continue
             }
-            speakerSegmentBuckets.removeAll()
-            lastBucketizedIndex = 0
-
-            for segment in windowedPrefix {
-                guard segment.start >= 0,
-                      segment.end >= segment.start,
-                      segment.end <= SpeakerConstraints.maxWindowSeconds else {
-                    FileLogger.log(
-                        category: "MeetingRecordingManager",
-                        message: "Skipping out-of-bounds diarization segment start=\(segment.start) end=\(segment.end)"
-                    )
-                    dropped += 1
-                    continue
-                }
-                let startBucket = Int(floor(segment.start / speakerBucketWidthSeconds))
-                let endBucket = Int(floor(segment.end / speakerBucketWidthSeconds))
-                let span = endBucket - startBucket
-                let maxSpanBuckets = Int(SpeakerConstraints.maxWindowSeconds / speakerBucketWidthSeconds) + 1
-                guard span <= maxSpanBuckets else {
-                    droppedWide += 1
-                    continue
-                }
-                guard segment.end >= minWindowStart else {
-                    droppedOld += 1
-                    continue
-                }
-                keptSegments.append(segment)
-                for bucket in startBucket...endBucket {
-                    speakerSegmentBuckets[bucket, default: []].append(segment)
-                }
+            let startBucket = Int(floor(segment.start / speakerBucketWidthSeconds))
+            let endBucket = Int(floor(segment.end / speakerBucketWidthSeconds))
+            let span = endBucket - startBucket
+            let maxSpanBuckets = Int(SpeakerConstraints.maxWindowSeconds / speakerBucketWidthSeconds) + 1
+            guard span <= maxSpanBuckets else {
+                droppedWide += 1
+                continue
             }
-        } else {
-            // Incremental path: only bucket newly-arrived segments while keeping existing buckets intact.
-            let newSegments = speakerSegments.suffix(from: lastBucketizedIndex)
-            guard !newSegments.isEmpty else { return }
-            // Re-validate existing segments within window to avoid accumulation of invalid/stale entries.
-            keptSegments = speakerSegments.filter { segment in
-                segment.start >= 0 &&
-                segment.end >= segment.start &&
-                segment.end <= SpeakerConstraints.maxWindowSeconds &&
-                segment.end <= speakerBucketWindowSeconds &&
-                segment.end >= minWindowStart
+            guard segment.end >= minWindowStart else {
+                droppedOld += 1
+                continue
             }
-            // Rebuild buckets from keptSegments (within window) before adding new ones.
-            speakerSegmentBuckets.removeAll()
-            for segment in keptSegments {
-                let startBucket = Int(floor(segment.start / speakerBucketWidthSeconds))
-                let endBucket = Int(floor(segment.end / speakerBucketWidthSeconds))
-                for bucket in startBucket...endBucket {
-                    speakerSegmentBuckets[bucket, default: []].append(segment)
-                }
-            }
-            for segment in newSegments {
-                guard segment.start >= 0,
-                      segment.end >= segment.start,
-                      segment.end <= SpeakerConstraints.maxWindowSeconds else {
-                    FileLogger.log(
-                        category: "MeetingRecordingManager",
-                        message: "Skipping out-of-bounds diarization segment start=\(segment.start) end=\(segment.end)"
-                    )
-                    dropped += 1
-                    continue
-                }
-                guard segment.end >= minWindowStart else {
-                    droppedOld += 1
-                    continue
-                }
-                let startBucket = Int(floor(segment.start / speakerBucketWidthSeconds))
-                let endBucket = Int(floor(segment.end / speakerBucketWidthSeconds))
-                let span = endBucket - startBucket
-                let maxSpanBuckets = Int(SpeakerConstraints.maxWindowSeconds / speakerBucketWidthSeconds) + 1
-                guard span <= maxSpanBuckets else {
-                    droppedWide += 1
-                    continue
-                }
-                keptSegments.append(segment)
-                for bucket in startBucket...endBucket {
-                    speakerSegmentBuckets[bucket, default: []].append(segment)
-                }
+            keptSegments.append(segment)
+            for bucket in startBucket...endBucket {
+                speakerSegmentBuckets[bucket, default: []].append(segment)
             }
         }
 
@@ -1513,16 +1435,16 @@ private extension MeetingRecordingManager {
         let maxBucket = Int(floor(windowSeconds / speakerBucketWidthSeconds))
         speakerSegmentBuckets = speakerSegmentBuckets.filter { $0.key >= minBucket && $0.key <= maxBucket }
         speakerSegments = keptSegments
+        if speakerSegments.count > 10_000 || speakerSegmentBuckets.count > 5_000 {
+            FileLogger.log(
+                category: "MeetingRecordingManager",
+                message: "Speaker buckets size=\(speakerSegmentBuckets.count) segments=\(speakerSegments.count) windowSeconds=\(windowSeconds)"
+            )
+        }
         if dropped > 0 || droppedWide > 0 || droppedOld > 0 {
             FileLogger.log(
                 category: "MeetingRecordingManager",
                 message: "Dropped \(dropped) out-of-window, \(droppedWide) overly-wide, \(droppedOld) stale diarization segments"
-            )
-        }
-        if speakerSegmentBuckets.count > 5_000 {
-            FileLogger.log(
-                category: "MeetingRecordingManager",
-                message: "Speaker buckets size=\(speakerSegmentBuckets.count); windowSeconds=\(windowSeconds)"
             )
         }
     }
