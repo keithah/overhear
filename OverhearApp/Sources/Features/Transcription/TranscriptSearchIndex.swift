@@ -67,7 +67,8 @@ final class TranscriptSearchIndex {
     }
 
     func search(query: String, limit: Int, offset: Int) throws -> [URL] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = (query as NSString).precomposedStringWithCanonicalMapping
+        let trimmed = normalized.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         // Allow only alphanumerics, spaces, underscores, and hyphens to avoid FTS operator injection.
         let allowed = CharacterSet.alphanumerics

@@ -37,8 +37,10 @@ actor TranscriptSearchCache {
     func get(_ url: URL) -> StoredTranscript? {
         if let value = cache[url] {
             // Move to back for LRU behavior.
-            order.removeAll(where: { $0 == url })
-            order.append(url)
+            if order.last != url {
+                order.removeAll(where: { $0 == url })
+                order.append(url)
+            }
             return value
         }
         return cache[url]
@@ -46,8 +48,10 @@ actor TranscriptSearchCache {
 
     func set(_ url: URL, value: StoredTranscript) {
         cache[url] = value
-        order.removeAll(where: { $0 == url })
-        order.append(url)
+        if order.last != url {
+            order.removeAll(where: { $0 == url })
+            order.append(url)
+        }
         if order.count > maxEntries, let evict = order.first {
             order.removeFirst()
             cache.removeValue(forKey: evict)

@@ -103,6 +103,10 @@ private extension InstanceLock {
     func isProcessRunning(pid: Int32) -> Bool {
         let result = kill(pid, 0)
         if result == 0 { return true }
-        return errno == EPERM
+        if errno == ESRCH {
+            return false
+        }
+        // Conservatively treat other errors (e.g., EPERM) as “running”.
+        return true
     }
 }

@@ -39,10 +39,7 @@ final class AudioBufferPool {
         counts[key] = (buffer, count + 1)
         return PooledAudioBuffer(buffer: buffer) { [weak self] in
             guard let self else {
-                // If the pool was deallocated before release, log in debug to surface leaks.
-                #if DEBUG
-                NSLog("AudioBufferPool deallocated before release; pooled buffer drop was ignored.")
-                #endif
+                NSLog("AudioBufferPool deallocated before release; pooled buffer drop ignored (possible leak)")
                 return
             }
             self.decrement(key: key)
