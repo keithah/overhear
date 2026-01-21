@@ -65,19 +65,29 @@ final class TranscriptSearchIndex {
     }
 
     func search(query: String, limit: Int, offset: Int) throws -> [URL] {
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
         // Allow only alphanumerics, spaces, underscores, and hyphens to avoid FTS operator injection.
         let allowed = CharacterSet.alphanumerics
             .union(.whitespacesAndNewlines)
             .union(CharacterSet(charactersIn: "_-"))
-        let sanitizedScalars = query.unicodeScalars.map { scalar -> UnicodeScalar in
+        let sanitizedScalars = trimmed.unicodeScalars.map { scalar -> UnicodeScalar in
             allowed.contains(scalar) ? scalar : " " as UnicodeScalar
         }
-        let sanitized = String(String.UnicodeScalarView(sanitizedScalars))
+        var sanitized = String(String.UnicodeScalarView(sanitizedScalars))
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        if sanitized.count > 200 {
+            sanitized = String(sanitized.prefix(200))
+        }
         guard !sanitized.isEmpty else { return [] }
-        let token = "\"\(sanitized)\"*"
+        // For very long queries, skip prefix wildcard to avoid table scans.
+        let token: String
+        if sanitized.count > 50 {
+            token = "\"\(sanitized)\""
+        } else {
+            token = "\"\(sanitized)\"*"
+        }
         let sql = """
         SELECT path FROM transcripts_fts
         WHERE transcripts_fts MATCH ?1

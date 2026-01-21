@@ -28,7 +28,10 @@ final class InstanceLock {
     /// Attempts to acquire the single-instance lock. Returns false when another live process holds the lock.
     func acquire() -> Bool {
         let fd = open(lockURL.path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
-        guard fd != -1 else { return true }
+        guard fd != -1 else {
+            logger.error("Failed to open instance lock at \(self.lockURL.path, privacy: .public); errno=\(errno)")
+            return false
+        }
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
         let pid = getpid()
         var locked = false

@@ -189,7 +189,13 @@ actor AVAudioCaptureService {
             // Hop off the audio callback thread before any disk I/O or actor work.
             Task.detached(priority: .userInitiated) { [weak self] in
                 guard let self else { return }
-                let bufferSizeBytes = Int(bufferCopy.frameLength) * Int(bufferCopy.format.streamDescription.pointee.mBytesPerFrame)
+                let desc = bufferCopy.format.streamDescription
+                let bytesPerFrame = Int(desc.pointee.mBytesPerFrame)
+                guard bytesPerFrame > 0 else {
+                    await self.log("Invalid bytesPerFrame; dropping buffer")
+                    return
+                }
+                let bufferSizeBytes = Int(bufferCopy.frameLength) * bytesPerFrame
                 await self.enqueueBuffer(bufferCopy, sessionID: sessionID, sizeBytes: bufferSizeBytes)
             }
         }
