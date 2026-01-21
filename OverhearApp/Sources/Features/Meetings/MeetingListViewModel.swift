@@ -166,8 +166,7 @@ final class MeetingListViewModel: ObservableObject {
     private func apply(meetings: [Meeting]) {
         let now = Date()
         let calendar = Calendar.current
-        // Extended cutoff: meetings remain "upcoming" until 5 minutes after their end time
-        // We check if the end time is older than 5 minutes ago.
+        // Extended cutoff: keep meetings “upcoming” until 5 minutes after their end time.
         let fiveMinutesAgo = now.addingTimeInterval(-5 * 60)
 
         let combinedMeetings = (meetings + manualRecordings)
